@@ -9,6 +9,8 @@ Our two main goals are:
 
 ## ⚠️ Disclaimer
 
+matrixOS distro images are coming on **2026-02-07** to the latest.
+
 matrixOS is a hobby project created to maintain a personal homelab setup. It is **not** intended for production environments where reliability is paramount. While I can be my own SRE, I can't be yours. :-)
 
 Everything in this repository is provided "AS IS" and comes with **NO WARRANTY**. Please see the License section for more details.
