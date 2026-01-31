@@ -1,0 +1,280 @@
+#!/bin/bash
+# This is the build and release script that runs with a weekly cadence (default in these scripts)
+# on any-distro VPS or otherwise system where the root user is accessible and provided that
+# there's a Gentoo stage3 chroot with the required packages available (default: /matrixos).
+# To install such packages you can either:
+# Option (A):
+# - add the matrixos overlay available at https://github.com/lxnay/matrixos-overlay
+# - install virtual/matrixos-devel
+# - clone this git repository into /matrixos
+# Option (B):
+# - download a matrixOS Bedrock image or stage4 files (whichever will be available)
+# - unpack the image file into a directory (you don't need boot or efi partitions)
+# Option (B) advantages:
+# - you get all you need (please make sure to change the passwords)
+# - you can keep it up to date via ostree upgrades (see README.md)
+set -e
+
+if [ -e /etc/profile ]; then
+    source /etc/profile
+fi
+
+set -eu
+
+export MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
+echo "Set MATRIXOS_DEV_DIR (export) to: ${MATRIXOS_DEV_DIR}"
+
+source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
+
+LOGFILE=
+BUILT_SEEDERS_FILE=
+BUILT_RELEASES_FILE=
+
+ARG_POSITIONALS=()
+ARG_FORCE_RELEASE=
+ARG_ONLY_IMAGES=
+ARG_FORCE_IMAGES=
+ARG_ON_BUILD_SERVER=
+ARG_RESUME_SEEDERS=
+ARG_HELP=
+
+
+finish() {
+    exit_code=$?
+    if [ -n "${ARG_HELP}" ]; then
+        return "${exit_code}"
+    fi
+    local subject=
+    if [ "${exit_code}" -eq "0" ]; then
+        subject="[matrixOS weekly builder] SUCCESSFUL execution at $(date +%Y%m%d)"
+    else
+        subject="[matrixOS weekly builder] FAILED execution at $(date +%Y%m%d)"
+    fi
+
+    local mail_dest=
+    mail_dest="$(id -n -u)"
+    local mutt_exec=
+    mutt_exec=$(command -v mutt 2>/dev/null || true)
+    if [ -n "${mutt_exec}" ]; then
+        local mutt_args=()
+        if [ -n "${LOGFILE}" ] && [ -f "${LOGFILE}" ]; then
+            mutt_args+=( -a "${LOGFILE}" )
+        fi
+        mutt -s "${subject}" "${mutt_args[@]}" -- "${mail_dest}" < /dev/null
+    else
+        echo "mutt not installed, not emailing ${mail_dest} with build status." >&2
+    fi
+
+    [[ -n "${BUILT_SEEDERS_FILE}" ]] && rm -f "${BUILT_SEEDERS_FILE}"
+    [[ -n "${BUILT_RELEASES_FILE}" ]] && rm -f "${BUILT_RELEASES_FILE}"
+}
+
+parse_args() {
+    while [[ ${#} -gt 0 ]]; do
+    case ${1} in
+        -fr|--force-release)
+        ARG_FORCE_RELEASE=1
+
+        shift
+        ;;
+
+        -oi|--only-images)
+        ARG_ONLY_IMAGES=1
+
+        shift
+        ;;
+
+        -fi|--force-images)
+        ARG_FORCE_IMAGES=1
+
+        shift
+        ;;
+
+        -bs|--on-build-server)
+        ARG_ON_BUILD_SERVER=1
+
+        shift
+        ;;
+
+        -rs|--resume-seeders)
+        ARG_RESUME_SEEDERS=1
+
+        shift
+        ;;
+
+        -h|--help)
+        echo -e "release - matrixOS chroot release tool." >&2
+        echo >&2
+        echo -e "Arguments:" >&2
+        echo -e "-fr, --force-release \t\t force the re-release of the latest built seeds." >&2
+        echo -e "-oi, --only-images  \t\t generate the images from the last committed branches, skipping seeder and releaser." >&2
+        echo -e "-fi, --force-images  \t\t force images creation for all branches, after the seeder and releaser executed." >&2
+        echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
+        echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
+        echo >&2
+        ARG_HELP=1
+        exit 0
+        ;;
+
+        -*|--*)
+        echo "Unknown argument ${1}"
+        return 1
+        ;;
+        *)
+        ARG_POSITIONALS+=( "${1}" )
+        shift
+        ;;
+    esac
+    done
+}
+
+_only_images_flag() {
+    [[ -n "${ARG_ONLY_IMAGES}" ]]
+}
+
+_force_release_flag() {
+    [[ -n "${ARG_FORCE_RELEASE}" ]]
+}
+
+_force_images_flag() {
+    [[ -n "${ARG_FORCE_IMAGES}" ]]
+}
+
+_on_build_server_flag() {
+    [[ -n "${ARG_ON_BUILD_SERVER}" ]]
+}
+
+_resume_seeders_flag() {
+    [[ -n "${ARG_RESUME_SEEDERS}" ]]
+}
+
+
+main() {
+    trap finish EXIT
+
+    parse_args "${@}"
+
+    local found_uid
+    found_uid=$(id -u)
+    if [ "${found_uid}" != "0" ]; then
+        echo "Run this as root." >&2
+        exit 1
+    fi
+
+    local locks_dir="${MATRIXOS_LOCKS_DIR}/weekly-builder"
+    mkdir -p "${locks_dir}"
+    local lock_file="${locks_dir}/weekly-builder.lock"
+
+    exec 9> "${lock_file}"
+    flock -x -w 600 9
+    if [ "${?}" != "0" ]; then
+        echo "Failed to acquire the lock to build matrixOS weekly. Another weekly builder running?" >&2
+        exit 1
+    fi
+
+    local log_dir="${MATRIXOS_LOGS_DIR}/weekly-builder"
+    mkdir -p "${log_dir}"
+    LOGFILE="${log_dir}/build-$(date +%Y%m%d-%H%M%S).log"
+
+    echo "Logfile at: ${LOGFILE}"
+    BUILT_SEEDERS_FILE=$(mktemp -p "${locks_dir}" "matrixos.weekly.builder.seeds.done.file.XXXXXXX")
+    echo "Tracking newly built seeds at: ${BUILT_SEEDERS_FILE}"
+    BUILT_RELEASES_FILE=$(mktemp -p "${locks_dir}" "matrixos.weekly.builder.releases.done.file.XXXXXXX")
+    echo "Tracking newly built releases at: ${BUILT_RELEASES_FILE}"
+
+    (
+
+        local built_releases=()
+        if ! _only_images_flag "${@}"; then
+            local seeder_args=(
+                --verbose
+                --built-seeders-file="${BUILT_SEEDERS_FILE}"
+            )
+            if _resume_seeders_flag "${@}"; then
+                seeder_args+=(
+                    --resume
+                )
+            fi
+            echo "Building new seeds ..."
+            "${MATRIXOS_DEV_DIR}/build/seeder" "${seeder_args[@]}"
+
+            local releaser_args=(
+                --verbose
+            )
+            if [ ! -e "${BUILT_SEEDERS_FILE}" ]; then
+                echo "Apparently, ${BUILT_SEEDERS_FILE} disappeared. Running the releaser regardless ..." >&2
+            else
+                built_seeds=( $(cat "${BUILT_SEEDERS_FILE}") )
+                for s in "${built_seeds[@]}"; do
+                    echo "Seeder built: ${s}"
+                done
+
+                if [[ "${#built_seeds[@]}" -gt 0 ]]; then
+                    printf -v joined ",%s" "${built_seeds[@]}"
+                    releaser_args+=(
+                        "--only-seeders=${joined:1}"
+                    )
+                    echo "Releasing only for freshly built seeders: ${joined:1} ..."
+                elif _force_release_flag "${@}"; then
+                    echo "Forcing releases and new images via --force-release."
+                    # fall through.
+                else
+                    echo "Nothing to release. Yay."
+                    exit 0
+                fi
+            fi
+
+            echo "Releasing newly built seeds ..."
+            "${MATRIXOS_DEV_DIR}/release/release.seeds" "${releaser_args[@]}" \
+                --built-releases-file="${BUILT_RELEASES_FILE}"
+
+            echo "Creating images for the new releases ..."
+            if [ ! -e "${BUILT_RELEASES_FILE}" ]; then
+                echo "Unable to find ${BUILT_RELEASES_FILE}. Was it deleted?" >&2
+                return 1
+            fi
+
+            built_releases+=( $(cat "${BUILT_RELEASES_FILE}") )
+
+            if _on_build_server_flag "${@}"; then
+                echo "Executing on a build server, branches are stored without remote names, so stripping that off ..."
+                built_releases=( $(for r in "${built_releases[@]}"; do echo "${r#*:}"; done) )
+            fi
+
+            local r=
+            for r in "${built_releases[@]}"; do
+                echo "Built release: ${r}"
+            done
+
+        else
+            echo "Forcing new images only via --only-images ..."
+        fi
+
+        local imager_args=(
+            --local-ostree
+            --productionize
+            --create-qcow2
+        )
+        if [[ "${#built_releases[@]}" -gt 0 ]]; then
+            printf -v reljoined ",%s" "${built_releases[@]}"
+            imager_args+=(
+                "--only-releases=${reljoined:1}"
+            )
+            echo "Creating new images only for freshly built releases: ${reljoined:1} ..."
+        elif _force_images_flag "${@}"; then
+            echo "Forcing new images via --force-images."
+            # fall through.
+        elif _only_images_flag "${@}"; then
+            echo "Creating only images (all) via --only-images."
+            # fall through.
+        else
+            echo "No images to release. Yay?"
+            return 0
+        fi
+
+        "${MATRIXOS_DEV_DIR}/image/image.releases" "${imager_args[@]}"
+
+    ) > >(tee -a "${LOGFILE}") 2> >(tee -a "${LOGFILE}" >&2)
+}
+
+main "${@}"

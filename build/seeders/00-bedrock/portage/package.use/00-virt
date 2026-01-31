@@ -1,0 +1,14 @@
+app-emulation/qemu virgl pipewire spice virtfs zstd
+media-libs/virglrenderer venus
+
+# Pulls in a lot of Xorg stuff indirectly that we may not need on a small deployment.
+# We cannot disable opengl because we want to allow AI workloads.
+media-libs/gst-plugins-base -opengl -gles2
+# I put this here because it's related to the attempt of merging qemu. There is no
+# way to merge qemu without having this USE flag set. I don't understand why, maybe a bug.
+media-libs/libglvnd X
+
+net-dns/dnsmasq script
+net-libs/gnutls pkcs11 tools
+net-wireless/wpa_supplicant -gui
+sys-libs/snapd-glib -qt6 -qml

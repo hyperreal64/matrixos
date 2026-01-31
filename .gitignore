@@ -1,0 +1,9 @@
+ostree/
+out/
+locks/
+logs/
+build/seeders/*/__disabled__
+
+# Local image testing with qemu
+my_vars.fd
+dev/my_vars.fd

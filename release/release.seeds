@@ -1,0 +1,319 @@
+#!/bin/bash
+# release.seeds releases to ostree the built seeds using seeders.
+set -e
+
+if [ -e /etc/profile ]; then
+    source /etc/profile
+fi
+
+set -eu
+
+export MATRIXOS_DEV_DIR=${MATRIXOS_DEV_DIR:-/matrixos}
+source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
+source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/seedersenv.include.sh
+
+source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/ostree_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/seeders_lib.sh
+source "${MATRIXOS_DEV_DIR}"/release/lib/release_lib.sh
+
+ARG_RELEASE_STAGE=dev
+RELEASE_MAIN_ARGS=()
+ARG_SKIP_SEEDERS=()
+ARG_ONLY_SEEDERS=()
+ARG_OVERRIDE_CHROOTS=()
+ARG_BUILT_RELEASES_FILE=
+
+
+parse_args() {
+
+    # When releasing seeds, we are not using chroot-dir=/ and so we should try
+    # to use this to preserve CoW-ed files if possible. But disabling it helps
+    # if we want to productionize a rootfs and continue to maintain it in parallel.
+    # But do we want that? it's probably better to start from the already built chroot
+    # and save that instead, no?
+    export MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=1
+
+    while [[ ${#} -gt 0 ]]; do
+    case ${1} in
+
+        -rs|--release-stage|--release-stage=*)
+        local val=
+        if [[ "${1}" =~ --release-stage=.* ]]; then
+            val=${1/--release-stage=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        release_lib.validate_release_stage "${val}"
+        ARG_RELEASE_STAGE="${val}"
+        ;;
+
+        -och|--override-chroot-dir|--override-chroot-dir=*)
+        local val=
+        if [[ "${1}" =~ --override-chroot-dir=.* ]]; then
+            val=${1/--override-chroot-dir=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+
+        readarray -d ',' -t ARG_OVERRIDE_CHROOTS <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_OVERRIDE_CHROOTS[-1]="${ARG_OVERRIDE_CHROOTS[-1]%$'\n'}"
+        ;;
+
+        -s|--skip-seeders|--skip-seeders=*)
+        local vals=
+        if [[ "${1}" =~ --skip-seeders=.* ]]; then
+            vals=${1/--skip-seeders=/}
+            shift
+
+        else
+            vals="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_SKIP_SEEDERS <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_SKIP_SEEDERS[-1]="${ARG_SKIP_SEEDERS[-1]%$'\n'}"
+        ;;
+
+        -o|--only-seeders|--only-seeders=*)
+        local vals=
+        if [[ "${1}" =~ --only-seeders=.* ]]; then
+            vals=${1/--only-seeders=/}
+            shift
+        else
+            vals="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_ONLY_SEEDERS <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_ONLY_SEEDERS[-1]="${ARG_ONLY_SEEDERS[-1]%$'\n'}"
+        ;;
+
+        -doc|--disable-ostree-consume)
+        export MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=0
+
+        shift
+        ;;
+
+        -br|--built-releases-file|--built-releases-file=*)
+        local val=
+        if [[ "${1}" =~ --built-releases-file=.* ]]; then
+            val=${1/--built-releases-file=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_BUILT_RELEASES_FILE="${val}"
+        ;;
+
+        -h|--help)
+        echo -e "release.seeders - matrixOS release script, wrapping release_main.sh args." >&2
+        echo >&2
+        echo -e "Arguments:" >&2
+        echo -e "-rs, --release-stage  \t\t\t pick between (dev and prod)." >&2
+        echo -e "-och, --override-chroot-dir  \t\t override the chroot dir for a given seeder name." >&2
+        echo -e "\t\t\t\t\t\t Example: (00-bedrock:/path/to/chroot,10-server:/path/to/chroot)." >&2
+        echo -e "-s, --skip-seeders  \t\t\t comma separated list of seeders to skip (by name)." >&2
+        echo -e "\t\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
+        echo -e "-o, --only-seeders  \t\t\t comma separated allow-list of seeders to accept (by name)." >&2
+        echo -e "\t\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
+        echo -e "-br, --built-releases-file \t\t path to a file where the list of succesfully built release branches will be written." >&2
+        echo -e "-doc, --disable-ostree-consume \t\t sets MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=0" >&2
+        echo >&2
+        echo -e "Other arguments are passed directly to release_main.sh" >&2
+        echo >&2
+        exit 0
+        ;;
+
+        *)
+        RELEASE_MAIN_ARGS+=( "${1}" )
+        shift
+        ;;
+    esac
+    done
+}
+
+find_chroot_dir() {
+    local seeder_name="${1}"
+    local branch_shortname="${2}"
+    # need to locate and source params.sh.
+    local params_path="${MATRIXOS_DEV_DIR}/build/seeders/${seeder_name}/${MATRIXOS_SEEDER_PARAMS_EXEC_NAME}"
+    if [ ! -e "${params_path}" ]; then
+        echo "Unable to find ${params_path}" >&2
+        return 1
+    fi
+    (
+        source "${params_path}"
+        "${branch_shortname}_params.find_latest_chroot_dir" "${seeder_name}"
+    )
+}
+
+find_chroot_dir_override() {
+    local seeder_name="${1}"
+    local ovr=
+    for ovr in "${ARG_OVERRIDE_CHROOTS[@]}"; do
+        local sn="${ovr%:*}"
+        local path="${ovr#*:}"
+        if [ "${sn}" = "${seeder_name}" ]; then
+            echo "${path}"
+            return 0
+        fi
+    done
+}
+
+chroot_dir_for_image_dir() {
+    local chroot_dir="${1}"
+    echo "${chroot_dir}.ostree_rootfs"
+}
+
+transfer_matrixos_private() {
+    local imagedir="${1}"
+    if [ -z "${imagedir}" ]; then
+        echo "Missing parameter to transfer_matrixos_private" >&2
+        return 1
+    fi
+
+    local source_repo="${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+    local dest_repo="${imagedir}${source_repo}"
+
+    echo "Copying ${source_repo} to ${dest_repo} ... (will be removed before commit)"
+    rsync -avP -HAX --delete-during --numeric-ids --exclude=".git" \
+        "${source_repo}" "$(dirname "${dest_repo}")/"
+}
+
+_skip_seeder_check() {
+    local s="${1}"
+    local el=
+    for el in "${ARG_SKIP_SEEDERS[@]}"; do
+        if [ "${el}" = "${s}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+_only_seeder_check() {
+    local o="${1}"
+
+    if [[ "${#ARG_ONLY_SEEDERS[@]}" -eq 0 ]]; then
+        # No list to check.
+        return 0
+    fi
+
+    local el=
+    for el in "${ARG_ONLY_SEEDERS[@]}"; do
+        if [ "${el}" = "${o}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+release_worker() {
+    local seeder_exec="${1}"
+    if [ -z "${seeder_exec}" ]; then
+        echo "Missing parameter to release_worker" >&2
+        return 1
+    fi
+
+    local seeder_name=
+    seeder_name=$(seeders_lib.seeder_exec_to_name "${seeder_exec}")
+    # Here we assume that after XX- we have the ostree branch shortname.
+    local branch_shortname=
+    branch_shortname=$(seeders_lib.seeder_name_without_order_prefix "${seeder_name}")
+    echo "Working on seeder ${seeder_name}, ostree branch short name: ${branch_shortname}"
+
+    local branch=
+    branch=$(ostree_lib.branch_shortname_to_normal "${ARG_RELEASE_STAGE}" "${branch_shortname}")
+    if [ -z "${branch}" ]; then
+        echo "Unable to find ostree branch for ${branch_shortname}" >&2
+        exit 1
+    fi
+
+    local chroot_dir=
+    chroot_dir=$(find_chroot_dir_override "${seeder_name}")
+    if [ -n "${chroot_dir}" ]; then
+        echo "Requested override for seeder: ${seeder_name} to ${chroot_dir}"
+    else
+        chroot_dir=$(find_chroot_dir "${seeder_name}" "${branch_shortname}")
+        echo "Selected chroot dir: ${chroot_dir} for seeder: ${seeder_name}"
+    fi
+
+    if [ -z "${chroot_dir}" ]; then
+        echo "Unable to find chroot dir for ${branch_shortname}" >&2
+        exit 1
+    fi
+    if [ ! -d "${chroot_dir}" ]; then
+        echo "Unable to find chroot dir: ${chroot_dir}" >&2
+        exit 1
+    fi
+
+    local image_dir=
+    image_dir="$(chroot_dir_for_image_dir "${chroot_dir}")"
+    if [ ! -d "${image_dir}" ]; then
+        echo "Creating ${image_dir}..."
+        mkdir -p "${image_dir}"
+    fi
+
+    transfer_matrixos_private "${image_dir}"
+    echo "Determined ostree branch to be: ${branch}"
+    echo "Determined chroot dir to be: ${chroot_dir}"
+
+    local release_main_args=(
+        --branch="${branch}"
+        --chroot-dir="${chroot_dir}"
+        --image-dir="${image_dir}"
+    )
+    release_main_args+=( "${RELEASE_MAIN_ARGS[@]}" )
+    echo "Launching release_main.sh with args:"
+    echo "${release_main_args[@]}"
+
+    "${MATRIXOS_DEV_DIR}/release/release_main.sh" "${release_main_args[@]}"
+
+    if [ -n "${ARG_BUILT_RELEASES_FILE}" ]; then
+        echo "${branch}" >> "${ARG_BUILT_RELEASES_FILE}"
+    fi
+}
+
+main() {
+    parse_args "${@}"
+    qa_lib.root_privs
+
+    local release_seeders_execs=(
+        $(seeders_lib.detect_seeders "_skip_seeder_check" "_only_seeder_check")
+    )
+    if [[ "${#release_seeders_execs[@]}" -eq 0 ]]; then
+        echo "No seeders found. Nothing to do." >&2
+        return 1
+    fi
+
+    if [ -n "${ARG_BUILT_RELEASES_FILE}" ]; then
+        echo "Marking freshly built releases into ${ARG_BUILT_RELEASES_FILE} ..."
+        echo > "${ARG_BUILT_RELEASES_FILE}"
+    fi
+
+    echo "Selected release stage: ${ARG_RELEASE_STAGE}"
+    for seeder_exec in "${release_seeders_execs[@]}"; do
+        local seeder_name=
+        seeder_name=$(seeders_lib.seeder_exec_to_name "${seeder_exec}")
+        # The reason why this work is:
+        # - when seeds are marked as done, they are really done forever. So we do not need to
+        #   acquire the seeder lock.
+        # - releasers are synchronizing here.
+        # - for future cleanup functions, we'll be able to clean safely by acquiring both the
+        #   seeder and releaser lock. This works because cleanups are quick and can wait in the
+        #   background.
+        release_lib.execute_with_release_lock "release_worker" "${seeder_name}" "${seeder_exec}"
+    done
+
+    echo "SUCCESS: All builds released to ostree."
+}
+
+main "${@}"

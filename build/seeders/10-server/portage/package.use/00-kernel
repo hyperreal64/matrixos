@@ -1,0 +1,21 @@
+sys-kernel/installkernel grub dracut
+sys-fs/lvm2 lvm thin
+sys-boot/plymouth -gtk -pango
+dev-util/ostree grub dracut
+sys-kernel/gentoo-kernel initramfs ostree
+sys-kernel/matrixos-kernel initramfs ostree modules-compress
+sys-boot/grub mount secureboot
+sys-apps/fwupd amdgpu lzma nvme synaptics tpm uefi gnutls
+sys-fs/squashfs-tools lzma lzo
+sys-apps/kmod pkcs7
+sys-kernel/linux-firmware deduplicate compress-zstd
+
+# sys-kernel/linux-firmware does things that are not nice for a redist
+# system and we have matrixos-kernel that takes care of making a correct
+# initramfs. Atm, the code in linux-firmare tries to install the amd-uc.img
+# into /boot or tries to mess with generating/updating an initramfs.
+sys-kernel/linux-firmware -initramfs -dist-kernel
+
+# Ship with systemd-boot in case someone wants to switch
+sys-apps/systemd boot
+sys-kernel/installkernel systemd-boot

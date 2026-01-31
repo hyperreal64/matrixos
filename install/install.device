@@ -1,0 +1,470 @@
+#!/bin/bash
+# install.device - a tool that you can use to install the currently running
+#                  matrixOS system to another block device or its partitions.
+set -eu
+
+MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/image/headers/imagerenv.include.sh
+
+source "${MATRIXOS_DEV_DIR}"/lib/ostree_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+source "${MATRIXOS_DEV_DIR}"/image/lib/image_lib.sh
+
+
+ARG_BATCH=
+ARG_DRY_RUN=
+ARG_WHOLE_DEVICE_PATH=
+ARG_EFI_DEVICE_PATH=
+ARG_BOOT_DEVICE_PATH=
+ARG_ROOT_DEVICE_PATH=
+ARG_POSITIONALS=()
+
+
+parse_args() {
+    while [[ ${#} -gt 0 ]]; do
+    case ${1} in
+        -b|--batch)
+        ARG_BATCH=1
+
+        shift
+        ;;
+
+        -dry|--dry-run|--dryrun)
+        ARG_DRY_RUN=1
+
+        shift
+        ;;
+
+        -instdev|--install-device|--install-device=*)
+        local val=
+        if [[ "${1}" =~ --install-device=.* ]]; then
+            val=${1/--install-device=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_WHOLE_DEVICE_PATH="${val}"
+        ;;
+
+        -efidev|--efi-device-path|--efi-device-path=*)
+        local val=
+        if [[ "${1}" =~ --efi-device-path=.* ]]; then
+            val=${1/--efi-device-path=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_EFI_DEVICE_PATH="${val}"
+        ;;
+
+        -bootdev|--boot-device-path|--boot-device-path=*)
+        local val=
+        if [[ "${1}" =~ --boot-device-path=.* ]]; then
+            val=${1/--boot-device-path=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_BOOT_DEVICE_PATH="${val}"
+        ;;
+
+        -rootdev|--root-device-path|--root-device-path=*)
+        local val=
+        if [[ "${1}" =~ --root-device-path=.* ]]; then
+            val=${1/--root-device-path=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_ROOT_DEVICE_PATH="${val}"
+        ;;
+
+        -h|--help)
+        echo -e "imager - matrixOS ostree to bootable image builder." >&2
+        echo >&2
+        echo -e "Arguments:" >&2
+
+        echo -e "-b, --batch \t\t\t\t\t Run in batch mode, expecting valid arguments for the other flags mentioned here." >&2
+        echo -e "-dry, --dry-run \t\t\t\t Don't make any changes, just dry run everything." >&2
+        echo -e "-instdev <device>, --install-device=<device>  \t provide an alternative block device path (e.g. /dev/sda) for imaging (installation)." >&2
+        echo -e "-efidev <device>, --efi-device-path=<device>  \t provide an alternative EFI System Partition path (will not be formatted)." >&2
+        echo -e "-bootdev <device>, --boot-device-path=<device>   format and install /boot into the specified device (DATA WIPED)." >&2
+        echo -e "-rootdev <device>, --root-device-path=<device>   format and install / into the specified device (DATA WIPED)." >&2
+
+        echo >&2
+        exit 0
+        ;;
+
+        -*|--*)
+        echo "Unknown argument ${1}" >&2
+        return 1
+        ;;
+
+        *)
+        ARG_POSITIONALS+=( "${1}" )
+        shift
+        ;;
+    esac
+    done
+}
+
+# Usage: ask_input <variable_name> <prompt_text> [default_value] [regex_pattern]
+ask_input() {
+    local var_name=$1
+    local prompt_text=$2
+    local default_val=$3
+    local regex=$4
+    local input=
+
+    while true; do
+        read -p "${prompt_text} (default: ${default_val:-none}): " input
+
+        if [[ -z "${input}" ]]; then
+            eval "${var_name}='${default_val}'"
+            return 0
+        fi
+
+        if [[ -n "${regex}" ]]; then
+            if [[ ! "${input}" =~ ${regex} ]]; then
+                echo "Invalid input format. Please try again." >&2
+                continue
+            fi
+        fi
+
+        eval "${var_name}='${input}'"
+        return 0
+    done
+}
+
+show_summary() {
+    local whole_device="${1}"
+    local efi_device="${2}"
+    local boot_device="${3}"
+    local root_device="${4}"
+
+    # Show summary
+    echo "Here is what you are asking me to do:"
+    if [ -n "${whole_device}" ]; then
+        echo "- ${whole_device} -- wipe the device out and install ${MATRIXOS_OSNAME} on the whole disk."
+    else
+        echo "- ${efi_device} (ESP) -- not formatted, but mounted and used to place bootloader files."
+        echo "- ${boot_device} (BOOT) -- formatted, used exclusively by ${MATRIXOS_OSNAME}. DATA WILL BE LOST."
+        echo "- ${root_device} (ROOTFS) -- formatted, used exclusively by ${MATRIXOS_OSNAME}. DATA WILL BE LOST."
+    fi
+
+    echo "Note: final partitions resizing will happen on first boot."
+}
+
+select_whole_device() {
+    local -n _whole_device="${1}"
+    if [ -z "${1}" ]; then
+        echo "select_whole_device: missing _whole_device parameter." >&2
+        return 1
+    fi
+
+    until [ -n "${_whole_device}" ]; do
+        local dev=
+        ask_input dev "What is the block device you want to wipe to install ${MATRIXOS_OSNAME} on? e.g. /dev/sda or /dev/nvme0n1" "" "/dev/.*"
+        if [ -z "${dev}" ] || [ ! -e "${dev}" ]; then
+            echo "The block device ${dev} does not exist. Please try again." >&2
+            continue
+        fi
+        echo
+        echo "Ok, this is the device: ${dev}"
+        sgdisk -p "${dev}"
+        echo
+        _whole_device="${dev}"
+    done
+}
+
+_check_ptype() {
+    local dev="${1}"
+    if [ -z "${dev}" ]; then
+        echo "_check_ptype: missing dev parameter." >&2
+        return 1
+    fi
+    local exp_ptype="${2}"
+    if [ -z "${exp_ptype}" ]; then
+        echo "_check_ptype: missing exp_ptype parameter." >&2
+        return 1
+    fi
+    local ptype=
+    ptype=$(image_lib.get_partition_type "${dev}")
+    if [ "${ptype}" != "${exp_ptype}" ]; then
+        echo "Your Partition Type GUID is: ${ptype}. Which is not valid for ${dev}." >&2
+        echo "Please use partition that has an expected GUID of ${exp_ptype}" >&2
+        return 1
+    fi
+}
+
+select_efi_partition() {
+    local -n _efi_device="${1}"
+    if [ -z "${1}" ]; then
+        echo "select_efi_partition: missing _efi_device parameter." >&2
+        return 1
+    fi
+
+    # cover case where flags already provide a value.
+    if [ -n "${_efi_device}" ]; then
+        _check_ptype "${_efi_device}" "${MATRIXOS_LIVEOS_ESP_PARTTYPE}"
+    fi
+
+    until [ -n "${_efi_device}" ]; do
+        local dev=
+        ask_input dev "On which ESP partition? e.g. /dev/sda1 or /dev/nvme0n1p1" "" "/dev/.*"
+        if [ -z "${dev}" ] || [ ! -e "${dev}" ]; then
+            echo "The partition ${dev} does not exist. Please try again." >&2
+            continue
+        fi
+        if ! _check_ptype "${dev}" "${MATRIXOS_LIVEOS_ESP_PARTTYPE}"; then
+            continue
+        fi
+        _efi_device="${dev}"
+    done
+}
+
+select_boot_partition() {
+    local -n _boot_device="${1}"
+    if [ -z "${1}" ]; then
+        echo "select_boot_partition: missing _boot_device parameter." >&2
+        return 1
+    fi
+
+    # cover case where flags already provide a value.
+    if [ -n "${_boot_device}" ]; then
+        _check_ptype "${_boot_device}" "${MATRIXOS_LIVEOS_BOOT_PARTTYPE}"
+    fi
+
+    until [ -n "${_boot_device}" ]; do
+        local dev=
+        ask_input dev "On which ${MATRIXOS_BOOT_ROOT} partition? e.g. /dev/sda2 or /dev/nvme0n1p2" "" "/dev/.*"
+        if [ -z "${dev}" ] || [ ! -e "${dev}" ]; then
+            echo "The partition ${dev} does not exist. Please try again." >&2
+            continue
+        fi
+        if ! _check_ptype "${dev}" "${MATRIXOS_LIVEOS_BOOT_PARTTYPE}"; then
+            continue
+        fi
+        _boot_device="${dev}"
+    done
+}
+
+select_root_partition() {
+    local -n _root_device="${1}"
+    if [ -z "${1}" ]; then
+        echo "select_root_partition: missing _root_device parameter." >&2
+        return 1
+    fi
+    # cover case where flags already provide a value.
+    if [ -n "${_root_device}" ]; then
+        _check_ptype "${_root_device}" "${MATRIXOS_LIVEOS_ROOT_PARTTYPE}"
+    fi
+
+    until [ -n "${_root_device}" ]; do
+        local dev=
+        ask_input dev "On which / partition? e.g. /dev/sda3 or /dev/nvme0n1p3" "" "/dev/.*"
+        if [ -z "${dev}" ] || [ ! -e "${dev}" ]; then
+            echo "The partition ${dev} does not exist. Please try again." >&2
+            continue
+        fi
+        if ! _check_ptype "${dev}" "${MATRIXOS_LIVEOS_ROOT_PARTTYPE}"; then
+            continue
+        fi
+        _root_device="${dev}"
+    done
+}
+
+main() {
+    parse_args "${@}"
+    qa_lib.root_privs
+
+    local imager="${MATRIXOS_DEV_DIR}/image/image_main.sh"
+    if [ ! -x "${imager}" ]; then
+        echo "${imager} does not exist. why?" >&2
+        return 1
+    fi
+
+    local efi_device=
+    if [ -n "${ARG_EFI_DEVICE_PATH}" ]; then
+        efi_device="${ARG_EFI_DEVICE_PATH}"
+        if [ ! -e "${efi_device}" ]; then
+            echo "${efi_device} does not exist ..." >&2
+            return 1
+        fi
+        echo "Selected the following device as EFI System Partition: ${efi_device} (WILL NOT BE FORMATTED)"
+        blkid "${efi_device}"
+    fi
+
+    local boot_device=
+    if [ -n "${ARG_BOOT_DEVICE_PATH}" ]; then
+        boot_device="${ARG_BOOT_DEVICE_PATH}"
+        if [ ! -e "${boot_device}" ]; then
+            echo "${boot_device} does not exist ..." >&2
+            return 1
+        fi
+    fi
+    local root_device=
+    if [ -n "${ARG_ROOT_DEVICE_PATH}" ]; then
+        root_device="${ARG_ROOT_DEVICE_PATH}"
+        if [ ! -e "${root_device}" ]; then
+            echo "${root_device} does not exist ..." >&2
+            return 1
+        fi
+    fi
+    local whole_device=
+    if [ -n "${ARG_WHOLE_DEVICE_PATH}" ]; then
+        whole_device="${ARG_WHOLE_DEVICE_PATH}"
+        if [ ! -e "${whole_device}" ]; then
+            echo "${whole_device} does not exist ..." >&2
+            return 1
+        fi
+    fi
+
+    local repodir="/ostree/repo"
+    if [ ! -d "${repodir}" ]; then
+        echo "${repodir} does not exist." >&2
+    fi
+
+    local sysroot=/
+    local booted_ref=
+    booted_ref=$(ostree_lib.booted_ref "${sysroot}")
+    if [ -z "${booted_ref}" ]; then
+        echo "Unable to find booted ostree ref." >&2
+        return 1
+    fi
+    ostree_lib.run admin status --sysroot="${sysroot}"
+    echo
+    echo "You are currently booted using the ostree branch: ${booted_ref} ."
+    echo
+
+    local d=
+    local any_device=
+    local every_device=1
+    for d in "${boot_device}" "${root_device}" "${efi_device}"; do
+        if [ -z "${d}" ]; then
+            every_device=
+        fi
+        if [ -n "${d}" ]; then
+            any_device=1
+        fi
+    done
+    if [ -z "${every_device}" ] && [ -n "${any_device}" ]; then
+        echo "Please specify all the individual devices. See --help for more information." >&2
+        return 1
+    fi
+
+    if [ -n "${whole_device}" ] && [ -z "${every_device}" ]; then
+        echo "Specified whole device ${whole_device} to flash." >&2
+    elif [ -n "${whole_device}" ] && [ -n "${every_device}" ]; then
+        echo "Please specify either --install-device=* or all of the individual device partition paths. Not both." >&2
+        return 1
+    elif [ -z "${whole_device}" ] && [ -z "${every_device}" ] && [ -n "${ARG_BATCH}" ]; then
+        echo "Please specify some devices where to install (you are in batch mode). See --help." >&2
+        return 1
+    fi
+
+    if [ -n "${ARG_DRY_RUN}" ]; then
+        echo
+        echo "DRY RUN MODE ENABLED" >&2
+        echo
+    fi
+
+    if [ -n "${ARG_BATCH}" ]; then
+        echo "Executing in batch mode ..."
+        show_summary "${whole_device}" "${efi_device}" "${boot_device}" "${root_device}"
+        echo
+        echo "I am going to proceed executing the installation of ${MATRIXOS_OSNAME} on the devices mentioned."
+        echo "You have 30 seconds to CTRL+C ..."
+        [[ -z "${ARG_DRY_RUN}" ]] && sleep 30
+    else
+        echo "Executing in interactive mode ..."
+
+        # This means that whole device is set.
+        local whole_device_install=
+        if [ -z "${every_device}" ]; then
+            ask_input whole_device_install \
+                "Do you want to install on a whole block device? e.g. /dev/sda or /dev/nvme0n1. Type yes?" "no" "(yes|no|)"
+        else
+            whole_device_install="no"
+        fi
+
+        if [ "${whole_device_install}" = "yes" ]; then
+            select_whole_device "whole_device"
+        elif [ "${whole_device_install}" = "no" ]; then
+            echo "Ok, so we are installing ${MATRIXOS_OSNAME} into already prepared partitions. I presume..."
+            select_efi_partition "efi_device"
+            select_boot_partition "boot_device"
+            select_root_partition "root_device"
+        else
+            echo "You pressed NACK. Goodbye." >&2
+            return 1
+        fi
+
+        show_summary "${whole_device}" "${efi_device}" "${boot_device}" "${root_device}"
+        echo
+        local lgtm_folks=
+        ask_input lgtm_folks "Does that look good to you? Can you LGTM? Type (LGTM|ACK|yes)?" "no" "(ack|ACK|lgtm|LGTM|yes|YES|no|)"
+        if [[ ! "${lgtm_folks}" =~ (ack|ACK|lgtm|LGTM|yes|YES) ]]; then
+            echo "You pressed NACK. Goodbye." >&2
+            return 1
+        fi
+
+        echo "OK, I am going to proceed wiping these bad partitions in 5 seconds ..."
+        [[ -z "${ARG_DRY_RUN}" ]] && sleep 5
+    fi
+
+    # Sanity check for us, to avoid shooting ourselves in the foot due to a bug or something.
+    # Either whole_device or (efi,boot,root).
+    if [ -z "${whole_device}" ] && [ -n "${efi_device}" ] && [ -n "${boot_device}" ] && [ -n "${root_device}" ]; then
+        true  # good
+    elif [ -z "${whole_device}" ] && [ -z "${efi_device}" ] && [ -z "${boot_device}" ] && [ -z "${root_device}" ]; then
+        echo "Somehow no variables are set. This is a script bug." >&2
+        return 1
+    elif [ -n "${whole_device}" ] && [ -z "${efi_device}" ] && [ -z "${boot_device}" ] && [ -z "${root_device}" ]; then
+        true  # good
+    else
+        echo "Unexpected arguments state. ${whole_device}|${efi_device}|${boot_device}|${root_device}" >&2
+        return 1
+    fi
+
+    local imager_args=(
+        --local-ostree
+        --ostree-repo="${repodir}"
+        --ref="${booted_ref}"
+    )
+    if  [ -n "${whole_device}" ]; then
+        imager_args+=(
+            --install-device="${whole_device}"
+        )
+    else
+        imager_args+=(
+            --efi-device-path="${efi_device}"
+            --boot-device-path="${boot_device}"
+            --root-device-path="${root_device}"
+        )
+    fi
+
+    if [ -n "${ARG_DRY_RUN}" ]; then
+        echo "I would have executed:"
+        echo "${imager}" "${imager_args[@]}"
+        echo "No changes made."
+        return 0
+    fi
+
+    # Try to umount the block devices.
+    local dev=
+    for dev in "${efi_device}" "${boot_device}" "${root_device}"; do
+        if [ -n "${dev}" ]; then
+            umount -v -l "${dev}" || true
+        fi
+    done
+
+    "${imager}" "${imager_args[@]}"
+}
+
+main "${@}"

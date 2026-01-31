@@ -1,0 +1,188 @@
+#!/bin/bash
+set -e
+
+if [ -e /etc/profile ]; then
+    source /etc/profile
+fi
+
+set -eu
+
+MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/seedersenv.include.sh
+
+source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/seeders_lib.sh
+
+
+ARG_POSITIONALS=()
+
+MOUNTS=()
+
+
+clean_exit() {
+    fs_lib.cleanup_mounts "${MOUNTS[@]}"
+}
+
+parse_args() {
+    while [[ ${#} -gt 0 ]]; do
+    case ${1} in
+        -d|--chroot-dir|--chroot-dir=*)
+        # check if we have a --chroot-dir=*
+        local vals=
+        if [[ "${1}" =~ --chroot-dir=.* ]]; then
+            vals=${1/--chroot-dir=/}
+            shift
+        else
+            vals="${2}"
+            shift 2
+        fi
+        ARG_CHROOT_DIR="${vals}"
+        ;;
+
+        -h|--help)
+        echo -e "enter.seed - matrixOS seeded chroot enter script." >&2
+        echo >&2
+        echo -e "Specify a full path or just the name of the chroot to enter." >&2
+        echo >&2
+        exit 0
+        ;;
+
+        -*)
+        echo "Unknown argument ${1}" >&2
+        return 1
+        ;;
+
+        *)
+        ARG_POSITIONALS+=( "${1}" )
+        shift
+        ;;
+    esac
+    done
+}
+
+main() {
+    trap clean_exit EXIT
+
+    parse_args "${@}"
+    qa_lib.root_privs
+
+    if [ "${#ARG_POSITIONALS[@]}" -eq 0 ]; then
+        echo "No chroot dirs or names specified." >&2
+        return 1
+    fi
+
+    chroot_dirs=()
+    chroot_names=()
+    local target=
+    for target in "${ARG_POSITIONALS[@]}"; do
+        if [ -z "${target}" ]; then
+            echo "No chroot dirs or names specified." >&2
+            return 1
+        fi
+
+        if [ -d "${target}" ]; then
+            chroot_dirs+=( "${target}" )
+            continue
+        fi
+
+        local name=
+        name=$(basename "${target}")
+        if [ "${target}" = "${name}" ]; then
+            chroot_names+=( "${target}" )
+            continue
+        fi
+
+        echo "Unable to accept ${target}, unrecognized argument." >&2
+        return 1
+    done
+
+    local detected_seeders=
+    mapfile -t detected_seeders < <(seeders_lib.detect_seeders "false" "true")
+
+    if [ "${#chroot_names[@]}" -gt 0 ]; then
+        local all_chroot_dirs=()
+        local seeder_exec=
+        for seeder_exec in "${detected_seeders[@]}"; do
+
+            local seeder_name=
+            seeder_name=$(seeders_lib.seeder_exec_to_name "${seeder_exec}")
+            # Here we assume that after XX- we have the ostree branch shortname.
+            local branch_shortname=
+            branch_shortname=$(seeders_lib.seeder_name_without_order_prefix "${seeder_name}")
+
+            local seeder_dir=
+            seeder_dir=$(dirname "${seeder_exec}")
+
+            local params=
+            params="${seeder_dir}/${MATRIXOS_SEEDER_PARAMS_EXEC_NAME}"
+            if [ ! -f "${params}" ]; then
+                continue
+            fi
+
+            source "${params}"
+            if [ -n "${SEEDER_CHROOTS_DIR}" ]; then
+                all_chroot_dirs+=( "${SEEDER_CHROOTS_DIR}" )
+            fi
+        done
+
+        local deduped_chroots_dir=
+        deduped_chroots_dir=( $(echo "${all_chroot_dirs[@]}" | tr ' ' '\n' | sort -u) )
+
+        local chroot_name=
+        for chroot_name in "${chroot_names[@]}"; do
+            local chroot_dir=
+            for chroot_dir in "${deduped_chroots_dir[@]}"; do
+                chroot_dir="${chroot_dir}/${chroot_name}"
+                if [ -d "${chroot_dir}" ]; then
+                    chroot_dirs+=( "${chroot_dir}" )
+                fi
+            done
+        done
+    fi
+
+    if [ "${#chroot_dirs[@]}" -eq 0 ]; then
+        echo "No chroot dirs or names found." >&2
+        return 1
+    fi
+
+    for chroot_dir in "${chroot_dirs[@]}"; do
+        echo "Found seed: ${chroot_dir}"
+    done
+
+    local chroot_dir=
+    for chroot_dir in "${chroot_dirs[@]}"; do
+        echo "Entering seed: ${chroot_dir}"
+        fs_lib.setup_common_rootfs_mounts "MOUNTS" "${chroot_dir}"
+        fs_lib.bind_mount_distdir "MOUNTS" "${MATRIXOS_SEEDER_DISTFILES_DIR}" "${chroot_dir}"
+        fs_lib.bind_mount_binpkgs "MOUNTS" "${MATRIXOS_SEEDER_BINPKGS_DIR}" "${chroot_dir}"
+
+        local priv_repo_mounted=
+        local priv_repo_chroot_dir_created=
+        local chroot_priv_repo_path="${chroot_dir%/}${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+        if [ -d "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" ]; then
+            if [ ! -d "${chroot_priv_repo_path}" ]; then
+                mkdir -p "${chroot_priv_repo_path}"
+                priv_repo_chroot_dir_created=1
+            fi
+            fs_lib.bind_mount "MOUNTS" "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "${chroot_priv_repo_path}"
+            priv_repo_mounted=1
+        fi
+
+        chroot "${chroot_dir}"
+
+        if [ -n "${priv_repo_mounted}" ]; then
+            fs_lib.bind_umount "${chroot_priv_repo_path}"
+            if [ -n "${priv_repo_chroot_dir_created}" ]; then
+                rmdir "${chroot_priv_repo_path}"
+            fi
+        fi
+
+        fs_lib.bind_umount_binpkgs "${chroot_dir}"
+        fs_lib.bind_umount_distdir "${chroot_dir}"
+        fs_lib.unsetup_common_rootfs_mounts "${chroot_dir}"
+    done
+}
+
+main "${@}"

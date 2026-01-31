@@ -1,0 +1,280 @@
+#!/bin/bash
+# setupOS - Setup matrixOS, tweak things like default username, passwords, etc.
+set -eu
+
+MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+
+USER_REGEX='^[a-z_][a-z0-9_-]{0,31}$'
+USERNAME_AFTER_CHANGE=
+
+
+# Usage: ask_input <variable_name> <prompt_text> [default_value] [regex_pattern]
+ask_input() {
+    local var_name=$1
+    local prompt_text=$2
+    local default_val=$3
+    local regex=$4
+    local input=
+
+    while true; do
+        read -p "${prompt_text} (default: ${default_val:-none}): " input
+
+        if [[ -z "${input}" ]]; then
+            eval "${var_name}='${default_val}'"
+            return 0
+        fi
+
+        if [[ -n "${regex}" ]]; then
+            if [[ ! "${input}" =~ ${regex} ]]; then
+                echo "Invalid input format. Please try again." >&2
+                continue
+            fi
+        fi
+
+        eval "${var_name}='${input}'"
+        return 0
+    done
+}
+
+check_root() {
+    qa_lib.root_privs
+    if [ "${USER}" != "root" ]; then
+        echo "Please log in as root, ffs." >&2
+        return 1
+    fi
+}
+
+check_username() {
+    local username="${1}"
+    if [ -z "${username}" ]; then
+        echo "check_username <username>." >&2
+        return 1
+    fi
+    local uid=
+    uid=$(id -u "${username}" || true)
+    if [ -z "${uid}" ]; then
+        echo "${username} user does not exist, either it was removed or already migrated." >&2
+        return 1
+    fi
+}
+
+change_username() {
+    local default_username="${1}"
+    check_username "${default_username}"
+
+    local selected_username=
+    local selected_fullname=
+
+    ask_input selected_username \
+        "Enter desired username replacing ${default_username}, hit enter to skip" \
+        "${default_username}" "${USER_REGEX}"
+    if [ "${selected_username}" = "${default_username}" ]; then
+        echo "Skipping username change."
+        USERNAME_AFTER_CHANGE=${default_username}
+        return 0
+    fi
+
+    ask_input selected_fullname "Enter desired full name hit enter to skip" "" ""
+
+    if getent group "${default_username}" >/dev/null; then
+        echo "Renaming group ${default_username} ..."
+        groupmod -n "${selected_username}" "${default_username}"
+    fi
+
+    echo "Renaming user and moving home directory (${default_username} -> ${selected_username}) ..."
+
+    usermod -l "${selected_username}" \
+        -d "/home/${selected_username}" \
+        -m "${default_username}" \
+        -c "${selected_fullname}"
+
+    local live_home_tmpfile=/etc/tmpfiles.d/matrixos-live-home.conf
+    if [ -f "${live_home_tmpfile}" ]; then
+        echo "Removing matrixos-live-home.conf that contained the stock user setup config ..."
+        rm -f "${live_home_tmpfile}" || true
+    fi
+
+    USERNAME_AFTER_CHANGE=${selected_username}
+}
+
+change_user_password() {
+    local target_user="${1}"
+    if [ -z "${target_user}" ]; then
+        echo "change_user_password <username>" >&2
+        return 1
+    fi
+    check_username "${target_user}"
+
+    echo "Changing password for user: ${target_user} ..."
+    passwd "${target_user}"
+}
+
+change_luks_password() {
+    echo "Setting up LUKS password if disk encryption is enabled ..."
+    local uuid=
+    uuid=$(grep -oP 'rd\.luks\.uuid=\K[^ ]+' /proc/cmdline || true)
+    if [ -z "${uuid}" ]; then
+        echo "No disk encryption detected, not asking to change password."
+        return 0
+    fi
+
+    local luks_device="/dev/disk/by-uuid/${uuid}"
+    if [ ! -e "${luks_device}" ]; then
+        echo "Cannot find a valid luks device associated with UUID=${uuid}" >&2
+        echo "Not asking to change encryption password" >&2
+        return 0
+    fi
+
+    echo "Please pick a password for the encrypted disk in the following command."
+    cryptsetup luksChangeKey "${luks_device}"
+}
+
+_setup_localization_keymap() {
+    local keymap=
+    if [ -f "/etc/vconsole.conf" ]; then
+        keymap=$(grep -oP 'KEYMAP=\K[^ ]+' /etc/vconsole.conf || true)
+    fi
+    if [ -z "${keymap}" ]; then
+        return 0
+    fi
+
+    # Setup vconsole as kernel boot args.
+    local is_ostree=
+    is_ostree=$(cat /proc/cmdline | grep ostree=)
+    local jailbroken_config="/boot/loader/entries/${MATRIXOS_JAILBROKEN_BOOT_LOADER_ENTRY}"
+    if [ -n "${is_ostree}" ]; then
+        echo "Invoking ostree to set up early boot keyboard mappings ..."
+        ostree admin kargs edit-in-place "--append-if-missing=vconsole.keymap=${keymap}"
+    elif [ -f "${jailbroken_config}" ]; then
+        echo "This is a jailbroken matrixOS but the original boot loader (BLS) config file exists."
+        sed -i "/^options/ s/$/ vconsole.keymap=${keymap}/" "${jailbroken_config}" || true
+    else
+        echo "Jailbroken matrixOS instance without original /boot/loader config file."
+        echo "Not chainging the boot args to tweak keyboard mappings."
+    fi
+}
+
+setup_localization() {
+    systemd-firstboot --prompt --reset
+
+    local as_dir="/var/lib/AccountsService"
+    local as_users_dir="${as_dir}/users"
+    local as_icons_dir="${as_dir}/icons"
+    if [ ! -d "${as_icons_dir}" ]; then
+        mkdir -p "${as_icons_dir}"
+    fi
+
+    # In case we logged via gdm.
+    rm -f "${as_users_dir}/root" || true
+
+    local lang=
+    if [ -f "/etc/locale.conf" ]; then
+        lang=$(grep -oP 'LANG=\K[^ ]+' /etc/locale.conf || true)
+    fi
+
+    if [ -n "${lang}" ] && [ -d "${as_users_dir}" ]; then
+        local user_cfg="${as_users_dir}/${USERNAME_AFTER_CHANGE}"
+        local src_icon_path="/usr/share/pixmaps/faces/tree.jpg"
+        local dst_icon_path="/home/${USERNAME_AFTER_CHANGE}/.face"
+        if [ -f "${src_icon_path}" ]; then
+            dst_icon_path="${as_icons_dir}/${USERNAME_AFTER_CHANGE}"
+            cp "${src_icon_path}" "${dst_icon_path}"
+            chmod 644 "${dst_icon_path}"
+        fi
+
+        echo -e "\
+[User]
+Languages=${lang};
+Session=
+Icon=${dst_icon_path}
+SystemAccount=false" > "${user_cfg}"
+        chmod 600 "${user_cfg}"
+        chown root "${user_cfg}"
+    fi
+    # To fix LANG= in Gentoo confs that otherwise overrides the localectl.
+    env-update &>/dev/null || true
+
+    _setup_localization_keymap
+}
+
+detect_windows() {
+    local efi_partitions=
+    efi_partitions=$(lsblk -no PATH,PARTTYPE | grep -i "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" \
+        | awk '{print $1}')
+    if [ -z "${efi_partitions}" ]; then
+        echo "No EFI System partitions detected. Weird." >&2
+        return 0
+    fi
+
+    local grub_cfg="${MATRIXOS_GRUB_CFG_EFI_PATH}"
+    if [ ! -e "${grub_cfg}" ]; then
+        echo "No ${grub_cfg} found. Skipping Windows detection." >&2
+        return 0
+    fi
+
+    local part=
+    local mount_point=
+    local existing_mount=
+    local was_mounted=
+    local msbl_path=/EFI/Microsoft/Boot/bootmgfw.efi
+    for part in ${efi_partitions}; do
+
+        existing_mount=$(lsblk -no MOUNTPOINT "${part}" | grep -v "^$" | head -n 1 || true)
+        if [ -n "${existing_mount}" ]; then
+            was_mounted=1
+            mount_point="${existing_mount}"
+        else
+            mount_point=$(mktemp -d --suffix=setupos.win)
+            mount -o ro "${part}" "${mount_point}" || {
+                echo "Unable to mount ${part}. Skipping." >&2;
+                continue;
+            }
+        fi
+
+        if [ ! -f "${mount_point}${msbl_path}" ]; then
+            echo "Partition ${part} does not contain a Windows bootloader. Skipping."
+            if [ -z "${was_mounted}" ]; then
+                umount "${mount_point}" || true
+            fi
+            continue
+        fi
+
+        echo "Found Windows on ${part}"
+        local uuid=
+        uuid=$(blkid -s UUID -o value "${part}")
+        echo "Windows EFI System Partition UUID is is ${uuid}"
+
+        local entry_name="Windows on ${part} (${uuid})"
+
+        echo "Appending '${entry_name}' to ${grub_cfg}..."
+        echo "
+
+menuentry \"${entry_name}\" --class windows {\
+  insmod fat
+  insmod chain
+  search --no-floppy --fs-uuid --set=root ${uuid}
+  chainloader ${msbl_path}
+}" >> "${grub_cfg}"
+
+        if [ -z "${was_mounted}" ]; then
+            umount "${mount_point}" || true
+        fi
+
+    done
+}
+
+main() {
+    check_root
+    change_username "${MATRIXOS_DEFAULT_USERNAME}"
+    change_user_password "${USERNAME_AFTER_CHANGE}"
+    change_user_password "root"
+    change_luks_password
+    setup_localization
+    detect_windows
+
+    echo "Please reboot and enjoy matrixOS."
+}
+
+main "${@}"

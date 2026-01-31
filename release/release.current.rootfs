@@ -1,0 +1,81 @@
+#!/bin/bash
+# release.current.rootfs releases to ostree the rootfs at / with default ostree branch params.
+# To protect / itself, we bind mount ro the majority of the / filesystem, except for
+# MATRIXOS_DEV_DIR and temp dirs.
+# WARNING: this script only works on Gentoo-based distros.
+set -e
+
+if [ -e /etc/profile ]; then
+    source /etc/profile
+    env-update
+fi
+
+set -eu
+
+export MATRIXOS_DEV_DIR=${MATRIXOS_DEV_DIR:-/matrixos}
+source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
+source "${MATRIXOS_DEV_DIR}/release/headers/releaserenv.include.sh"
+
+source "${MATRIXOS_DEV_DIR}/lib/ostree_lib.sh"
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+
+
+prepare_readonly_rootfs() {
+    local verbose_flag=
+    local release_root_dir="${MATRIXOS_RELEASE_RO_ROOT_DIR}"
+    if [ -z "${release_root_dir}" ]; then
+        echo "MATRIXOS_RELEASE_RO_ROOT_DIR not set" >&2
+        return 1
+    fi
+
+    mkdir -p "${release_root_dir}"
+    local mounted=
+    mounted=$(findmnt "${release_root_dir}")
+    if [ -n "${mounted}" ]; then
+        echo "Cleaning ${release_root_dir} mounts ..."
+        umount -R -l "${release_root_dir}"
+    fi
+    echo "Preparing jailed chroot at ${release_root_dir} ..."
+
+	# Create a directory to use with matrixos tooling such that we
+	# prevent them from accidentally deleting files from / when running.
+    # This is faster and more compatible than userspace sandboxing solutions
+    # and bwrap does not seem to work well with Apparmor on the current build
+    # system.
+    mount ${verbose_flag} --bind / "${release_root_dir}"
+	mount ${verbose_flag} -o remount,ro,bind "${release_root_dir}"
+
+	# Make ${MATRIXOS_DEV_DIR} read write.
+	mount ${verbose_flag} --bind "${MATRIXOS_DEV_DIR}" "${release_root_dir}${MATRIXOS_DEV_DIR}"
+
+    for d in /dev /proc /sys; do
+        mount ${verbose_flag} --rbind "${d}" "${release_root_dir}${d}"
+        mount ${verbose_flag} --make-rslave "${release_root_dir}${d}"
+    done
+
+    # rw mounts to make release.sh happy.
+    local rwmounts=(
+        /var/lib/portage
+        /var/cache/edb
+        /tmp
+        /var/tmp
+        /var/db
+        /var/log
+    )
+    for d in "${rwmounts[@]}"; do
+        mount ${verbose_flag} --bind "${d}" "${release_root_dir}${d}"
+    done
+}
+
+qa_lib.root_privs
+prepare_readonly_rootfs
+
+# Better safe than sorry and destroying /
+export MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=0
+
+exec chroot "${MATRIXOS_RELEASE_RO_ROOT_DIR}" \
+    "${MATRIXOS_DEV_DIR}/release/release_main.sh" \
+    --chroot-dir=/ \
+    --image-dir="${MATRIXOS_DEV_DIR}/image" \
+    --branch="$(ostree_lib.branch_shortname_to_normal "prod" "stable")"
+    "${@}"

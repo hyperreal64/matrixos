@@ -1,0 +1,283 @@
+#!/bin/bash
+set -e
+
+if [ -e /etc/profile ]; then
+    source /etc/profile
+fi
+
+set -eu
+
+source "${MATRIXOS_DEV_DIR:-/matrixos}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/image/headers/imagerenv.include.sh
+
+source "${MATRIXOS_DEV_DIR}"/lib/ostree_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+source "${MATRIXOS_DEV_DIR}"/release/lib/release_lib.sh
+source "${MATRIXOS_DEV_DIR}"/image/lib/image_lib.sh
+
+
+ARG_SKIP_RELEASES=()
+ARG_ONLY_RELEASES=()
+IMAGE_MAIN_ARGS=()
+
+# Shared args between this and image_main.sh
+ARG_LOCAL_OSTREE=
+ARG_GPG_ENABLED="${MATRIXOS_OSTREE_GPG_ENABLED}"
+ARG_OSTREE_REMOTE=
+ARG_OSTREE_REMOTE_URL=
+ARG_OSTREE_REPODIR=
+ARG_INCLUDE_FULL_BRANCHES=
+
+
+parse_args() {
+    while [[ ${#} -gt 0 ]]; do
+    case ${1} in
+
+        -s|--skip-releases|--skip-releases=*)
+        local vals=
+        if [[ "${1}" =~ --skip-releases=.* ]]; then
+            vals=${1/--skip-releases=/}
+            shift
+
+        else
+            vals="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_SKIP_RELEASES <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_SKIP_RELEASES[-1]="${ARG_SKIP_RELEASES[-1]%$'\n'}"
+        ;;
+
+        -o|--only-releases|--only-releases=*)
+        local vals=
+        if [[ "${1}" =~ --only-releases=.* ]]; then
+            vals=${1/--only-releases=/}
+            shift
+        else
+            vals="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_ONLY_RELEASES <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_ONLY_RELEASES[-1]="${ARG_ONLY_RELEASES[-1]%$'\n'}"
+        ;;
+
+        -los|--local-ostree)
+        ARG_LOCAL_OSTREE=1
+        # shared with image_main.sh
+        IMAGE_MAIN_ARGS+=( "--local-ostree" )
+
+        shift
+        ;;
+
+        -ifb|--include-full-branches)
+        ARG_INCLUDE_FULL_BRANCHES=1
+
+        shift
+        ;;
+
+        -dgpg|--disable-gpg)
+        ARG_GPG_ENABLED=""
+        # shared with image_main.sh
+        IMAGE_MAIN_ARGS+=( "--disable-gpg" )
+
+        shift
+        ;;
+
+        -or|--ostree-remote|--ostree-remote=*)
+        local val=
+        if [[ "${1}" =~ --ostree-remote=.* ]]; then
+            val=${1/--ostree-remote=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_OSTREE_REMOTE="${val}"
+        # shared with image_main.sh
+        IMAGE_MAIN_ARGS+=( "--ostree-remote=${val}" )
+        ;;
+
+        -oru|--ostree-remote-url|--ostree-remote-url=*)
+        local val=
+        if [[ "${1}" =~ --ostree-remote-url=.* ]]; then
+            val=${1/--ostree-remote-url=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_OSTREE_REMOTE_URL="${val}"
+        # shared with image_main.sh
+        IMAGE_MAIN_ARGS+=( "--ostree-remote-url=${val}" )
+        ;;
+
+        -repo|--ostree-repo|--ostree-repo=*)
+        local val=
+        if [[ "${1}" =~ --ostree-repo=.* ]]; then
+            val=${1/--ostree-repo=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_OSTREE_REPODIR="${val}"
+        # shared with image_main.sh
+        IMAGE_MAIN_ARGS+=( "--ostree-repo=${val}" )
+        ;;
+
+        -h|--help)
+        echo -e "image.releases - matrixOS imager script, wrapping image_main.sh args." >&2
+        echo >&2
+        echo -e "Arguments:" >&2
+        echo -e "-s, --skip-releases=a,b,c  \t\t\t comma separated list of release branches to skip." >&2
+        echo -e "\t\t\t\t\t\t     Example: matrixos/amd64/dev/gnome,matrixos/amd64/server" >&2
+        echo -e "-o, --only-releases=a,b,c  \t\t\t comma separated allow-list of release branches to accept (by name)." >&2
+        echo -e "\t\t\t\t\t\t     Example: matrixos/amd64/bedrock,matrixos/amd64/dev/gnome" >&2
+        echo -e "-los, --local-ostree  \t\t\t\t use the local, already pulled ostree repo instead of a remote & url." >&2
+        echo -e "-repo PATH, --ostree-repo=PATH  \t\t provide an alternative path to ostree repo." >&2
+        echo -e "  \t\t\t\t\t\t     default: ${MATRIXOS_OSTREE_REPO_DIR}" >&2
+        echo -e "-or <remote>, --ostree-remote=<remote>  \t provide an alternative name for the ostree remote." >&2
+        echo -e "  \t\t\t\t\t\t     default: ${MATRIXOS_OSTREE_REMOTE}" >&2
+        echo -e "-oru <url>, --ostree-remote-url=<url>  \t\t provide a URL to use for the ostree remote." >&2
+        echo -e "  \t\t\t\t\t\t     default: ${MATRIXOS_OSTREE_REMOTE_URL}" >&2
+        echo -e "-ifb, --include-full-branches  \t\t\t include *-full branches in the image creation process too." >&2
+        echo >&2
+        echo -e "Other arguments are passed directly to image_main.sh (see image_main.sh --help)" >&2
+        echo >&2
+        exit 0
+        ;;
+
+        *)
+        IMAGE_MAIN_ARGS+=( "${1}" )
+        shift
+        ;;
+    esac
+    done
+}
+
+
+_skip_releases_check() {
+    local o="${1}"
+    local el=
+    for el in "${ARG_SKIP_RELEASES[@]}"; do
+        if [ "${el}" = "${o}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+_only_releases_check() {
+    local o="${1}"
+
+    if [[ "${#ARG_ONLY_RELEASES[@]}" -eq 0 ]]; then
+        # No list to check.
+        return 0
+    fi
+
+    local el=
+    for el in "${ARG_ONLY_RELEASES[@]}"; do
+        if [ "${el}" = "${o}" ]; then
+            echo "Selected release: ${el} as present in --only-releases=" >&2
+            return 0
+        fi
+    done
+    return 1
+}
+
+image_worker() {
+    local ref="${1}"
+    if [ -z "${ref}" ]; then
+        echo "image_worker: missing ref parameter" >&2
+        return 1
+    fi
+
+    local image_main_args=(
+        # remote and remote-url are already passed via IMAGE_MAIN_ARGS.
+        # local-ostree is already passed via IMAGE_MAIN_ARGS.
+        --ref="${ref}"
+    )
+    image_main_args+=( "${IMAGE_MAIN_ARGS[@]}" )
+
+    echo "Launching image_main.sh with args:"
+    echo "${image_main_args[@]}"
+
+    "${MATRIXOS_DEV_DIR}/image/image_main.sh" "${image_main_args[@]}"
+}
+
+main() {
+    parse_args "${@}"
+    qa_lib.root_privs
+
+    local gpg_enabled="${ARG_GPG_ENABLED}"
+    qa_lib.verify_imager_environment_setup "/" "${gpg_enabled}"
+
+    local repodir=
+    if [ -n "${ARG_OSTREE_REPODIR}" ]; then
+        repodir="${ARG_OSTREE_REPODIR}"
+    else
+        echo "--ostree-repo= unset. Using default --ostree-repo=${MATRIXOS_OSTREE_REPO_DIR}." >&2
+        repodir="${MATRIXOS_OSTREE_REPO_DIR}"
+    fi
+
+    local remote=
+    local remote_url=
+
+    # Assuming that if we have a local ostree, it's already initialized and don't need a remote URL
+    # The remote is already configured.
+    if [ -n "${ARG_OSTREE_REMOTE}" ]; then
+        remote="${ARG_OSTREE_REMOTE}"
+    else
+        echo "--ostree-remote= unset. Using default --ostree-remote=${MATRIXOS_OSTREE_REMOTE}." >&2
+        remote="${MATRIXOS_OSTREE_REMOTE}"
+    fi
+    if [ -n "${ARG_OSTREE_REMOTE_URL}" ]; then
+        remote_url="${ARG_OSTREE_REMOTE_URL}"
+    else
+        echo "--ostree-remote-url= unset. Using default --ostree-remote-url=${MATRIXOS_OSTREE_REMOTE_URL}." >&2
+        remote_url="${MATRIXOS_OSTREE_REMOTE_URL}"
+    fi
+
+    if [ -z "${ARG_LOCAL_OSTREE}" ]; then
+        ostree_lib.maybe_initialize_remote "${remote}" "${remote_url}" "${gpg_enabled}" "${repodir}"
+    else
+        echo "--local-ostree passed. Assuming remote is already configured or not needed." >&2
+    fi
+
+    # these internally are just branches ...
+    # release stage: dev or prod
+    # release: matrixos/amd64/dev/gnome
+    # release version: SEED_NAME (contains a date at the end)
+    local refs=()
+    if [ -n "${ARG_LOCAL_OSTREE}" ]; then
+        local refs+=(
+            $(release_lib.detect_local_releases "${repodir}" "_skip_releases_check" "_only_releases_check")
+        )
+    else
+        local refs+=(
+            $(release_lib.detect_remote_releases "${remote}" "${repodir}" "_skip_releases_check" "_only_releases_check")
+        )
+    fi
+    # Important note: here we have 3 cases.
+    # 1) on build server. Branches have no remote: prefix.
+    # 2) on "client server", user just building images away from
+    #    the mothership (client side). Branches have remote:a/b/c (remote: prefix)
+    # 3) on images only build server, where ostree repo is pulled from a remote.
+    # Case 2 and 3 are fine, we use the remote prefix and happy days.
+    # For case 1, we detect this from the absence of the remote: prefix and set remote="local".
+
+    local ref=
+    for ref in "${refs[@]}"; do
+        if ostree_lib.is_branch_full_suffixed "${ref}" && [[ -z "${ARG_INCLUDE_FULL_BRANCHES}" ]]; then
+            echo "Skipping full branch: ${ref} (please use --include-full-branches to include)"
+            continue
+        fi
+
+        echo "Working on release branch: ${ref} ..."
+        image_lib.execute_with_image_lock "image_worker" "${ref}" "${ref}"
+    done
+
+}
+
+main "${@}"

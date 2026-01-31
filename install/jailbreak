@@ -1,0 +1,456 @@
+#!/bin/bash
+# jailbreak - Convert matrixOS OSTree to a normal & mutable Gentoo install.
+set -eu
+
+MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+
+source "${MATRIXOS_DEV_DIR}"/lib/ini_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
+
+_print_title() {
+    echo "===============================================================================" >&2
+    echo "    matrixOS JAILBREAKING: OSTREE -> MUTABLE GENTOO" >&2
+    echo >&2
+    echo "    ...aka. turn your system into a regular Gentoo install" >&2
+    echo "    so that you can feel like a real hacker!" >&2
+    echo
+    echo " PLEASE MAKE SURE to run (and then reboot!), see README.md for more details: " >&2
+    echo "   # ostree admin switch matrixos/<your branch>-${MATRIXOS_OSTREE_FULL_SUFFIX}" >&2
+    echo "===============================================================================" >&2
+    echo >&2
+}
+
+_print_giant_warning() {
+    echo "WARNING: This will clone the current OS to the physical disk" >&2
+    echo "and detach from the OSTree deployment. IT CANNOT BE UNDONE (easily)." >&2
+    echo "WARNING: If something goes wrong, you will end up with a DESTROYED" >&2
+    echo "system. So, BACK EVERYTHING UP and buckle up!" >&2
+    echo >&2
+    echo "This operation clones the current system and should carry all your data over." >&2
+    echo "However, it may contain bugs or wrong assumptions. The matrixOS team is not going" >&2
+    echo "to be responsible for your potentially incurred data loss and by running this tool" >&2
+    echo "you accept the risk." >&2
+    echo >&2
+    echo "To perform the cloning, this tool will not use much additional space." >&2
+    echo "This means that you won't need 2x the used disk space to perform this operation." >&2
+    echo >&2
+}
+
+_check_available_executable() {
+    local p="${1}"
+    command -v "${p}" >/dev/null 2>&1
+}
+
+_get_mount_uuid() {
+    local mnt="${1}"
+    if [ -z "${mnt}" ]; then
+        echo "_get_mount_uuid <path>." >&2
+        return 1
+    fi
+    local mnt_uuid
+    mnt_uuid=$(findmnt -n -o UUID -T "${mnt}" || true)
+    if [ -z "${mnt_uuid}" ]; then
+        echo "Cannot determine ${mnt} device mount UUID ..." >&2
+        return 1
+    fi
+    echo ${mnt_uuid}
+}
+
+_get_mount_fstype() {
+    local mnt="${1}"
+    if [ -z "${mnt}" ]; then
+        echo "_get_mount_fstype <path>." >&2
+        return 1
+    fi
+    local mnt_fstype
+    mnt_fstype=$(findmnt -n -o FSTYPE -T "${mnt}" || true)
+    if [ -z "${mnt_fstype}" ]; then
+        echo "Cannot determine ${mnt} device mount FSTYPE ..." >&2
+        return 1
+    fi
+    echo ${mnt_fstype}
+}
+
+_sanity_checks() {
+    if [ "$(id -u)" != "0" ]; then
+        echo "Run this wonderful tool as root." >&2
+        return 1
+    fi
+    if [ ! -d "${MATRIXOS_OSTREE_SYSROOT}" ]; then
+        echo "${MATRIXOS_OSTREE_SYSROOT} does not exist." >&2
+        return 1
+    fi
+
+    local is_full
+    is_full=$(ostree admin status | grep refspec.*matrixos.*${MATRIXOS_OSTREE_FULL_SUFFIX})
+    if [ -z "${is_full}" ]; then
+        echo "You have not switched to a "${MATRIXOS_OSTREE_FULL_SUFFIX}" ostree branch. Please read the instructions above." >&2
+        echo "Showing available -${MATRIXOS_OSTREE_FULL_SUFFIX} ostree branches:" >&2
+        local remote=
+        for remote in $(ostree remote list); do
+            ostree remote refs "${remote}" | grep .*-${MATRIXOS_OSTREE_FULL_SUFFIX}
+        done
+        return 1
+    fi
+    if [ ! -e "${MATRIXOS_RO_VDB}" ] && [ ! -d "/var/db/pkg" ]; then
+        echo "You have not switched to a -${MATRIXOS_OSTREE_FULL_SUFFIX} ostree branch. Please read the instructions above." >&2
+        echo "You MUST reboot before starting the jailbreaking operation." >&2
+        return 1
+    fi
+    local space_available
+    space_available=$(df /sysroot --output=avail --block-size=1000 | tail -n 1)
+    if [ -z "${space_available}" ]; then
+        echo "WARNING WARNING WARNING" >&2
+        echo "Unable to determine the free space available. Use at your own risk" >&2
+        echo "WARNING WARNING WARNING" >&2
+    else
+        if [ ${space_available} -lt 4000000 ]; then
+            echo "Less than 4GiB of space available. Cannot continue." >&2
+            return 1
+        fi
+    fi
+
+    # These will fail in case we cannot determine the UUID
+    local dev=
+    for dev in "${MATRIXOS_OSTREE_SYSROOT}" "${MATRIXOS_BOOT_ROOT}" "${MATRIXOS_EFI_ROOT}"; do
+        _get_mount_uuid "${dev}" > /dev/null
+        _get_mount_fstype "${dev}" > /dev/null
+    done
+
+    read -p "Type 'DESTROYALL' to continue: " confirm
+    if [ "${confirm}" != "DESTROYALL" ]; then
+        echo "Aborted." >&2
+        return 1
+    fi
+}
+
+_remount_sysroot() {
+    echo "Remounting physical root filesystem read/write ..."
+    mount -o remount,rw "${MATRIXOS_OSTREE_SYSROOT}"
+}
+
+_clone_to_sysroot() {
+    local current_commit
+    current_commit=$(ostree admin status | grep '* matrixos' | awk '{print $3}')
+    if [ -z "${current_commit}" ]; then
+        echo "Unable to get currently booted matrixos ostree commit ..." >&2
+        echo "No harm was done to the OS. Don't worry ..." >&2
+        return 1
+    fi
+    echo "Found currently deployed ostree commit: ${current_commit} ..."
+    local deployment_dir="/ostree/deploy/matrixos/deploy/${current_commit}"
+    if [ ! -d "${deployment_dir}" ]; then
+        echo "Unable to find deployment dir ${deployment_dir} for commit ${current_commit} ..." >&2
+        echo "No harm was done to the OS. Don't worry ..." >&2
+        echo "Showing ostree status:"
+        ostree admin status
+        return 1
+    fi
+
+    echo "Cloning your current install of matrixOS to ${MATRIXOS_OSTREE_SYSROOT} ..."
+    (
+        cd "${deployment_dir}"
+        find . -xdev -depth \
+            -not -path "./sysroot*" \
+            -not -path "./ostree*" \
+            -not -path "./mnt*" \
+            -not -path "./var/lib/nfs*" \
+            -not -path "./tmp*" \
+            -not -path "./run*" \
+            -not -path "./sys*" \
+            -not -path "./proc*" \
+            -not -path "./dev*" \
+            -printf '%P\0' | cpio --null -pd0lu "${MATRIXOS_OSTREE_SYSROOT}"
+    )
+
+    echo "Restoring /efi..."
+    if [ ! -e "${MATRIXOS_OSTREE_SYSROOT}/efi" ]; then
+        mkdir -p "${MATRIXOS_OSTREE_SYSROOT}/efi"
+    fi
+    echo "Restoring /boot..."
+    if [ ! -e "${MATRIXOS_OSTREE_SYSROOT}/boot" ]; then
+        mkdir -p "${MATRIXOS_OSTREE_SYSROOT}/boot"
+    fi
+    # /boot should be mounted.
+    echo "Unlocking files (removing immutable bit) ..."
+    chattr -R -i "${MATRIXOS_OSTREE_SYSROOT}/" 2>/dev/null || true
+}
+
+_bootloader_setup() {
+    # Parse boot args.
+    local booted_kernel=
+    local kernel_boot_args=()
+    for arg in $(</proc/cmdline); do
+        echo "Parsing boot arg: ${arg}"
+        if [[ "${arg}" == BOOT_IMAGE=* ]]; then
+            booted_kernel="${arg#*=}"
+            continue
+        fi
+        if [[ "${arg}" == rw ]]; then
+            echo "Ignoring kernel cmdline arg: ${arg}. It's expected."
+            continue
+        fi
+        if [[ "${arg}" == ostree=* ]]; then
+            echo "Ignoring kernel cmdline arg: ${arg}. It's expected."
+            continue
+        fi
+        if [[ "${arg}" == systemd.mount-extra=* ]]; then
+            echo "Ignoring kernel cmdline arg: ${arg}. It's expected."
+            continue
+        fi
+        kernel_boot_args+=( "${arg}" )
+    done
+
+    if [ ! -e "${booted_kernel}" ]; then
+        booted_kernel="/boot${booted_kernel}"
+    fi
+    if [ ! -e "${booted_kernel}" ]; then
+        echo "Unable to find booted kernel. Last try: ${booted_kernel}" >&2
+        echo "This was taken from BOOT_IMAGE= in /proc/cmdline." >&2
+        return 1
+    fi
+    booted_kernel=$(realpath "${booted_kernel}")
+
+    echo "Copying booted kernel ..."
+    local kernel_dir
+    kernel_dir=$(dirname "${booted_kernel}")
+    local kernel_name
+    kernel_name=$(basename "${booted_kernel}")
+    local new_kernel_name="${kernel_name/vmlinuz-/kernel-}"
+
+    local boot_kernel_path="/boot/${new_kernel_name}"
+    cp -v "${booted_kernel}" "${boot_kernel_path}"
+
+    local initramfs_name=${kernel_name/vmlinuz-/initramfs-}
+    # support .img and no .img.
+    local initramfs_path="${kernel_dir}/${initramfs_name}"
+    if [ ! -e "${initramfs_path}" ]; then
+        initramfs_path="${initramfs_path}.img"
+    fi
+
+    local initramfs_boot_path=
+    initramfs_boot_path="/boot/"$(basename "${initramfs_path}")
+    if [ -e "${initramfs_path}" ]; then
+        initramfs_path=$(realpath "${initramfs_path}")
+        cp -v "${initramfs_path}" "${initramfs_boot_path}"
+    else
+        echo "Initramfs not found, ignoring ..." >&2
+        initramfs_path=
+    fi
+
+    echo "Setting up ${MATRIXOS_BOOT_ROOT}/loader/entries with following kernel boot params: ${kernel_boot_args[*]} ..."
+    local bls_cfg="${MATRIXOS_BOOT_ROOT}/loader/entries/${MATRIXOS_JAILBROKEN_BOOT_LOADER_ENTRY}"
+    echo "title matrixOS (Gentoo-based, jailbroken)" > "${bls_cfg}"
+    echo "version 1" >> "${bls_cfg}"
+    echo "options ${kernel_boot_args[*]}" >> "${bls_cfg}"
+    echo "linux ${boot_kernel_path#${MATRIXOS_BOOT_ROOT}}" >> "${bls_cfg}"
+    if [ -n "${initramfs_path}" ]; then
+        echo "initrd ${initramfs_boot_path#${MATRIXOS_BOOT_ROOT}}" >> "${bls_cfg}"
+    fi
+    echo "Final bls bootloader config:"
+    cat "${bls_cfg}"
+    echo "--"
+}
+
+_generate_fstab() {
+    echo "Generating /etc/fstab ..."
+    local root_uuid
+    root_uuid=$(_get_mount_uuid "${MATRIXOS_OSTREE_SYSROOT}")
+    local root_fstype
+    root_fstype=$(_get_mount_fstype "${MATRIXOS_OSTREE_SYSROOT}")
+    if [ -z "${root_uuid}" ]; then
+        echo "Cannot determine ${MATRIXOS_OSTREE_SYSROOT} device mount UUID ..." >&2
+        return 1
+    fi
+    if [ -z "${root_fstype}" ]; then
+        echo "Cannot determine ${MATRIXOS_OSTREE_SYSROOT} device mount FSTYPE ..." >&2
+        return 1
+    fi
+
+    local boot_uuid
+    boot_uuid=$(_get_mount_uuid "${MATRIXOS_BOOT_ROOT}")
+    local boot_fstype
+    boot_fstype=$(_get_mount_fstype "${MATRIXOS_BOOT_ROOT}")
+    if [ -z "${boot_uuid}" ]; then
+        echo "Cannot determine ${MATRIXOS_BOOT_ROOT} device mount UUID ..." >&2
+        return 1
+    fi
+    if [ -z "${boot_fstype}" ]; then
+        echo "Cannot determine ${MATRIXOS_BOOT_ROOT} device mount FSTYPE ..." >&2
+        return 1
+    fi
+
+    local efi_uuid
+    efi_uuid=$(_get_mount_uuid "${MATRIXOS_EFI_ROOT}")
+    local efi_fstype
+    efi_fstype=$(_get_mount_fstype "${MATRIXOS_EFI_ROOT}")
+    if [ -z "${efi_uuid}" ]; then
+        echo "Cannot determine ${MATRIXOS_EFI_ROOT} device mount UUID ..." >&2
+        return 1
+    fi
+    if [ -z "${efi_fstype}" ]; then
+        echo "Cannot determine ${MATRIXOS_EFI_ROOT} device mount FSTYPE ..." >&2
+        return 1
+    fi
+
+    local fstab="${MATRIXOS_OSTREE_SYSROOT}/etc/fstab"
+    echo "UUID=${root_uuid} / ${root_fstype} defaults 0 1" >> "${fstab}"
+    echo "UUID=${boot_uuid} ${MATRIXOS_BOOT_ROOT} ${boot_fstype} defaults 0 1" >> "${fstab}"
+    echo "UUID=${efi_uuid} ${MATRIXOS_EFI_ROOT} ${efi_fstype} defaults 0 1" >> "${fstab}"
+}
+
+_clean_config_setup_secureboot_keys() {
+    if ! _check_available_executable "sbctl"; then
+        echo "WARNING: sbctl not found, skipping SecureBoot keys setup." >&2
+        return 0
+    fi
+    local key="${MATRIXOS_SECUREBOOT_KEY_PATH}"
+    local cert="${MATRIXOS_SECUREBOOT_CERT_PATH}"
+
+    local keydir
+    keydir=$(dirname $(dirname "${key}"))
+    if [ -d "${keydir}" ]; then
+        echo "WARNING: SecureBoot matrixOS key dir ${keydir} already exists. Skipping SB setup" >&2
+        return 0
+    fi
+
+    echo "matrixOS uses its own secureboot key pair. This is kept private so that"
+    echo "developers can verify the bootloader, kernel and modules they ship for authenticity."
+    echo "For jailbroken systems, we need to create a separate set of keys, that are"
+    echo "unique to this system. For this we will use sbctl."
+    echo "matrixOS SecureBoot key path: ${key}"
+    echo "matrixOS SecureBoot cert path: ${cert}"
+    echo "matrixOS SecureBoot overall key dir: ${keydir}"
+
+    # assume key dir = cert dir.
+    mkdir -p "${keydir}"
+    chmod -R 600 "${keydir}"
+    chown -R root "${keydir}"
+
+    # Somehow sbctl uses landlock that does not like taking custom paths, esp. when
+    # SB is not enabled.
+    sbctl --disable-landlock -e "${keydir}" create-keys || {
+        return 0;  # best effort.
+    }
+    if [ ! -d "${MATRIXOS_EFI_ROOT}" ]; then
+        echo "WARNING: ${MATRIXOS_EFI_ROOT} not found, skipping SecureBoot automatic MOK generation" >&2
+        return 0
+    fi
+
+    # Create a new MOK and add it to the /efi directory. Thank me later.
+    echo "Creating a new MOK file to ease shim MOK keys loading in case you"
+    echo "compile your own kernel / grub ..."
+    echo "Yes, keep that in mind, if you emerge grub or compile kernels,"
+    echo "you need to enroll these new SecureBoot keys directly or use the MOK file"
+    echo "with shim."
+    if [ -f "${cert}" ]; then
+        local mok_path="${MATRIXOS_EFI_ROOT}/matrixos-jailbroken-secureboot-cert.mok"
+        openssl x509 -in "${cert}" \
+            -outform DER -out "${mok_path}"
+    else
+        echo "WARNING: Unable to find SecureBoot certificate at: ${cert}" >&2
+        return 0
+    fi
+}
+
+_clean_config_setup_bls() {
+    echo "Removing old ${MATRIXOS_BOOT_ROOT}/loader/entries/ configs ..."
+    rm -f "${MATRIXOS_BOOT_ROOT}/loader/entries/ostree-1.conf"
+    rm -f "${MATRIXOS_BOOT_ROOT}/loader/entries/ostree-2.conf"
+}
+
+_clean_config_setup_systemd_repart() {
+    echo "Disabling systemd-repart config ..."
+    rm -f "${MATRIXOS_OSTREE_SYSROOT}/etc/repart.d/50-matrixos-rootfs.conf"
+}
+
+_clean_config_setup_vardbpkg() {
+    echo "Setting up /var/db/pkg ..."
+    rm -f "${MATRIXOS_OSTREE_SYSROOT}/var/db/pkg"
+    mv "${MATRIXOS_OSTREE_SYSROOT%/}${MATRIXOS_RO_VDB}" "${MATRIXOS_OSTREE_SYSROOT}/var/db/pkg"
+}
+
+_clean_config_fix_srv() {
+    echo "Fixing /srv ..."
+    local srv="${MATRIXOS_OSTREE_SYSROOT}/srv"
+    echo "${srv} state:"
+    ls -la "${srv}" || true
+    if [ -L "${srv}" ] && [ ! -d "${srv}" ] && [ ! -e "${srv}" ]; then
+        rm -v "${srv}" || true
+        mkdir "${srv}" || true
+        touch "${srv}/.keep" || true
+    fi
+}
+
+_clean_config() {
+    _clean_config_setup_bls
+    _clean_config_setup_systemd_repart
+    _clean_config_setup_vardbpkg
+    _clean_config_fix_srv
+    _clean_config_setup_secureboot_keys
+}
+
+_sync_portage() {
+    echo "Let me prep the Portage tree for ya... Downloading Portage ..."
+    local portdir
+    portdir=$(portageq get_repo_path "${MATRIXOS_OSTREE_SYSROOT}" gentoo)
+    ROOT="${MATRIXOS_OSTREE_SYSROOT}" PORTDIR="${MATRIXOS_OSTREE_SYSROOT}${portdir}" \
+        emerge-webrsync || true  # best effort.
+
+    if ! _check_available_executable "git"; then
+        echo "Git not present. Skipping othe repositories."
+        return 0
+    fi
+
+    local conf="${MATRIXOS_OSTREE_SYSROOT}/etc/portage/repos.conf/eselect-repo.conf"
+    local overlays=
+    mapfile -t overlays < <(ini_lib.get_sections "${conf}")
+    for overlay in "${overlays[@]}"; do
+        local repo_dir
+        repo_dir=$(ini_lib.get "${conf}" "${overlay}" "location")
+        local sync_type
+        sync_type=$(ini_lib.get "${conf}" "${overlay}" "sync-type")
+        if [ "${sync_type}" != "git" ]; then
+            echo "Repository ${overlay} does not use git. Not supported..." >&2
+            continue
+        fi
+        # emaint is stubbornly using --depth 1 when remote does not support it. So use git.
+        local git_url
+        git_url=$(ini_lib.get "${conf}" "${overlay}" "sync-uri")
+        echo "Cloning ${git_url} into ${repo_dir} for ${overlay} ..."
+        git clone --depth 1 "${git_url}" "${MATRIXOS_OSTREE_SYSROOT}${repo_dir}" || true  # best effort.
+    done
+}
+
+_clean_packages() {
+    echo "Cleaning live/ostree packages ..."
+    local matrix_user_packages_to_clean=(
+        acct-user/matrixos-live-home
+        acct-user/matrixos-live
+        virtual/matrixos-setup
+    )
+
+    local uid=
+    uid=$(id -u "${MATRIXOS_DEFAULT_USERNAME}" || true)
+    if [ -z "${uid}" ]; then
+        ROOT="${MATRIXOS_OSTREE_SYSROOT}" emerge --depclean -v --with-bdeps=n \
+            "${matrix_user_packages_to_clean[@]}" || true  # best effort.
+    fi
+}
+
+main() {
+    _print_title
+    _print_giant_warning
+    _sanity_checks
+    _remount_sysroot
+    _clone_to_sysroot
+    _generate_fstab
+    _bootloader_setup
+    _clean_config
+    _sync_portage
+    _clean_packages
+    echo "All done. Try rebooting now. Good luck with emerge!."
+}
+
+main "${@}"

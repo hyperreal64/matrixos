@@ -1,0 +1,607 @@
+#!/bin/bash
+# seeder.sh - a script that creates a root filesystem, with a working
+#             matrixOS build development environment from where packages
+#             can be built, services configured and other stuff tweaked.
+set -eu
+
+source "${MATRIXOS_DEV_DIR:-/matrixos}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/preppersenv.include.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/seedersenv.include.sh
+
+source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
+source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/preppers_lib.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/seeders_lib.sh
+
+ARG_CHROOT_DIR=
+ARG_RESUME=
+ARG_VERBOSE_MODE=
+ARG_CLEAN_ARTIFACTS=
+ARG_BUILT_ROOTFS_FILE=
+ARG_BUILT_SEEDERS_FILE=
+ARG_STAGE3_FILE=
+ARG_STAGE3_URL=https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-systemd/latest-stage3-amd64-systemd.txt
+ARG_SKIP_SEEDERS=()
+ARG_ONLY_SEEDERS=()
+ARG_OVERRIDE_CHROOTS=()
+ARG_POSITIONALS=()
+MOUNTS=()
+TEMPORARY_ARTIFACTS=()
+OPT_CLEAN_EXIT=0
+
+is_bool_arg_false() {
+    local arg="${1}"
+    if [ -z "${arg}" ]; then
+        return 0
+    fi
+    return 1
+}
+
+is_bool_arg_true() {
+    local arg="${1}"
+    if [ "${arg}" = "1" ]; then
+        return 0
+    fi
+    return 1
+}
+
+parse_args() {
+    while [[ ${#} -gt 0 ]]; do
+    case ${1} in
+        -d|--chroot-dir|--chroot-dir=*)
+        # check if we have a --chroot-dir=*
+        local vals=
+        if [[ "${1}" =~ --chroot-dir=.* ]]; then
+            vals=${1/--chroot-dir=/}
+            shift
+        else
+            vals="${2}"
+            shift 2
+        fi
+        ARG_CHROOT_DIR="${vals}"
+        ;;
+
+        -och|--override-chroot-dir|--override-chroot-dir=*)
+        local val=
+        if [[ "${1}" =~ --override-chroot-dir=.* ]]; then
+            val=${1/--override-chroot-dir=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_OVERRIDE_CHROOTS <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_OVERRIDE_CHROOTS[-1]="${ARG_OVERRIDE_CHROOTS[-1]%$'\n'}"
+        ;;
+
+        -s|--skip-seeders|--skip-seeders=*)
+        # check if we have a --skip-seeders=*
+        local vals=
+        if [[ "${1}" =~ --skip-seeders=.* ]]; then
+            vals=${1/--skip-seeders=/}
+            shift
+
+        else
+            vals="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_SKIP_SEEDERS <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_SKIP_SEEDERS[-1]="${ARG_SKIP_SEEDERS[-1]%$'\n'}"
+        ;;
+
+        -o|--only-seeders|--only-seeders=*)
+        # check if we have a --only-seeders
+        local vals=
+        if [[ "${1}" =~ --only-seeders=.* ]]; then
+            vals=${1/--only-seeders=/}
+            shift
+        else
+            vals="${2}"
+            shift 2
+        fi
+        readarray -d ',' -t ARG_ONLY_SEEDERS <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        ARG_ONLY_SEEDERS[-1]="${ARG_ONLY_SEEDERS[-1]%$'\n'}"
+        ;;
+
+        -r|--resume)
+        ARG_RESUME=1
+        shift
+        ;;
+
+        -bf|--built-rootfs-file|--built-rootfs-file=*)
+        local val=
+        if [[ "${1}" =~ --built-rootfs-file=.* ]]; then
+            val=${1/--built-rootfs-file=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_BUILT_ROOTFS_FILE="${val}"
+        ;;
+
+        -bs|--built-seeders-file|--built-seeders-file=*)
+        local val=
+        if [[ "${1}" =~ --built-seeders-file=.* ]]; then
+            val=${1/--built-seeders-file=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_BUILT_SEEDERS_FILE="${val}"
+        ;;
+
+        -f|--stage3-file|--stage3-file=*)
+        local val=
+        if [[ "${1}" =~ --stage3-file=.* ]]; then
+            val=${1/--stage3-file=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_STAGE3_FILE="${val}"
+        ;;
+
+        -u|--stage3-url|--stage3-url=*)
+        local val=
+        if [[ "${1}" =~ --stage3-url=.* ]]; then
+            val=${1/--stage3-url=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_STAGE3_URL="${val}"
+        ;;
+
+        -v|--verbose)
+        ARG_VERBOSE_MODE=1
+
+        shift
+        ;;
+
+        -c|--clean)
+        ARG_CLEAN_ARTIFACTS=1
+
+        shift
+        ;;
+
+        -h|--help)
+        echo -e "seeder - matrixOS stage3 chroot builder (aka seeder)." >&2
+        echo >&2
+        echo -e "Arguments:" >&2
+        echo -e "-d, --chroot-dir  \t\t use the provided directory as chroot directory." >&2
+        echo -e "-och, --override-chroot-dir  \t override the chroot dir for a given seeder name." >&2
+        echo -e "    \t\t\t\t\t Example: (00-bedrock:/path/to/chroot,10-server:/path/to/chroot)." >&2
+        echo -e "-s, --skip-seeders  \t\t comma separated list of seeders to skip (by name). Example: (00-bedrock,01-server)." >&2
+        echo -e "-o, --only-seeders  \t\t comma separated allow-list of seeders to accept (by name). Example: (00-bedrock,01-blah)." >&2
+        echo -e "-r, --resume  \t\t\t try resuming seeder work inside chroot, if -d is passed too." >&2
+        echo -e "-bf, --built-rootfs-file \t path to a file where the list of succesfully built chroot dirs will be written." >&2
+        echo -e "-bf, --built-seeders-file \t path to a file where the list of succesfully built seeder names will be written." >&2
+        echo -e "-f, --stage3-file \t\t a Gentoo stage3 file to unpack (no download)." >&2
+        echo -e "-u, --stage3-url \t\t a Gentoo stage3 'latest' URL to retrieve the real stage3 tarball." >&2
+        echo -e "-v, --verbose  \t\t\t enable verbose mode (default: false)." >&2
+        echo -e "-c, --clean  \t\t\t clean artifacts after execution (default: false)." >&2
+        echo >&2
+        OPT_CLEAN_EXIT=1
+        exit 0
+        ;;
+
+        -*)
+        echo "Unknown argument ${1}" >&2
+        return 1
+        ;;
+
+        *)
+        ARG_POSITIONALS+=( "${1}" )
+        shift
+        ;;
+    esac
+    done
+}
+
+_get_distfiles_dir() {
+    ddir="${MATRIXOS_SEEDER_DISTFILES_DIR}"
+    [[ ! -d "${ddir}" ]] && mkdir -p "${ddir}"
+    echo "${ddir}"
+}
+
+_get_binpkgs_dir() {
+    bdir="${MATRIXOS_SEEDER_BINPKGS_DIR}"
+    [[ ! -d "${bdir}" ]] && mkdir -p "${bdir}"
+    echo "${bdir}"
+}
+
+_get_portage_repos_dir() {
+    rdir="${MATRIXOS_SEEDER_PORTAGE_REPOS_DIR}"
+    [[ ! -d "${rdir}" ]] && mkdir -p "${rdir}"
+    echo "${rdir}"
+}
+
+_patch_gpg_homedir() {
+    local homedir
+    homedir="$(preppers_lib.get_gpg_keychain_dir)"
+    mkdir -p "${homedir}"
+    chmod 700 "${homedir}"
+    find "${homedir}" -type f -exec chmod 600 {} +
+    chown -R root:root "${homedir}"
+}
+
+_skip_seeder_check() {
+    local s="${1}"
+    local el=
+    for el in "${ARG_SKIP_SEEDERS[@]}"; do
+        if [ "${el}" = "${s}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+_only_seeder_check() {
+    local o="${1}"
+
+    if [[ "${#ARG_ONLY_SEEDERS[@]}" -eq 0 ]]; then
+        # No list to check.
+        return 0
+    fi
+
+    local el=
+    for el in "${ARG_ONLY_SEEDERS[@]}"; do
+        if [ "${el}" = "${o}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+_get_chroot_seeder_exec() {
+    local seeder_name="${1}"
+    local shname="${MATRIXOS_SEEDER_CHROOT_EXEC_NAME}"
+    local path="${MATRIXOS_SEEDERS_DIR}/${seeder_name}/${shname}"
+    echo "${path}"
+}
+
+clean_temporary_artifact() {
+    local dir="${1}"
+    if [ -z "${dir}" ]; then
+        echo "Missing parameter to clean_temporary_artifact" >&2
+        return 1
+    fi
+    if [ ! -d "${dir}" ]; then
+        echo "${dir} is not a directory or does not exist ..." >&2
+        return 1
+    fi
+
+    echo "Cleaning artifacts for dir: ${dir} ..."
+    # Check if there are dangling mounts inside it before removing.
+    local submounts
+    mapfile -t submounts < <(fs_lib.list_submounts "${dir}")
+    if [[ "${#submounts[@]}" -gt 0 ]]; then
+        echo "Cannot remove ${dir} due to the following submounts:" >&2
+    fi
+    for mnt in "${submounts[@]}"; do
+        echo "${mnt}" >&2
+    done
+    if [[ "${#submounts[@]}" -gt 0 ]]; then
+        return 1
+    fi
+
+    rm -rf "${dir}" || true
+}
+
+clean_temporary_artifacts() {
+    local clean_artifacts="${1}"
+    if is_bool_arg_false "${clean_artifacts}"; then
+        if [[ "${#TEMPORARY_ARTIFACTS[@]}" -gt 0 ]]; then
+            echo "Preserved artifacts. Those are available at:"
+            for dir in "${TEMPORARY_ARTIFACTS[@]}"; do
+                echo "${dir}"
+            done
+        fi
+        return 0
+    fi
+
+    for dir in "${TEMPORARY_ARTIFACTS[@]}"; do
+        clean_temporary_artifact "${dir}" || true
+    done
+}
+
+clean_exit() {
+    fs_lib.cleanup_mounts "${MOUNTS[@]}"
+    clean_temporary_artifacts "${ARG_CLEAN_ARTIFACTS}"
+    if [ "${OPT_CLEAN_EXIT}" != "1" ]; then
+        echo "ERROR: The seeder was terminated unexpectedly." >&2
+    fi
+}
+
+validate_env() {
+    if [ -z "${MATRIXOS_DEV_DIR}" ]; then
+        echo "MATRIXOS_DEV_DIR is unset." >&2
+        return 1
+    fi
+    qa_lib.check_matrixos_private
+}
+
+import_gentoo_gpg_keys() {
+    _patch_gpg_homedir
+    local homedir=
+    homedir=$(preppers_lib.get_gpg_keychain_dir)
+    echo "Importing Gentoo GPG keys (--homedir=${homedir})..."
+    gpg --homedir="${homedir}" --batch --yes --auto-key-locate=clear,nodefault,wkd \
+        --locate-key releng@gentoo.org
+}
+
+bind_mount_distdir() {
+    local chroot_dir="${1}"
+    if [ -z "${chroot_dir}" ]; then
+        echo "bind_mount_distdir: missing parameter chroot_dir" >&2
+        return 1
+    fi
+    if [ ! -d "${chroot_dir}" ]; then
+        echo "${chroot_dir} does not exist ..." >&2
+        return 1
+    fi
+
+    fs_lib.bind_mount_distdir "MOUNTS" "$(_get_distfiles_dir)" "${chroot_dir}"
+}
+
+bind_mount_binpkgs() {
+    local chroot_dir="${1}"
+    if [ -z "${chroot_dir}" ]; then
+        echo "bind_mount_binpkgs missing parameter chroot_dir" >&2
+        return 1
+    fi
+    if [ ! -d "${chroot_dir}" ]; then
+        echo "bind_mount_binpkgs: ${chroot_dir} does not exist ..." >&2
+        return 1
+    fi
+
+    fs_lib.bind_mount_binpkgs "MOUNTS" "$(_get_binpkgs_dir)" "${chroot_dir}"
+}
+
+find_chroot_dir_override() {
+    local seeder_name="${1}"
+    local ovr=
+    for ovr in "${ARG_OVERRIDE_CHROOTS[@]}"; do
+        local sn="${ovr%:*}"
+        local path="${ovr#*:}"
+        if [ "${sn}" = "${seeder_name}" ]; then
+            echo "${path}"
+            return 0
+        fi
+    done
+}
+
+setup_special_ro_mounts() {
+    local mnt="${1}"
+    if [ -z "${mnt}" ]; then
+        echo "Missing parameter to setup_special_ro_mounts" >&2
+        return 1
+    fi
+    if [ ! -d "${mnt}" ]; then
+        echo "${mnt} does not exist ..." >&2
+        return 1
+    fi
+
+    local ro_mounts=(
+        "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+    )
+    if [ -d /root/.ssh ]; then
+        ro_mounts+=( /root/.ssh )
+    fi
+
+    for d in "${ro_mounts[@]}"; do
+        local dst="${mnt}${d}"
+        mkdir -p "${dst}"
+        mount -v --bind "${d}" "${dst}"
+        MOUNTS+=( "${dst}" )
+        mount -v --make-slave "${dst}"
+        mount -o remount,ro,bind "${dst}"
+    done
+}
+
+setup_chroot_mounts() {
+    local mnt="${1}"
+    if [ -z "${mnt}" ]; then
+        echo "Missing parameter to setup_chroot_mounts" >&2
+        return 1
+    fi
+    fs_lib.setup_common_rootfs_mounts "MOUNTS" "${mnt}"
+    setup_special_ro_mounts "${mnt}"
+    bind_mount_distdir "${mnt}"
+    bind_mount_binpkgs "${mnt}"
+}
+
+setup_chroot_dns() {
+    local chroot_dir="${1}"
+    cp -v /etc/resolv.conf "${chroot_dir}/etc/resolv.conf"
+}
+
+setup_chroot_dirs() {
+    local chroot_dir="${1}"
+    local seeders_dir="${2}"
+
+    local seeders_phases_chroot_dir="${chroot_dir}${MATRIXOS_SEEDERS_PHASES_STATE_DIR}"
+    if [ ! -d "${seeders_phases_chroot_dir}" ]; then
+        echo "Creating seeders phases chroot dir: ${seeders_phases_chroot_dir} ..."
+        mkdir -p "${seeders_phases_chroot_dir}"
+    fi
+
+    local chroot_dev_dir="${chroot_dir%/}${DEFAULT_MATRIXOS_DEV_DIR}"
+    if [ ! -d "${chroot_dev_dir}" ]; then
+        echo "Dev build toolkit at ${chroot_dev_dir} does not exist, pulling it ..."
+        echo "Cloning ${MATRIXOS_GIT_REPO} into chroot's dir ${chroot_dev_dir} ..."
+        seeders_lib.retryable_cmd 6 git clone "${MATRIXOS_GIT_REPO}" "${chroot_dev_dir}"
+    fi
+
+    local chroot_build_dir="${chroot_dir%/}${MATRIXOS_SEEDERS_PHASES_STATE_DIR}"
+    mkdir -p "${chroot_build_dir}"
+}
+
+seeder_worker() {
+    local seeder_exec="${1}"
+    if [ -z "${seeder_exec}" ]; then
+        echo "Missing seeder_exec parameter to seeder_worker" >&2
+        return 1
+    fi
+    local seeders_dir="${2}"
+    if [ -z "${seeders_dir}" ]; then
+        echo "Missing seeders_dir parameter to seeder_worker" >&2
+        return 1
+    fi
+
+    local seeder_name
+    seeder_name=$(seeders_lib.seeder_exec_to_name "${seeder_exec}")
+    local seeder_dirname
+    seeder_dirname=$(seeders_lib.seeder_exec_to_dir "${seeder_exec}")
+
+    echo "[${seeder_name}] Accepted seeder for further execution"
+
+    local seeder_params_path="${seeder_dirname}/${MATRIXOS_SEEDER_PARAMS_EXEC_NAME}"
+    local prepper_exec="${seeder_dirname}/${MATRIXOS_SEEDER_PREPPER_EXEC_NAME}"
+
+    if [ ! -f "${seeder_params_path}" ]; then
+        echo "Unable to find ${seeder_params_path}" >&2
+        return 1
+    fi
+
+    SEEDER_CHROOT_NAME=
+    SEEDER_CHROOTS_DIR=
+    PREFERRED_SEEDER_CHROOT_DIR=
+    echo "[${seeder_name}] Sourcing seeder params: ${seeder_params_path} ..."
+    source "${seeder_params_path}"
+    if [ -z "${SEEDER_CHROOT_NAME}" ]; then
+        echo "SEEDER_CHROOT_NAME unset in ${seeder_params_path}" >&2
+        return 1
+    fi
+    if [ -z "${SEEDER_CHROOTS_DIR}" ]; then
+        echo "SEEDER_CHROOTS_DIR unset in ${seeder_params_path}" >&2
+        return 1
+    fi
+    if [ -z "${PREFERRED_SEEDER_CHROOT_DIR}" ]; then
+        echo "PREFERRED_SEEDER_CHROOT_DIR unset in ${seeder_params_path}" >&2
+        return 1
+    fi
+
+    local chroot_dir
+    chroot_dir=$(find_chroot_dir_override "${seeder_name}")
+    if [ -n "${chroot_dir}" ]; then
+        echo "[${seeder_name}] Found --chroot-dir override: ${chroot_dir}" >&2
+    else
+        local chroot_dir="${ARG_CHROOT_DIR}"
+        if [ -z "${chroot_dir}" ]; then
+            chroot_dir="${PREFERRED_SEEDER_CHROOT_DIR}"
+            echo "[${seeder_name}] --chroot-dir unset, using the chroot path from config: ${chroot_dir}" >&2
+        elif [ -n "${ARG_CLEAN_ARTIFACTS}" ]; then
+            # If the temp artifacts cleanup is active, this can erase the whole
+            # to-be-built chroot!
+            TEMPORARY_ARTIFACTS+=( "${chroot_dir}" )
+        fi
+    fi
+
+    local chroot_done_flag_file=
+    chroot_done_flag_file="$(seeders_env.get_chroot_seeder_done_flag_file "${seeder_name}" "${chroot_dir}")"
+    if [ -f "${chroot_done_flag_file}" ]; then
+        echo "[${seeder_name}] Attention: seeder is already marked as done via ${chroot_done_flag_file} ... Skipping." >&2
+        return 0
+    fi
+
+    echo "[${seeder_name}] Executing prepper ${prepper_exec} ..."
+    # Call the prepper first.
+    (
+        # export the latest values for the prepper to use.
+        export SEEDER_CHROOT_NAME
+        export SEEDER_CHROOTS_DIR
+        export PREFERRED_SEEDER_CHROOT_DIR
+
+        export CHROOT_DIR="${chroot_dir}"
+        export DOWNLOAD_DIR="${MATRIXOS_SEEDER_DOWNLOADS_DIR}"
+        export CHROOT_RESUME="${ARG_RESUME}"
+        export STAGE3_FILE="${ARG_STAGE3_FILE}"
+        export STAGE3_URL="${ARG_STAGE3_URL}"
+        "${prepper_exec}"
+    ) || {
+        echo "[${seeder_name}] Prepper ${prepper_exec} failed. Aborting." >&2;
+        return 1;
+    }
+
+    setup_chroot_mounts "${chroot_dir}"
+    setup_chroot_dns "${chroot_dir}"
+    setup_chroot_dirs "${chroot_dir}" "${seeders_dir}"
+
+    local chroot_seeder_exec=
+    chroot_seeder_exec="$(_get_chroot_seeder_exec "${seeder_name}")"
+    echo "[${seeder_name}] Kicking off ${chroot_seeder_exec} inside ${chroot_dir} ..."
+    (
+        # Inside the chroot, we always want /matrixos.
+        export MATRIXOS_DEV_DIR="${DEFAULT_MATRIXOS_DEV_DIR}"
+        chroot "${chroot_dir}" "./${chroot_seeder_exec}"
+    )
+    fs_lib.cleanup_mounts "${MOUNTS[@]}"
+
+    echo "[${seeder_name}] Flagging ${chroot_dir} as complete, at $(date) ..."
+    touch "${chroot_done_flag_file}"
+
+    if [ -n "${ARG_BUILT_ROOTFS_FILE}" ]; then
+        echo "${chroot_dir}" >> "${ARG_BUILT_ROOTFS_FILE}"
+    fi
+    if [ -n "${ARG_BUILT_SEEDERS_FILE}" ]; then
+        echo "${seeder_name}" >> "${ARG_BUILT_SEEDERS_FILE}"
+    fi
+
+    echo "[${seeder_name}] SUCCESS: Build for ${seeder_exec} complete."
+}
+
+main() {
+    trap clean_exit EXIT
+
+    parse_args "${@}"
+    qa_lib.root_privs
+    qa_lib.verify_seeder_environment_setup "/"
+    import_gentoo_gpg_keys
+    validate_env
+
+    local detected_seeders=
+    mapfile -t detected_seeders < <(seeders_lib.detect_seeders "_skip_seeder_check" "_only_seeder_check")
+    if [[ "${#detected_seeders[@]}" -eq 0 ]]; then
+        echo "No seeders found. Nothing to do." >&2
+        return 1
+    fi
+
+    local seeder_exec=
+    echo "Will execute seeders in the following order:"
+    for seeder_exec in "${detected_seeders[@]}"; do
+        echo "${seeder_exec}"
+    done
+
+    if [ -n "${ARG_BUILT_ROOTFS_FILE}" ]; then
+        echo "Marking freshly built chroots into ${ARG_BUILT_ROOTFS_FILE} ..."
+        echo > "${ARG_BUILT_ROOTFS_FILE}"
+    fi
+    if [ -n "${ARG_BUILT_SEEDERS_FILE}" ]; then
+        echo "Marking freshly built seeds into ${ARG_BUILT_SEEDERS_FILE} ..."
+        echo > "${ARG_BUILT_SEEDERS_FILE}"
+    fi
+
+    local seeders_dir
+    seeders_dir=$(seeders_lib.seeders_dir)
+    for seeder_exec in "${detected_seeders[@]}"; do
+        local seeder_name
+        seeder_name=$(seeders_lib.seeder_exec_to_name "${seeder_exec}")
+        # We avoid dead locking by acquiring the locks always in the same order
+        # relying on shell to order detected_seeders in a consistent way.
+        seeders_lib.execute_with_seeder_lock "seeder_worker" "${seeder_name}" \
+            "${seeder_exec}" "${seeders_dir}"
+    done
+
+    OPT_CLEAN_EXIT=1
+    echo "SUCCESS: All builds COMPLETE."
+}
+
+main "${@}"
