@@ -1,0 +1,13 @@
+FROM alpine:latest
+
+# Install coreutils (for dd with status=progress) and bash
+RUN apk add --no-cache coreutils bash xz
+
+# Copy your massive OS image into the container
+COPY %COMPRESSED_IMAGE_PATH% /opt/matrixos.img.xz
+
+# Add a safe flashing script
+COPY flash.sh /bin/flash
+RUN chmod +x /bin/flash
+
+ENTRYPOINT ["/bin/flash"]
