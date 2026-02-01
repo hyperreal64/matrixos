@@ -659,7 +659,7 @@ ostree_lib.last_commit_with_sysroot() {
 }
 
 ostree_lib.show_local_refs() {
-    echo "Showing local ${repodir} ostree branches (refs):"
+    echo "Showing local ostree branches (refs):"
     ostree_lib.local_refs "${@}"
 }
 
