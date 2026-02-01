@@ -287,7 +287,8 @@ setup_image() {
         deploy_ondev=1
     fi
 
-    local block_device
+    local image_path=
+    local block_device=
     if [ -n "${whole_device}" ]; then
         image_lib.clear_partition_table "${whole_device}"
         udevadm settle &>/dev/null
@@ -334,8 +335,6 @@ setup_image() {
         block_device="${whole_device}"
 
     elif [ -z "${deploy_ondev}" ]; then
-
-        local image_path
         image_path=$(image_lib.image_path "${ref}")
         image_lib.create_image "${image_path}" "${MATRIXOS_LIVEOS_IMAGE_SIZE}"
 
