@@ -704,6 +704,7 @@ main() {
     qa_lib.verify_imager_environment_setup "/" "${gpg_enabled}"
     if [ -n "${ARG_USE_LOCAL_OSTREE}" ]; then
         ostree_lib.show_local_refs "${repodir}"
+        ostree_lib.maybe_initialize_gpg "${gpg_enabled}" "${remote}" "${repodir}"
     else
         # check if we have the remote inside the ref.
         local remoted_ref
@@ -714,6 +715,7 @@ main() {
             echo "WARNING: ${ref} contains the remote reference, using remote=${remoted_ref} and ref=${ref}" >&2
         fi
         ostree_lib.maybe_initialize_remote "${remote}" "${remote_url}" "${gpg_enabled}" "${repodir}"
+        ostree_lib.maybe_initialize_gpg "${gpg_enabled}" "${remote}" "${repodir}"
         ostree_lib.show_remote_refs "${remote}" "${repodir}"
         ostree_lib.pull "${repodir}" "${remote}:${ref}"
     fi

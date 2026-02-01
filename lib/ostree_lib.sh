@@ -310,6 +310,18 @@ ostree_lib.get_ostree_gpg_homedir() {
     echo ${homedir}
 }
 
+ostree_lib.import_gpg_key() {
+    local key_path="${1}"
+    if [ -z "${key_path}" ]; then
+        echo "ostree_lib.import_gpg_key: missing key_path parameter" >&2
+        return 1
+    fi
+
+    gpg --homedir="$(ostree_lib.get_ostree_gpg_homedir)" \
+        --batch --yes \
+        --import "${key_path}"
+}
+
 ostree_lib.gpg_sign_file() {
     local file="${1}"
     if [ -z "${file}" ]; then
@@ -360,6 +372,33 @@ ostree_lib.list_remotes() {
         return 1
     fi
     ostree_lib.run_strict --repo="${repodir}" remote list
+}
+
+ostree_lib.maybe_initialize_gpg() {
+    local gpg_enabled="${1}"
+    if [ -z "${gpg_enabled}" ]; then
+        return 0
+    fi
+
+    local remote="${2}"
+    if [ -z "${remote}" ]; then
+        echo "maybe_initialize_gpg: missing ostree remote parameter" >&2
+        return 1
+    fi
+
+    local repodir="${3}"
+    if [ -z "${repodir}" ]; then
+        echo "maybe_initialize_gpg: missing ostree repodir parameter" >&2
+        return 1
+    fi
+
+    ostree_lib.import_gpg_key "${MATRIXOS_OSTREE_GPG_KEY_PATH}"
+    ostree_lib.import_gpg_key "${MATRIXOS_OSTREE_GPG_PUB_PATH}"
+    ostree_lib.import_gpg_key "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
+    ostree_lib.run --repo="${repodir}" remote gpg-import "${remote}" \
+        -k "${MATRIXOS_OSTREE_GPG_KEY_PATH}" \
+        -k "${MATRIXOS_OSTREE_GPG_PUB_PATH}" \
+        -k "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
 }
 
 ostree_lib.maybe_initialize_remote() {
