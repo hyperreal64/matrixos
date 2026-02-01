@@ -426,7 +426,7 @@ To achieve the goals in the Roadmap, the work is chunked into three milestones f
 - [x] Automate the bootstrapping of a chroot environment from a stage3 tarball to create a Bedrock environment.
 - [x] Build a well-themed, user-friendly GNOME environment off a Core layer.
 - [x] Improve the post-install setup experience and fix bugs in `setupOS`.
-- [x] Allow matrixOS to be installed from a live image using `image/imager` that can target any pre-sized drive layout.
+- [x] Allow matrixOS to be installed from a live image using `image/` scripts that can target any pre-sized drive layout.
 
 ### Milestone 3 (Focus: User Friendliness)
 
