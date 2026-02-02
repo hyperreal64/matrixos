@@ -163,7 +163,7 @@ func (c *ImagesCleaner) Run() error {
 	for prefix, datedData := range buckets {
 		fmt.Printf("Scanning prefix: %s\n", prefix)
 		if len(datedData) < minAmountOfImages {
-			fmt.Printf("Nothing to do for prefix %s. Not enough \n", prefix)
+			fmt.Printf("Nothing to do for prefix %s. Within the minimum amount of images.\n", prefix)
 			continue
 		}
 
