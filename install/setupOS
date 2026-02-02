@@ -41,7 +41,8 @@ ask_input() {
 check_root() {
     qa_lib.root_privs
     if [ "${USER}" != "root" ]; then
-        echo "Please log in as root, ffs." >&2
+        echo "Please log into your Desktop Environment as root to perform this task." >&2
+        echo "This is due to usermod needing to move your user home directory." >&2
         return 1
     fi
 }
