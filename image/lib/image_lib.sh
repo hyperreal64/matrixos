@@ -168,6 +168,30 @@ image_lib.block_device_for_partition_path() {
     lsblk -no PKNAME -p "${partition_path}"
 }
 
+image_lib.partition_number() {
+    local partition_path="${1}"
+    if [ -z "${partition_path}" ]; then
+        echo "image_lib.partition_number: missing partition_path parameter" >&2
+        return 1
+    fi
+
+    local pn=
+    pn=$(lsblk -no PARTN -p "${partition_path}")
+    echo "${pn## }"
+}
+
+image_lib.partition_label() {
+    local partition_path="${1}"
+    if [ -z "${partition_path}" ]; then
+        echo "image_lib.partition_label: missing partition_path parameter" >&2
+        return 1
+    fi
+
+    local pl=
+    pl=$(lsblk -no LABEL -p "${partition_path}")
+    echo "${pl## }"
+}
+
 image_lib.setup_bootloader_config() {
     local ref="${1}"
     if [ -z "${ref}" ]; then
@@ -330,7 +354,7 @@ image_lib.install_bootloader() {
     fs_lib.unsetup_common_rootfs_mounts "${ostree_deploy_rootfs}"
 
     # We expect grub to have created efi/BOOT/BOOTX64.EFI
-    bootx64efi="${efibootdir}/BOOTX64.EFI"
+    bootx64efi="${efibootdir}/${MATRIXOS_BOOT_EFI_EXECUTABLE}"
     if [ ! -e "${bootx64efi}" ]; then
         echo "${bootx64efi} does not exist." >&2
         return 1
