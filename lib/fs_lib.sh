@@ -529,3 +529,23 @@ fs_lib.emptydir() {
     echo "Emptying directory ${target}"
     find "${target}" -mindepth 1 -delete
 }
+
+fs_lib.dir_empty() {
+    local dir="${1}"
+    [[ -d "${dir}" ]] || return 1
+
+    # Save current shell options
+    local old_shopt=$(shopt -p nullglob dotglob)
+
+    # nullglob: globs expand to nothing if no match
+    # dotglob: include hidden files (.file)
+    shopt -s nullglob dotglob
+
+    local files=("$dir"/*)
+
+    # Restore shell options
+    eval "${old_shopt}"
+
+    # Check array length
+    (( ${#files[@]} == 0 ))
+}
