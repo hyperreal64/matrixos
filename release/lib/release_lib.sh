@@ -157,29 +157,16 @@ release_lib.get_sync_excluded_paths() {
         return 1
     fi
 
-    local matrixos_dev_excludes=()
     local __internal_list=()
-    if [ "${src}" = "/" ]; then
-        # backward compatibility.
-        matrixos_dev_excludes+=(
-            "${src%/}/matrixos-liveusb"
-            "${src%/}/matrixos-dev"
-        )
-        __internal_list+=(
-            "${dst}"  # ex-imagedir.
-        )
-    fi
-
     local ostreedir="${MATRIXOS_OSTREE_DIR}"
     __internal_list+=(
-        "${matrixos_dev_excludes[@]}"
         "${dst%/}${ostreedir}"
         # "${dst%/}/var/db/repos/*" -- this is needed to emerge --depclean later.
         "${dst%/}/tmp/*"
         "${dst%/}${MATRIXOS_SEEDERS_BUILD_ARTIFACTS_DIR}"
         "${dst%/}${MATRIXOS_PREPPERS_BUILD_ARTIFACTS_DIR}"
         "${dst%/}/var/spool/nullmailer/trigger"
-        "${dst%/}/var/tmp/portage/*"
+        "${dst%/}/var/tmp/portage/"
         "${dst%/}/var/cache/binpkgs/*"
         "${dst%/}/var/cache/distfiles/*"
     )
@@ -263,6 +250,7 @@ release_lib.clean_rootfs() {
         "${imagedir}/etc/portage/secureboot-kek.pem"
 
     local removedirs=(
+        /root/.bash_history
         /root/.ssh
         /root/.gnupg
         /root/.cache
@@ -280,6 +268,7 @@ release_lib.clean_rootfs() {
         /boot
         /root
         /var/lib/systemd/coredump
+        /var/tmp/portage
     )
     local removefiles=(
         /root/.bash_history
