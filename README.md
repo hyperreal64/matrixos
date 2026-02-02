@@ -7,6 +7,8 @@ Our two main goals are:
 - **Reliability**: Providing a stable, immutable base system through OSTree, which allows for atomic upgrades and rollbacks.
 - **Gaming-Friendly**: Shipping with the Steam loader, Lutris and optimizations to get you gaming on both NVIDIA and AMD GPUs with minimal fuss.
 
+TL;DR: Download from: [Cloudflare](https://images.matrixos.org)
+
 <table align="center">
   <tr>
     <td align="center">
@@ -43,8 +45,6 @@ Our two main goals are:
 </table>
 
 ## ⚠️ Disclaimer
-
-matrixOS distro images are coming on **2026-02-07** at the latest.
 
 matrixOS is a hobby project created to maintain a personal homelab setup. It is **not** intended for production environments where reliability is paramount. While I can be my own SRE, I can't be yours. :-)
 
