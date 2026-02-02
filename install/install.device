@@ -123,7 +123,7 @@ parse_args() {
         ;;
 
         -h|--help)
-        echo -e "imager - matrixOS ostree to bootable image builder." >&2
+        echo -e "imager - matrixOS installer to flash a block device (USB, NVME, SSD, HDD)." >&2
         echo >&2
         echo -e "Arguments:" >&2
 
