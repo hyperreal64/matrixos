@@ -1,0 +1,2 @@
+# We use ntfsplus, and this flag creates /sbin/mount.ntfs that confuses udisks
+sys-fs/ntfs3g -mount-ntfs
