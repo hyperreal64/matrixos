@@ -3,8 +3,11 @@
 #                  matrixOS system to another block device or its partitions.
 set -eu
 
-MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
-export MATRIXOS_DEV_DIR  # this is calling image_main.sh so we need to export.
+if [ -z "${MATRIXOS_DEV_DIR:-}" ]; then
+    MATRIXOS_DEV_DIR="$(realpath $(dirname "${0}")/../)"
+fi
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+export MATRIXOS_DEV_DIR  # calling other binaries.
 
 source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
 source "${MATRIXOS_DEV_DIR}"/image/headers/imagerenv.include.sh

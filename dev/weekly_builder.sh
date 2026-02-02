@@ -21,10 +21,11 @@ fi
 
 set -eu
 
-export MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
-echo "Set MATRIXOS_DEV_DIR (export) to: ${MATRIXOS_DEV_DIR}"
-
+if [ -z "${MATRIXOS_DEV_DIR:-}" ]; then
+    MATRIXOS_DEV_DIR="$(realpath $(dirname "${0}")/../)"
+fi
 source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
+export MATRIXOS_DEV_DIR
 
 LOGFILE=
 BUILT_SEEDERS_FILE=
