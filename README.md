@@ -482,20 +482,6 @@ To achieve the goals in the Roadmap, the work is chunked into three milestones f
 
 ## Known issues
 
-### Flatpak and Snap fight in GNOME Software
-
-When I enable both, Snap takes over gnome-software, which misses a lot of cool apps compared to Flathub.
-So, I decided last minute, until gnome-software can work with both at the same time, to disable Snap. However,
-you can re-enable it at runtime with the following trick:
-
-```shell
-systemctl enable apparmor
-systemctl enable snapd.apparmor
-systemctl enable snapd
-rm -rf ~/.cache/gnome-software  # remove this directory for every user affected
-reboot  # just in case gnome-software has it's ETOOMUCHCACHING moments
-```
-
 ### GNOME aspect ratio is either 100% or 200%
 
 This is due to GNOME 48 not having this (to me) obvious feature of allowing you to select a finer grained
