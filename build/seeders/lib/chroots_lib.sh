@@ -267,11 +267,30 @@ chroots_lib.emerge_common_args() {
     echo "${args[@]}" "${jobs_flags[@]}"
 }
 
+chroots_lib.emerge_common_rebuild_args() {
+    local jobs_flags
+    read -ra jobs_flags <<< "$(chroots_lib.try_get_emerge_jobs_flags)"
+    local args=(
+        --quiet-build=y
+        --verbose
+    )
+    echo "${args[@]}" "${jobs_flags[@]}"
+}
+
 chroots_lib.generic_build() {
     env-update
     local common_args
     read -ra common_args <<< "$(chroots_lib.emerge_common_args)"
 
     echo ">> emerge" "${common_args[@]}" "${@}"
+    emerge "${common_args[@]}" "${@}"
+}
+
+chroots_lib.generic_forced_rebuild() {
+    env-update
+    local common_args
+    read -ra common_args <<< "$(chroots_lib.emerge_common_rebuild_args)"
+
+    echo ">> emerge (forcing rebuild)" "${common_args[@]}" "${@}"
     emerge "${common_args[@]}" "${@}"
 }
