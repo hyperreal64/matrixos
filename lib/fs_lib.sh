@@ -53,7 +53,13 @@ fs_lib.cleanup_mounts() {
         mounted=$(findmnt -n "${mnt}" || true)
         if [ -n "${mounted}" ]; then
             echo "Umounting ${mnt} ..."
-            umount "${mnt}" || true
+            if ! umount "${mnt}"; then
+                # Try to flush in this case, to reduce corruption %.
+                blockdev --flushbufs "${mnt}" || true
+                echo "Unable to umount ${mnt}" >&2
+                findmnt "${mnt}" 1>&2 || true
+                continue
+            fi
         fi
     done
     udevadm settle
@@ -94,7 +100,12 @@ fs_lib.cleanup_loop_devices() {
             continue
         fi
         echo "Cleaning loop device ${ld} ..."
-        losetup -d "${ld}" || true
+        if ! losetup -d "${ld}"; then
+            blockdev --flushbufs "${ld}" || true
+            echo "Unable to close loop device ${ld}" >&2
+            findmnt "${ld}" 1>&2 || true
+            continue
+        fi
     done
     udevadm settle
 }
