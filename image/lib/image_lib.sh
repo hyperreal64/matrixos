@@ -275,7 +275,7 @@ image_lib.setup_bootloader_config() {
 
     # Set GRUB_CFG to /efi/efi/BOOT/grub.cfg to make everyone happy and aware of where
     # the current grub.cfg should sit.
-    echo "GRUB_CFG=${MATRIXOS_GRUB_CFG_EFI_PATH}" > \
+    echo "GRUB_CFG=${MATRIXOS_EFI_ROOT}/${MATRIXOS_RELATIVE_EFI_BOOT_PATH}/grub.cfg" > \
         "${ostree_deploy_rootfs}/etc/environment.d/99-matrixos-imager-grub.conf"
 
     # Set up BOOTUUID.
