@@ -493,6 +493,8 @@ setup_image() {
                 "pkglist" "generated_artifacts"
             echo "Final image path: ${new_image_path}"
             image_path="${new_image_path}"
+        else
+            generated_artifacts+=( "${image_path}" )
         fi
 
         image_lib.show_test_info "${generated_artifacts[@]}"
