@@ -317,7 +317,10 @@ ostree_lib.get_ostree_gpg_key_id() {
 
 ostree_lib.get_ostree_gpg_homedir() {
     local homedir="${MATRIXOS_OSTREE_DEV_GPG_HOMEDIR}"
-    echo ${homedir}
+    if [ ! -d "${homedir}" ]; then
+        mkdir -p "${homedir}"
+    fi
+    echo "${homedir}"
 }
 
 ostree_lib.import_gpg_key() {
