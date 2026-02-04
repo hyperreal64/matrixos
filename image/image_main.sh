@@ -500,7 +500,6 @@ setup_image() {
         image_lib.show_test_info "${generated_artifacts[@]}"
         echo "Image creation complete! > ${image_path}"
     else
-        sync
         echo "On device install complete!"
     fi
 }
