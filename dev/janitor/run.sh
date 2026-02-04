@@ -7,12 +7,13 @@ fi
 
 set -eu
 
-
 cd "$(dirname "$0")"
 
 mkdir -p bin
 echo "Building janitor..."
 go build -o bin/janitor .
 
+cd ../.. # the root
+
 echo "Running janitor..."
-exec ./bin/janitor "${@}"
+exec dev/janitor/bin/janitor "${@}"

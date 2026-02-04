@@ -2,7 +2,19 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+)
+
+const (
+	configFileName = "matrixos.conf"
+)
+
+var (
+	searchPaths = []string{
+		"conf",
+		"/etc/matrixos/conf",
+	}
 )
 
 // IniConfig is a config reader that loads values from an INI file.
@@ -11,11 +23,32 @@ type IniConfig struct {
 	cfg  map[string][]string
 }
 
+func searchConfigFile() (string, error) {
+	for _, sp := range searchPaths {
+		fullPath := filepath.Join(sp, configFileName)
+		if _, err := filepath.Abs(fullPath); err != nil {
+			continue
+		}
+		if _, err := os.Stat(fullPath); err == nil {
+			return fullPath, nil
+		}
+	}
+	return "", fmt.Errorf("config file not found in search paths: %v", searchPaths)
+}
+
+func NewIniConfig() (IConfig, error) {
+	path, err := searchConfigFile()
+	if err != nil {
+		return nil, err
+	}
+	return NewIniConfigFromFile(path)
+}
+
 // NewIniConfig creates a new IniConfig instance with the specified file path.
-func NewIniConfig(path string) *IniConfig {
+func NewIniConfigFromFile(path string) (IConfig, error) {
 	return &IniConfig{
 		Path: path,
-	}
+	}, nil
 }
 
 func (c *IniConfig) Load() error {
