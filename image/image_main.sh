@@ -39,6 +39,7 @@ umount_all() {
     fs_lib.cleanup_mounts "${MOUNTS[@]}"
     fs_lib.cleanup_cryptsetup_devices "${DEVICE_MAPPERS[@]}"
     fs_lib.cleanup_loop_devices "${LOOP_DEVICES[@]}"
+    sync  # for image files after being umounted.
 }
 
 clean_exit() {
@@ -481,7 +482,6 @@ setup_image() {
     local release_version=
     release_version=$(image_lib.release_version "${rootfs}")
     umount_all
-    sync
 
     if [ -n "${image_path}" ]; then
         local generated_artifacts=()
