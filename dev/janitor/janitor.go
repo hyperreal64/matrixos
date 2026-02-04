@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"matrixos/dev/janitor/cleaners"
-	"matrixos/dev/janitor/config"
+	"matrixos/lib/config"
 	"os"
 )
 

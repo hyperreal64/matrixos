@@ -3,7 +3,7 @@ package cleaners
 import (
 	"errors"
 	"fmt"
-	"matrixos/dev/janitor/config"
+	"matrixos/lib/config"
 	"os"
 	"path/filepath"
 	"time"
