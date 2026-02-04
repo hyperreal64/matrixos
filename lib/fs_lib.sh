@@ -51,15 +51,17 @@ fs_lib.cleanup_mounts() {
         mnt="${mounts[$i]}"
         local mounted=
         mounted=$(findmnt -n "${mnt}" || true)
-        if [ -n "${mounted}" ]; then
-            echo "Umounting ${mnt} ..."
-            if ! umount "${mnt}"; then
-                # Try to flush in this case, to reduce corruption %.
-                blockdev --flushbufs "${mnt}" || true
-                echo "Unable to umount ${mnt}" >&2
-                findmnt "${mnt}" 1>&2 || true
-                continue
-            fi
+        if [ -z "${mounted}" ]; then
+            continue
+        fi
+
+        echo "Umounting ${mnt} ..."
+        if ! umount "${mnt}"; then
+            # Try to flush in this case, to reduce corruption %.
+            blockdev --flushbufs "${mnt}" || true
+            echo "Unable to umount ${mnt}" >&2
+            findmnt "${mnt}" 1>&2 || true
+            continue
         fi
     done
     udevadm settle
@@ -72,14 +74,16 @@ fs_lib.cleanup_cryptsetup_devices() {
     for cd in "${cryptsetup_devices[@]}"; do
         local cdpath=
         cdpath=$(fs_lib.get_luks_rootfs_device_path "${cd}")
-        if [ -e "${cdpath}" ]; then
-            echo "Closing LUKS device: ${cd} ..."
-            blockdev --flushbufs "${cdpath}" || true
-            if ! cryptsetup close "${cd}"; then
-                echo "Unable to cryptsetup close ${cdpath}" >&2
-                findmnt "${cdpath}" 1>&2 || true
-                continue
-            fi
+        if [ ! -e "${cdpath}" ]; then
+            continue
+        fi
+
+        echo "Closing LUKS device: ${cd} ..."
+        blockdev --flushbufs "${cdpath}" || true
+        if ! cryptsetup close "${cd}"; then
+            echo "Unable to cryptsetup close ${cdpath}" >&2
+            findmnt "${cdpath}" 1>&2 || true
+            continue
         fi
     done
     udevadm settle
@@ -96,7 +100,6 @@ fs_lib.cleanup_loop_devices() {
         fi
         losetup_find=$(losetup --raw -l -O BACK-FILE "${ld}" | tail -n 1)
         if [ -z "${losetup_find}" ]; then
-            echo "${ld} already cleaned."
             continue
         fi
         echo "Cleaning loop device ${ld} ..."
