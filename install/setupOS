@@ -95,13 +95,19 @@ change_username() {
         -m "${default_username}" \
         -c "${selected_fullname}"
 
-    local live_home_tmpfile=/etc/tmpfiles.d/matrixos-live-home.conf
+    local live_home_tmpfile="/etc/tmpfiles.d/matrixos-live-home.conf"
     if [ -f "${live_home_tmpfile}" ]; then
         echo "Removing matrixos-live-home.conf that contained the stock user setup config ..."
         rm -f "${live_home_tmpfile}" || true
     fi
 
-    USERNAME_AFTER_CHANGE=${selected_username}
+    local live_account_tmpfile="/etc/sysusers.d/acct-user-${default_username}.conf"
+    if [ -f "${live_account_tmpfile}" ]; then
+        echo "Removing acct-user-${default_username}.conf that contained the stock user setup config ..."
+        rm -f "${live_account_tmpfile}" || true
+    fi
+
+    USERNAME_AFTER_CHANGE="${selected_username}"
 }
 
 change_user_password() {
