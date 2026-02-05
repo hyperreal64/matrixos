@@ -351,7 +351,9 @@ main() {
             --create-qcow2
         )
         local execute_imager=
-        if [[ "${#built_releases[@]}" -gt 0 ]]; then
+        if _skip_images_flag; then
+            echo "Skipping images creation via --skip-images."
+        elif [[ "${#built_releases[@]}" -gt 0 ]]; then
             printf -v reljoined ",%s" "${built_releases[@]}"
             imager_args+=(
                 "--only-releases=${reljoined:1}"
@@ -364,8 +366,6 @@ main() {
         elif _only_images_flag; then
             echo "Creating only images (all) via --only-images."
             execute_imager=1
-        elif _skip_images_flag; then
-            echo "Skipping images creation via --skip-images."
         else
             echo "No images to release. Yay?"
         fi
