@@ -27,6 +27,8 @@ fi
 source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
 export MATRIXOS_DEV_DIR
 
+source "${MATRIXOS_DEV_DIR}/lib/ostree_lib.sh"
+
 LOGFILE=
 BUILT_SEEDERS_FILE=
 BUILT_RELEASES_FILE=
@@ -245,6 +247,7 @@ _cdn_pusher_flag() {
 main() {
     trap finish EXIT
 
+    ostree_lib.setup_environment
     cd "${MATRIXOS_DEV_DIR}"
     parse_args "${@}"
 
