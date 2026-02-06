@@ -475,6 +475,7 @@ setup_image() {
     image_lib.install_memtest "${rootfs}" "${efibootdir}"
     local pkglist=()
     image_lib.package_list "pkglist" "${rootfs}"
+    image_lib.setup_hooks "${rootfs}" "${ref}"
     image_lib.finalize_filesystems "${mount_rootfs}" "${mount_bootfs}" "${mount_efifs}"
     image_lib.show_final_filesystem_info "${block_device}" "${mount_bootfs}" "${mount_efifs}"
 
