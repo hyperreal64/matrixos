@@ -6,53 +6,133 @@ import (
 	"path/filepath"
 )
 
+type searchPath struct {
+	dirPath     string
+	defaultRoot string
+}
+
 const (
 	configFileName = "matrixos.conf"
 )
 
 var (
-	searchPaths = []string{
-		"conf",
-		"/etc/matrixos/conf",
+	searchPaths = []searchPath{
+		// Setup for when vector runs from the git repo.
+		{
+			dirPath:     "./conf",
+			defaultRoot: ".",
+		},
+		// Setup for when vector runs from its base directory.
+		{
+			dirPath:     "../conf",
+			defaultRoot: "..",
+		},
+		// Setup for when vector runs from an installed location,
+		// with config in /etc/matrixos/conf.
+		{
+			dirPath:     "/etc/matrixos/conf",
+			defaultRoot: "/var/lib/matrixos",
+		},
 	}
 )
 
 // IniConfig is a config reader that loads values from an INI file.
 type IniConfig struct {
-	Path string
-	cfg  map[string][]string
+	sp  *searchPath
+	cfg map[string][]string
 }
 
-func searchConfigFile() (string, error) {
+func completeDirPath(dirPath string) string {
+	return filepath.Join(dirPath, configFileName)
+}
+
+func cfgPathToSearchPath(fullPath string) *searchPath {
 	for _, sp := range searchPaths {
-		fullPath := filepath.Join(sp, configFileName)
-		if _, err := filepath.Abs(fullPath); err != nil {
+		searchFullPath := completeDirPath(sp.dirPath)
+		if fullPath != searchFullPath && fullPath != "" {
 			continue
 		}
-		if _, err := os.Stat(fullPath); err == nil {
-			return fullPath, nil
+		if _, err := filepath.Abs(searchFullPath); err != nil {
+			continue
+		}
+		if _, err := os.Stat(searchFullPath); err == nil {
+			return &sp
 		}
 	}
-	return "", fmt.Errorf("config file not found in search paths: %v", searchPaths)
+	return nil
+}
+
+func dirPathToSearchPath(dirPath string) *searchPath {
+	fullPath := completeDirPath(dirPath)
+	return cfgPathToSearchPath(fullPath)
+}
+
+// smartRootify translates matrixOS.Root into a path that's complying with the config var
+// specifications.
+func smartRootify(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+
+	// Get the working directory so that we can compare it with path.
+	wd, err := os.Getwd()
+	if err != nil {
+		return wd, err
+	}
+
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return pathAbs, err
+	}
+	cwdAbs, err := filepath.Abs(wd)
+	if err != nil {
+		return cwdAbs, err
+	}
+
+	if pathAbs == cwdAbs {
+		// This means that matrixOS.Root is set to ./ or .
+		// Which means that we need to make this ../ as vector is in one subdir deeper.
+		return filepath.Abs("..")
+	}
+	return pathAbs, nil
 }
 
 func NewIniConfig() (IConfig, error) {
-	path, err := searchConfigFile()
-	if err != nil {
-		return nil, err
+	sp := cfgPathToSearchPath("")
+	if sp == nil {
+		return nil, fmt.Errorf("config file not found in search paths: %v", searchPaths)
 	}
-	return NewIniConfigFromFile(path)
+
+	return NewIniConfigFromFile(completeDirPath(sp.dirPath))
 }
 
 // NewIniConfig creates a new IniConfig instance with the specified file path.
 func NewIniConfigFromFile(path string) (IConfig, error) {
+	sp := cfgPathToSearchPath(path)
+	if sp == nil {
+		return nil, fmt.Errorf(
+			"config file %v not found at path: %v",
+			configFileName,
+			path,
+		)
+	}
 	return &IniConfig{
-		Path: path,
+		sp: sp,
 	}, nil
 }
 
 func (c *IniConfig) Load() error {
-	ini, err := LoadConfig(c.Path)
+	if c == nil {
+		return fmt.Errorf("config is nil")
+	}
+	if c.sp == nil {
+		return fmt.Errorf(
+			"Unable to find %v config file in search paths: %v",
+			configFileName,
+			searchPaths,
+		)
+	}
+	ini, err := LoadConfig(completeDirPath(c.sp.dirPath))
 	if err != nil {
 		return err
 	}
@@ -72,8 +152,15 @@ func (c *IniConfig) Load() error {
 	}
 
 	// Set defaults for base paths if missing, to allow expansion
-	if _, ok := c.getVal("matrixOS.Root"); !ok {
-		c.setVal("matrixOS.Root", ".")
+	rootVal, foundRoot := c.getVal("matrixOS.Root")
+	if !foundRoot {
+		c.setVal("matrixOS.Root", c.sp.defaultRoot)
+	} else {
+		rootVal, err := smartRootify(rootVal)
+		if err != nil {
+			return err
+		}
+		c.setVal("matrixOS.Root", rootVal)
 	}
 
 	// Expand base paths to absolute
@@ -148,6 +235,10 @@ func (c *IniConfig) Load() error {
 
 func (c *IniConfig) GetItem(key string) (SingleConfigValue, error) {
 	cfg := SingleConfigValue{}
+	if c == nil {
+		return cfg, fmt.Errorf("config is nil")
+	}
+
 	lst, ok := c.cfg[key]
 	if !ok {
 		return cfg, fmt.Errorf("invalid key %s", key)
@@ -160,6 +251,10 @@ func (c *IniConfig) GetItem(key string) (SingleConfigValue, error) {
 
 func (c *IniConfig) GetItems(key string) (MultipleConfigValues, error) {
 	cfg := MultipleConfigValues{}
+	if c == nil {
+		return cfg, fmt.Errorf("config is nil")
+	}
+
 	lst, ok := c.cfg[key]
 	if !ok {
 		return cfg, fmt.Errorf("invalid key %s", key)
