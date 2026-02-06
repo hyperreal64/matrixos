@@ -7,6 +7,7 @@ import (
 )
 
 type searchPath struct {
+	fileName    string
 	dirPath     string
 	defaultRoot string
 }
@@ -19,17 +20,20 @@ var (
 	searchPaths = []searchPath{
 		// Setup for when vector runs from the git repo.
 		{
+			fileName:    configFileName,
 			dirPath:     "./conf",
 			defaultRoot: ".",
 		},
 		// Setup for when vector runs from its base directory.
 		{
+			fileName:    configFileName,
 			dirPath:     "../conf",
 			defaultRoot: "..",
 		},
 		// Setup for when vector runs from an installed location,
 		// with config in /etc/matrixos/conf.
 		{
+			fileName:    configFileName,
 			dirPath:     "/etc/matrixos/conf",
 			defaultRoot: "/var/lib/matrixos",
 		},
@@ -42,13 +46,9 @@ type IniConfig struct {
 	cfg map[string][]string
 }
 
-func completeDirPath(dirPath string) string {
-	return filepath.Join(dirPath, configFileName)
-}
-
 func cfgPathToSearchPath(fullPath string) *searchPath {
 	for _, sp := range searchPaths {
-		searchFullPath := completeDirPath(sp.dirPath)
+		searchFullPath := filepath.Join(sp.dirPath, sp.fileName)
 		if fullPath != searchFullPath && fullPath != "" {
 			continue
 		}
@@ -60,11 +60,6 @@ func cfgPathToSearchPath(fullPath string) *searchPath {
 		}
 	}
 	return nil
-}
-
-func dirPathToSearchPath(dirPath string) *searchPath {
-	fullPath := completeDirPath(dirPath)
-	return cfgPathToSearchPath(fullPath)
 }
 
 // smartRootify translates matrixOS.Root into a path that's complying with the config var
@@ -103,21 +98,19 @@ func NewIniConfig() (IConfig, error) {
 		return nil, fmt.Errorf("config file not found in search paths: %v", searchPaths)
 	}
 
-	return NewIniConfigFromFile(completeDirPath(sp.dirPath))
+	fullPath := filepath.Join(sp.dirPath, sp.fileName)
+	return NewIniConfigFromFile(fullPath, sp.defaultRoot)
 }
 
 // NewIniConfig creates a new IniConfig instance with the specified file path.
-func NewIniConfigFromFile(path string) (IConfig, error) {
-	sp := cfgPathToSearchPath(path)
-	if sp == nil {
-		return nil, fmt.Errorf(
-			"config file %v not found at path: %v",
-			configFileName,
-			path,
-		)
+func NewIniConfigFromFile(path string, defaultRoot string) (IConfig, error) {
+	sp := searchPath{
+		fileName:    filepath.Base(path),
+		dirPath:     filepath.Dir(path),
+		defaultRoot: defaultRoot,
 	}
 	return &IniConfig{
-		sp: sp,
+		sp: &sp,
 	}, nil
 }
 
@@ -132,7 +125,8 @@ func (c *IniConfig) Load() error {
 			searchPaths,
 		)
 	}
-	ini, err := LoadConfig(completeDirPath(c.sp.dirPath))
+	fullPath := filepath.Join(c.sp.dirPath, c.sp.fileName)
+	ini, err := LoadConfig(fullPath)
 	if err != nil {
 		return err
 	}
@@ -174,49 +168,24 @@ func (c *IniConfig) Load() error {
 		}
 	}
 
-	// Level 1: Relative to Root
 	rootDependents := []string{
-		"matrixOS.ArtifactsDir",
+		"matrixOS.PrivateGitRepoPath",
 		"matrixOS.LogsDir",
 		"matrixOS.LocksDir",
-		"Ostree.Dir",
+		"Seeder.DownloadsDir",
+		"Seeder.DistfilesDir",
+		"Seeder.BinpkgsDir",
+		"Seeder.PortageReposDir",
+		"Seeder.GpgKeysDir",
+		"Imager.ImagesDir",
+		"Ostree.RepoDir",
+		"Ostree.DevGpgHomeDir",
 		"Ostree.GpgOfficialPublicKey",
 	}
 	for _, key := range rootDependents {
 		c.expand(key, "matrixOS.Root")
 	}
 
-	// Level 2: Relative to ArtifactsDir
-	artifactsDependents := []string{
-		"matrixOS.OutDir",
-		"Ostree.DevGpgHomeDir",
-	}
-	for _, key := range artifactsDependents {
-		c.expand(key, "matrixOS.ArtifactsDir")
-	}
-
-	// Level 3: Relative to OutDir
-	outDependents := []string{
-		"Seeder.OutDir",
-		"Imager.OutDir",
-	}
-	for _, key := range outDependents {
-		c.expand(key, "matrixOS.OutDir")
-	}
-
-	// Level 4: Relative to Seeder.OutDir
-	seederDependents := []string{
-		"Seeder.DownloadsDir",
-		"Seeder.DistfilesDir",
-		"Seeder.BinpkgsDir",
-		"Seeder.PortageReposDir",
-		"Seeder.GpgKeysDir",
-	}
-	for _, key := range seederDependents {
-		c.expand(key, "Seeder.OutDir")
-	}
-
-	// Level X: Relative to PrivateGitRepoPath
 	privateRepoDependents := []string{
 		"Seeder.SecureBootPrivateKey",
 		"Seeder.SecureBootPublicKey",
@@ -226,9 +195,6 @@ func (c *IniConfig) Load() error {
 	for _, key := range privateRepoDependents {
 		c.expand(key, "matrixOS.PrivateGitRepoPath")
 	}
-
-	// Level Y: Relative to Ostree.Dir
-	c.expand("Ostree.RepoDir", "Ostree.Dir")
 
 	return nil
 }
