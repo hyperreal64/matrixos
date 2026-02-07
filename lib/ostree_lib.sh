@@ -577,6 +577,72 @@ ostree_lib.deploy() {
     echo "ostree commit deployed: ${ostree_commit}."
 }
 
+ostree_lib.prune() {
+    local repodir="${1}"
+    if [ -z "${repodir}" ]; then
+        echo "ostree_lib.prune: missing ostree repodir parameter" >&2
+        return 1
+    fi
+    local branch="${2}"
+    if [ -z "${branch}" ]; then
+        echo "ostree_lib.prune: missing branch parameter" >&2
+        return 1
+    fi
+
+    echo "Pruning ostree repo for ${repodir} ..."
+    ostree_lib.run --repo="${repodir}" prune \
+        --depth=5 \
+        --refs-only \
+        --keep-younger-than="${MATRIXOS_OSTREE_KEEP_OBJECTS_YOUNGER_THAN}" \
+        --only-branch="${branch}"
+}
+
+ostree_lib.generate_static_delta() {
+    local repodir="${1}"
+    if [ -z "${repodir}" ]; then
+        echo "ostree_lib.generate_static_deltas: missing repodir parameter" >&2
+        return 1
+    fi
+    local branch="${2}"
+    if [ -z "${branch}" ]; then
+        echo "ostree_lib.generate_static_deltas: missing branch parameter" >&2
+        return 1
+    fi
+
+    echo "Generating static delta for ${repodir} and branch ${branch} ..."
+
+    local rev_new=
+    local rev_old=
+    rev_new=$(ostree rev-parse --repo="${repodir}" "${branch}")
+    rev_old=$(ostree rev-parse --repo="${repodir}" "${branch}^" 2>/dev/null || true)
+    if [ -z "${rev_old}" ]; then
+        ostree static-delta generate --repo="${repodir}" \
+            --to="${rev_new}" \
+            --empty \
+            --inline \
+            --min-fallback-size=0
+    else
+        ostree static-delta generate --repo="${repodir}" \
+            --from="${rev_old}" \
+            --to="${rev_new}" \
+            --inline \
+            --min-fallback-size=0
+    fi
+}
+
+ostree_lib.update_summary() {
+    local repodir="${1}"
+    if [ -z "${repodir}" ]; then
+        echo "ostree_lib.update_summary: missing ostree repodir parameter" >&2
+        return 1
+    fi
+    local gpg_enabled="${2}"  # can be empty.
+
+    echo "Updating ostree summary ..."
+    ostree_lib.run --repo="${repodir}" summary \
+        --update $(ostree_lib.ostree_gpg_args "${gpg_enabled}")
+}
+
 ostree_lib.add_remote() {
     local repodir="${1}"
     if [ -z "${repodir}" ]; then
