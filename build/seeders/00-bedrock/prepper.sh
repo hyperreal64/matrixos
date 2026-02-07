@@ -33,8 +33,9 @@ _prepper_dir="$(dirname "${0}")"
 _seeders_dir="$(dirname "${_prepper_dir}")"
 _seeder_name="$(basename "${_prepper_dir}")"
 
-# Import the preppers_lib functions.
-source "${_seeders_dir}"/lib/preppers_lib.sh
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/preppers_lib.sh
 
 
 download_latest_stage3() {
@@ -68,10 +69,19 @@ download_latest_stage3() {
         filename=$(basename "${url}")
         download_path="${download_dir}/${filename}"
 
-        if [ ! -f "${download_path}" ] && [ ! -f "${download_path}.asc" ]; then
+        local tmp_file=
+        tmp_file=$(fs_lib.create_temp_file "${download_dir}" "${filename}")
+        local tmp_asc_file=
+        tmp_asc_file=$(fs_lib.create_temp_file "${download_dir}" "${filename}.asc")
+
+        if [ ! -f "${download_path}" ] || [ ! -f "${download_path}.asc" ]; then
             echo "Downloading real stage3 from ${url} ..."
-            wget --quiet "${url}" -O "${download_path}"
-            wget --quiet "${url}.asc" -O "${download_path}.asc"
+
+            wget --quiet "${url}" -O "${tmp_file}"
+            mv "${tmp_file}" "${download_path}"
+
+            wget --quiet "${url}.asc" -O "${tmp_asc_file}"
+            mv "${tmp_asc_file}" "${download_path}.asc"
         else
             echo "${download_path}* already existing." >&2
         fi
