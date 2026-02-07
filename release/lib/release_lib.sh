@@ -706,7 +706,7 @@ EOFZ
 
     echo "Pruning ostree repo for ${repodir} ..."
     ostree_lib.run --repo="${repodir}" prune --depth=5 \
-        --refs-only --keep-younger-than="1 day" \
+        --refs-only --keep-younger-than="${MATRIXOS_OSTREE_KEEP_OBJECTS_YOUNGER_THAN}" \
         --only-branch="${branch}"
 
     echo "Updating ostree summary ..."
