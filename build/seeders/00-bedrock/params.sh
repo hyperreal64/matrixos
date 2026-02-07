@@ -18,7 +18,7 @@ fi
 
 # SEEDER_CHROOTS_DIR=/path/to/parent/seeder/chroots/dir
 # Path to the preferred chroot directory for this seeder.
-SEEDER_CHROOTS_DIR="${MATRIXOS_SEEDER_OUT_DIR}/chroots"
+SEEDER_CHROOTS_DIR="${MATRIXOS_DEV_DIR}/out/seeder/chroots"
 
 # PREFERRED_SEEDER_CHROOT_DIR
 # Path to the currently preferred chroot directory path for this seeder.
