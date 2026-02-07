@@ -434,7 +434,7 @@ setup_image() {
 
     # Backup luks header only now that we have all devices mounted.
     if [ -n "${encryption_enabled}" ]; then
-        fsenc_lib.luks_backup_header "${root_device}" "${mount_efifs}"
+        fsenc_lib.luks_backup_header "${physical_root_device}" "${mount_efifs}"
     fi
 
     local kernel_boot_args=()
