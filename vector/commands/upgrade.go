@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"matrixos/lib/config"
 )
 
 const (
@@ -154,34 +156,17 @@ func (c *UpgradeCommand) getCurrentState(sysroot string) (string, string, error)
 }
 
 func (c *UpgradeCommand) readOriginRefspec(path string) (string, error) {
-	f, err := os.Open(path)
+	cfg, err := config.LoadConfig(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to open origin file: %w", err)
+		return "", fmt.Errorf("failed to load origin file: %w", err)
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	inOrigin := false
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
-			continue
-		}
-		if line == "[origin]" {
-			inOrigin = true
-			continue
-		}
-		if strings.HasPrefix(line, "[") && line != "[origin]" {
-			inOrigin = false
-			continue
-		}
-		if inOrigin {
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "refspec" {
-				return strings.TrimSpace(parts[1]), nil
-			}
+	if section, ok := cfg["origin"]; ok {
+		if refspec, ok := section["refspec"]; ok {
+			return refspec, nil
 		}
 	}
+
 	return "", fmt.Errorf("refspec not found in [origin] section")
 }
 
