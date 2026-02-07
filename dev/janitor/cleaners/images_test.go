@@ -1,39 +1,10 @@
 package cleaners
 
 import (
-	"fmt"
-	"matrixos/lib/config"
 	"os"
 	"path/filepath"
 	"testing"
 )
-
-// ImagesMockConfig is a mock implementation of the IConfig interface for testing purposes.
-type ImagesMockConfig struct {
-	values map[string]interface{}
-}
-
-func (m *ImagesMockConfig) Load() error {
-	return nil
-}
-
-func (m *ImagesMockConfig) GetItem(key string) (config.SingleConfigValue, error) {
-	if val, ok := m.values[key]; ok {
-		if str, ok := val.(string); ok {
-			return config.SingleConfigValue{Item: str}, nil
-		}
-	}
-	return config.SingleConfigValue{}, fmt.Errorf("item with key '%s' not found", key)
-}
-
-func (m *ImagesMockConfig) GetItems(key string) (config.MultipleConfigValues, error) {
-	if val, ok := m.values[key]; ok {
-		if items, ok := val.([]string); ok {
-			return config.MultipleConfigValues{Items: items}, nil
-		}
-	}
-	return config.MultipleConfigValues{}, fmt.Errorf("items with key '%s' not found", key)
-}
 
 func TestImagesCleaner_Name(t *testing.T) {
 	cleaner := &ImagesCleaner{}
@@ -44,7 +15,7 @@ func TestImagesCleaner_Name(t *testing.T) {
 
 func TestImagesCleaner_Init(t *testing.T) {
 	cleaner := &ImagesCleaner{}
-	mockConfig := &ImagesMockConfig{values: make(map[string]interface{})}
+	mockConfig := &MockConfig{values: make(map[string]interface{})}
 	err := cleaner.Init(mockConfig)
 	if err != nil {
 		t.Errorf("Init should not return an error, but got: %v", err)
@@ -68,7 +39,7 @@ func TestImagesCleaner_isDryRun(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &ImagesMockConfig{values: make(map[string]interface{})}
+			mockConfig := &MockConfig{values: make(map[string]interface{})}
 			if !tt.wantErr {
 				mockConfig.values["ImagesCleaner.DryRun"] = tt.dryRun
 			}
@@ -99,7 +70,7 @@ func TestImagesCleaner_MinAmountOfImages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &ImagesMockConfig{values: make(map[string]interface{})}
+			mockConfig := &MockConfig{values: make(map[string]interface{})}
 			if tt.name != "NotSet" {
 				mockConfig.values["ImagesCleaner.MinAmountOfImages"] = tt.val
 			}
@@ -197,7 +168,7 @@ func TestImagesCleaner_Run(t *testing.T) {
 				t.Fatalf("Failed to create subdir: %v", err)
 			}
 
-			mockConfig := &ImagesMockConfig{values: make(map[string]interface{})}
+			mockConfig := &MockConfig{values: make(map[string]interface{})}
 			mockConfig.values["ImagesCleaner.DryRun"] = tt.dryRun
 			mockConfig.values["ImagesCleaner.MinAmountOfImages"] = tt.minImages
 			mockConfig.values["Imager.OutDir"] = subTempDir
