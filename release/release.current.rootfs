@@ -71,6 +71,7 @@ prepare_readonly_rootfs() {
     done
 }
 
+ostree_lib.setup_environment
 qa_lib.root_privs
 prepare_readonly_rootfs
 

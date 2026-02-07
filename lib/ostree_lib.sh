@@ -6,6 +6,15 @@ source "${MATRIXOS_DEV_DIR:-/matrixos}/headers/env.include.sh"
 source "${MATRIXOS_DEV_DIR}"/image/headers/imagerenv.include.sh
 
 
+ostree_lib.setup_environment() {
+    # Set LC_TIME=C to ensure that Cloudflare can correctly process requests
+    # withouth throwing HTTP 400. Otherwise, if the locale of the system running
+    # the ostree command is not en_US or similar, Cloudflare backed remotes
+    # will reject the requests with HTTP 400 due to unexpected date format
+    # in the request.
+    export LC_TIME=C
+}
+
 ostree_lib.branch_contains_remote() {
     local branch="${1}"
     if [ -z "${branch}" ]; then
