@@ -1,7 +1,7 @@
 package cleaners
 
 import (
-	"matrixos/dev/janitor/config"
+	"matrixos/lib/config"
 	"time"
 )
 

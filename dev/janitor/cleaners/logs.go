@@ -2,7 +2,7 @@ package cleaners
 
 import (
 	"fmt"
-	"matrixos/dev/janitor/config"
+	"matrixos/lib/config"
 	"path"
 	"time"
 )
