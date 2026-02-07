@@ -370,7 +370,20 @@ qa_lib.check_ryzen_smu_module() {
 
 qa_lib.check_number_of_kernels() {
     local imagedir="${1}"
+    if [ -z "${imagedir}" ]; then
+        echo "qa_lib.check_number_of_kernels: missing imagedir parameter" >&2
+        return 1
+    fi
+    if [ ! -d "${imagedir}" ]; then
+        echo "qa_lib.check_number_of_kernels: ${imagedir} is not a directory" >&2
+        return 1
+    fi
+
     local expected_amount="${2}"
+    if [ -z "${expected_amount}" ]; then
+        echo "qa_lib.check_number_of_kernels: missing expected_amount parameter" >&2
+        return 1
+    fi
 
     local found_amount=
     found_amount=$(find "${imagedir}"/usr/lib/modules/* -name vmlinuz | wc -l)
