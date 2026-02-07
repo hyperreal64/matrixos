@@ -235,6 +235,12 @@ ostree_lib.prepare_filesystem_hierarchy() {
     fi
     ln -s "usr/opt" "${optdir}"
 
+    echo "Setting up /lab (for everything homelabbing and your LAN)..."
+    local labdir="${imagedir}/lab"
+    if [ -d "${labdir}" ]; then
+        mkdir -p "${labdir}"
+    fi
+
     echo "Setting up /srv..."
     local srvdir="${imagedir}/srv"
     local varsrvdir="${imagedir}/var/srv"
