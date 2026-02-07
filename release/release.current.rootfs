@@ -53,8 +53,8 @@ prepare_readonly_rootfs() {
 	mount ${verbose_flag} --bind "${MATRIXOS_DEV_DIR}" "${release_root_dir}${MATRIXOS_DEV_DIR}"
 
     for d in /dev /proc /sys; do
-        mount ${verbose_flag} --rbind "${d}" "${release_root_dir}${d}"
-        mount ${verbose_flag} --make-rslave "${release_root_dir}${d}"
+        mount ${verbose_flag} --bind "${d}" "${release_root_dir}${d}"
+        mount ${verbose_flag} --make-slave "${release_root_dir}${d}"
     done
 
     # rw mounts to make release.sh happy.
