@@ -782,6 +782,45 @@ image_lib.package_list() {
     done
 }
 
+image_lib.setup_hooks() {
+    local ostree_deploy_rootfs="${1}"
+    if [ -z "${ostree_deploy_rootfs}" ]; then
+        echo "image_lib.setup_hooks: missing ostree ostree_deploy_rootfs parameter" >&2
+        return 1
+    fi
+
+    local ref="${2}"
+    if [ -z "${ref}" ]; then
+        echo "image_lib.setup_hooks: missing ref parameter" >&2
+        return 1
+    fi
+    ref=$(ostree_lib.clean_remote_from_ref "${ref}")
+    ref=$(ostree_lib.remove_full_from_branch "${ref}")
+
+    local hooks_src_dir="${MATRIXOS_DEV_DIR}/image/hooks"
+    if [ ! -d "${hooks_src_dir}" ]; then
+        echo "image_lib.setup_hooks: hooks source dir ${hooks_src_dir} does not exist" >&2
+        return 0
+    fi
+
+    local hook_exec="${MATRIXOS_DEV_DIR}/image/hooks/${ref}.sh"
+    if [ ! -f "${hook_exec}" ]; then
+        echo "image_lib.setup_hooks: hook script ${hook_exec} does not exist" >&2
+        return 0
+    fi
+    if [ ! -x "${hook_exec}" ]; then
+        echo "image_lib.setup_hooks: hook script ${hook_exec} is not executable!" >&2
+        return 1
+    fi
+
+    (
+        export MATRIXOS_DEV_DIR
+        export ROOTFS="${ostree_deploy_rootfs}"
+        export REF="${ref}"
+        "${hook_exec}"
+    )
+}
+
 image_lib.finalize_filesystems() {
     local mount_rootfs="${1}"
     if [ -z "${mount_rootfs}" ]; then
