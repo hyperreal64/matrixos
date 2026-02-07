@@ -37,6 +37,8 @@ ARG_ONLY_IMAGES=
 ARG_FORCE_IMAGES=
 ARG_ON_BUILD_SERVER=
 ARG_RESUME_SEEDERS=
+ARG_SEEDER_ARGS=()
+ARG_RELEASER_ARGS=()
 ARG_RUN_JANITOR=1  # default.
 ARG_CDN_PUSHER=
 ARG_HELP=
@@ -105,6 +107,49 @@ parse_args() {
         shift
         ;;
 
+        -s|--skip-seeders|--skip-seeders=*)
+        local vals=
+        if [[ "${1}" =~ --skip-seeders=.* ]]; then
+            vals=${1/--skip-seeders=/}
+            shift
+
+        else
+            vals="${2}"
+            shift 2
+        fi
+        local skip_seeders=()
+        readarray -d ',' -t skip_seeders <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        skip_seeders[-1]="${skip_seeders[-1]%$'\n'}"
+        ARG_SEEDER_ARGS+=(
+            "--skip-seeders=${skip_seeders[@]}"
+        )
+        ARG_RELEASER_ARGS+=(
+            "--skip-seeders=${skip_seeders[@]}"
+        )
+        ;;
+
+        -o|--only-seeders|--only-seeders=*)
+        local vals=
+        if [[ "${1}" =~ --only-seeders=.* ]]; then
+            vals=${1/--only-seeders=/}
+            shift
+        else
+            vals="${2}"
+            shift 2
+        fi
+        local only_seeders=()
+        readarray -d ',' -t only_seeders <<< "${vals}"
+        # Important: readarray keeps the delimiter unless you trim it.
+        only_seeders[-1]="${only_seeders[-1]%$'\n'}"
+        ARG_SEEDER_ARGS+=(
+            "--only-seeders=${only_seeders[@]}"
+        )
+        ARG_RELEASER_ARGS+=(
+            "--only-seeders=${only_seeders[@]}"
+        )
+        ;;
+
         -dj|--disable-janitor)
         ARG_RUN_JANITOR=
 
@@ -132,6 +177,10 @@ parse_args() {
         echo -e "-fi, --force-images  \t\t force images creation for all branches, after the seeder and releaser executed." >&2
         echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
         echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
+        echo -e "-s, --skip-seeders  \t\t comma separated list of seeders to skip (by name)." >&2
+        echo -e "\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
+        echo -e "-o, --only-seeders  \t\t comma separated allow-list of seeders to accept (by name)." >&2
+        echo -e "\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
         echo -e "-dj, --disable-janitor  \t disable old artifacts cleanup at the end of the build (default is enabled)." >&2
         echo -e "-cp, --cdn-pusher  \t\t hook to an executable that pushes the generated artifacts to a CDN." >&2
         echo -e "               \t\t\t\t exported vars: MATRIXOS_BUILT_RELEASES='rel1 rel2 rel3' MATRIXOS_BUILT_IMAGES='<0|1>'" >&2
@@ -221,6 +270,7 @@ main() {
             local seeder_args=(
                 --verbose
                 --built-seeders-file="${BUILT_SEEDERS_FILE}"
+                "${ARG_SEEDER_ARGS[@]}"
             )
             if _resume_seeders_flag "${@}"; then
                 seeder_args+=(
@@ -232,6 +282,7 @@ main() {
 
             local releaser_args=(
                 --verbose
+                "${ARG_RELEASER_ARGS[@]}"
             )
             if [ ! -e "${BUILT_SEEDERS_FILE}" ]; then
                 echo "Apparently, ${BUILT_SEEDERS_FILE} disappeared. Running the releaser regardless ..." >&2
