@@ -3,44 +3,21 @@
 # It contains common seeder execution variables.
 set -eu
 
-source "${MATRIXOS_DEV_DIR:-/matrixos}"/headers/env.include.sh
+if [ -z "${__MATRIXOS_SEEDERS_ENV_PARSED:-}" ]; then
 
+source "${MATRIXOS_DEV_DIR}"/lib/env_lib.sh
 
-# MATRIXOS_SEEDERS_BUILD_ARTIFACTS_DIR=/build
-# Directory in which seeders are allowed to store their own artifacts.
-# This directory will be removed during release.
-MATRIXOS_SEEDERS_BUILD_ARTIFACTS_DIR="/build"
+# See conf/matrixos.conf for documentation on these variables.
+MATRIXOS_SEEDERS_DIR=$(env_lib.get_simple_var "matrixOS" "DefaultRoot")/build/seeders
+MATRIXOS_SEEDERS_BUILD_ARTIFACTS_DIR=$(env_lib.get_simple_var "Seeder" "ChrootBuildArtifactsDir")
+MATRIXOS_SEEDERS_PHASES_STATE_DIR=$(env_lib.get_simple_var "Seeder" "ChrootSeedersPhasesStateDir")
+MATRIXOS_DISABLED_SEEDER_FILE=$(env_lib.get_simple_var "Seeder" "SeederDisabledFileName")
 
-# MATRIXOS_SEEDERS_DIR=/matrixos/build/seeders
-# Directory in which (currently) seeders scripts for execution inside chroot
-# are stored.
-# This MUST always use the default DEFAULT_MATRIXOS_DEV_DIR path.
-MATRIXOS_SEEDERS_DIR="${DEFAULT_MATRIXOS_DEV_DIR}/build/seeders"
+_seeder_flag_prefix=$(env_lib.get_simple_var "Seeder" "ChrootSeederDoneFlagFileNamePrefix")
+MATRIXOS_SEEDER_DONE_FLAG_FILE="${MATRIXOS_SEEDERS_PHASES_STATE_DIR}/${_seeder_flag_prefix}"
 
-# MATRIXOS_SEEDERS_PHASES_STATE_DIR=/build/.seeders_phases
-# Directory in which seeders can store their checkpoints (or phases state)
-# To allow for checkpointed resume of execution.
-MATRIXOS_SEEDERS_PHASES_STATE_DIR="${MATRIXOS_SEEDERS_BUILD_ARTIFACTS_DIR}/.seeders_phases"
-
-# MATRIXOS_SEEDER_DONE_FLAG_FILE=${MATRIXOS_SEEDERS_PHASES_STATE_DIR}/seeder.complete_{{.seeder_name}}
-# File that is atomically created by the seeder orchestrator to flag that a
-# chroot seeder is fully done and all ephemeral mount points are removed.
-# Note that the file name gets the name of the seeder appended at the end.
-MATRIXOS_SEEDER_DONE_FLAG_FILE="${MATRIXOS_SEEDERS_PHASES_STATE_DIR}/seeder.complete"
-
-# MATRIXOS_DISABLED_SEEDER_FILE=name
-# File that can be placed inside the seeder directory (e.g. 10-server) to disable the
-# Seeder from being executed.
-MATRIXOS_DISABLED_SEEDER_FILE="__disabled__"
-
-# MATRIXOS_SEEDER_CHROOT_EXEC_NAME=name.sh
-# Name of the script used inside the chroot to seed the filesystem (e.g. install ebuilds).
-MATRIXOS_SEEDER_CHROOT_EXEC_NAME="chroot.sh"
-
-# MATRIXOS_SEEDER_PARAMS_EXEC_NAME=name.sh
-# Name of the script containing important environment variables for the associated seeder, that
-# are used by the seeding process.
-MATRIXOS_SEEDER_PARAMS_EXEC_NAME="params.sh"
+MATRIXOS_SEEDER_CHROOT_EXEC_NAME=$(env_lib.get_simple_var "Seeder" "ChrootExecutableName")
+MATRIXOS_SEEDER_PARAMS_EXEC_NAME=$(env_lib.get_simple_var "Seeder" "ParamsExecutableName")
 
 # MATRIXOS_SEEDER_CHROOT_DATE=
 # Overrides the default dating scheme used below "YYYYMMDD" anchored to the
@@ -69,3 +46,6 @@ seeders_env.get_chroot_seeder_done_flag_file() {
     local flag_path="${chroot_dir%/}${MATRIXOS_SEEDER_DONE_FLAG_FILE}_${seeder_name}"
     echo "${flag_path}"
 }
+
+__MATRIXOS_SEEDERS_ENV_PARSED=1
+fi
