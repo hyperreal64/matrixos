@@ -3,9 +3,9 @@
 # the matrixOS build, release and image binaries (i.e. the whole workflow).
 set -eu
 
-script_dir=$(dirname $(realpath "${0}"))
-export MATRIXOS_DEV_DIR=$(dirname "${script_dir}")
-
+if [ -z "${MATRIXOS_DEV_DIR:-}" ]; then
+    MATRIXOS_DEV_DIR="$(realpath $(dirname "${0}")/../)"
+fi
 source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
 
 source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh

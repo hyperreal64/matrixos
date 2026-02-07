@@ -2,7 +2,9 @@
 # jailbreak - Convert matrixOS OSTree to a normal & mutable Gentoo install.
 set -eu
 
-MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
+if [ -z "${MATRIXOS_DEV_DIR:-}" ]; then
+    MATRIXOS_DEV_DIR="$(realpath $(dirname "${0}")/../)"
+fi
 source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
 
 source "${MATRIXOS_DEV_DIR}"/lib/ini_lib.sh
