@@ -37,6 +37,7 @@ ARG_ONLY_IMAGES=
 ARG_FORCE_IMAGES=
 ARG_ON_BUILD_SERVER=
 ARG_RESUME_SEEDERS=
+ARG_RUN_JANITOR=1  # default.
 ARG_HELP=
 
 
@@ -97,6 +98,12 @@ parse_args() {
         shift
         ;;
 
+        -dj|--disable-janitor)
+        ARG_RUN_JANITOR=
+
+        shift
+        ;;
+
         -rs|--resume-seeders)
         ARG_RESUME_SEEDERS=1
 
@@ -111,6 +118,7 @@ parse_args() {
         echo -e "-oi, --only-images  \t\t generate the images from the last committed branches, skipping seeder and releaser." >&2
         echo -e "-fi, --force-images  \t\t force images creation for all branches, after the seeder and releaser executed." >&2
         echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
+        echo -e "-dj, --disable-janitor  \t disable old artifacts cleanup at the end of the build (default is enabled)." >&2
         echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
         echo >&2
         ARG_HELP=1
@@ -143,6 +151,10 @@ _force_images_flag() {
 
 _on_build_server_flag() {
     [[ -n "${ARG_ON_BUILD_SERVER}" ]]
+}
+
+_run_janitor_flag() {
+    [[ -n "${ARG_RUN_JANITOR}" ]]
 }
 
 _resume_seeders_flag() {
@@ -274,6 +286,12 @@ main() {
         fi
 
         "${MATRIXOS_DEV_DIR}/image/image.releases" "${imager_args[@]}"
+
+        if _run_janitor_flag "${@}"; then
+            echo "Running janitor clean ups ..."
+            "${MATRIXOS_DEV_DIR}"/dev/clean_old_builds.sh
+            "${MATRIXOS_DEV_DIR}"/dev/janitor/run.sh
+        fi
 
     ) > >(tee -a "${LOGFILE}") 2> >(tee -a "${LOGFILE}" >&2)
 }
