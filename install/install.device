@@ -423,9 +423,13 @@ main() {
         fi
         ostree_lib.run admin status --sysroot="/"
         echo
-        echo "You are currently booted using the ostree branch: ${wanted_ref} ."
+        echo "You are currently booted using the ostree branch: ${wanted_ref}"
         echo
     fi
+
+    echo "Showing the block devices present on this system:"
+    lsblk
+    echo
 
     local d=
     local any_device=
