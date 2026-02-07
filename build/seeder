@@ -436,11 +436,26 @@ setup_chroot_dirs() {
         mkdir -p "${seeders_phases_chroot_dir}"
     fi
 
+    local local_cloning="${MATRIXOS_USE_LOCAL_GIT_REPO_INSIDE_CHROOT}"
     local chroot_dev_dir="${chroot_dir%/}${DEFAULT_MATRIXOS_DEV_DIR}"
     if [ ! -d "${chroot_dev_dir}" ]; then
         echo "Dev build toolkit at ${chroot_dev_dir} does not exist, pulling it ..."
-        echo "Cloning ${MATRIXOS_GIT_REPO} into chroot's dir ${chroot_dev_dir} ..."
-        seeders_lib.retryable_cmd 6 git clone --depth 1 "${MATRIXOS_GIT_REPO}" "${chroot_dev_dir}"
+        if [ -n "${local_cloning}" ]; then
+            echo "Cloning ${MATRIXOS_DEV_DIR} (local) into chroot's dir ${chroot_dev_dir} ..."
+            git clone --depth 1 "${MATRIXOS_DEV_DIR}" "${chroot_dev_dir}"
+        else
+            echo "Cloning ${MATRIXOS_GIT_REPO} (remote) into chroot's dir ${chroot_dev_dir} ..."
+            seeders_lib.retryable_cmd 6 git clone --depth 1 "${MATRIXOS_GIT_REPO}" "${chroot_dev_dir}"
+        fi
+    fi
+
+    local delete_dot_git="${MATRIXOS_DELETE_DOT_GIT_FROM_GIT_REPO}"
+    if [ -n "${delete_dot_git}" ]; then
+        local dot_git_dir="${chroot_dev_dir}/.git"
+        if [ -d "${dot_git_dir}" ]; then
+            echo "Deleting ${dot_git_dir} ..."
+            rm -rf "${dot_git_dir}"
+        fi
     fi
 
     local chroot_build_dir="${chroot_dir%/}${MATRIXOS_SEEDERS_PHASES_STATE_DIR}"
