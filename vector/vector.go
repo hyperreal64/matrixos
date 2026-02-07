@@ -35,6 +35,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set LC_TIME=C to ensure that Cloudflare can correctly process HTTP
+	// requests coming from Vector. Otherwise Cloudflare responds with HTTP 400
+	// when the ostree command sends requests to Cloudflare backed remotes.
+	os.Setenv("LC_TIME", "C")
+
 	cmds := []commands.ICommand{
 		commands.NewBranchCommand(),
 		commands.NewUpgradeCommand(),
