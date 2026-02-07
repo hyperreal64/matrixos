@@ -179,6 +179,8 @@ func (c *IniConfig) Load() error {
 		"Seeder.PortageReposDir",
 		"Seeder.GpgKeysDir",
 		"Imager.ImagesDir",
+		"Imager.LocksDir",
+		"Imager.MountDir",
 		"Ostree.RepoDir",
 		"Ostree.DevGpgHomeDir",
 		"Ostree.GpgOfficialPublicKey",

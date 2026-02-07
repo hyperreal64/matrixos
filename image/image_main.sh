@@ -203,7 +203,6 @@ parse_args() {
         echo -e "-r, --ref  \t\t\t\t\t the ostree ref name to build on (i.e. the name of the release branch, with or without remote)." >&2
         echo -e "-l, --local-ostree  \t\t\t\t use the local ostree repo instead of remote (or fetching from remote)." >&2
         echo -e "-qcow2, --create-qcow2  \t\t\t create a QCOW2 image too." >&2
-        echo -e "  \t\t\t\t\t\t     default: ${MATRIXOS_LIVEOS_CREATE_QCOW2:-disabled}" >&2
         echo -e "-comp <xz|zstd|gz>, --compressor=<xz|zstd|gz>  \t compress the generated .img files using the given compressor." >&2
         echo -e "  \t\t\t\t\t\t     default: ${MATRIXOS_LIVEOS_IMAGES_COMPRESSOR}" >&2
         echo -e "-prod, --productionize  \t\t\t enable additional steps to generate a production ready image." >&2
@@ -660,9 +659,6 @@ main() {
     local create_qcow2=
     if [ -n "${ARG_CREATE_QCOW2}" ]; then
         create_qcow2="${ARG_CREATE_QCOW2}"
-    else
-        echo "--create-qcow2 unset. Using default --create-qcow2=${MATRIXOS_LIVEOS_CREATE_QCOW2}." >&2
-        create_qcow2="${MATRIXOS_LIVEOS_CREATE_QCOW2}"
     fi
 
     local compressor=
