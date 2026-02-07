@@ -245,6 +245,7 @@ _cdn_pusher_flag() {
 main() {
     trap finish EXIT
 
+    cd "${MATRIXOS_DEV_DIR}"
     parse_args "${@}"
 
     local found_uid
