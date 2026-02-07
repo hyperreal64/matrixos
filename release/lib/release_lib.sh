@@ -98,7 +98,6 @@ release_lib._rsync_copy() {
     local dst="${2}"
     local verbose_mode="${3}"
 
-    local ostreedir="${MATRIXOS_OSTREE_DIR}"
     local verbose_args
     verbose_args=$(_get_rsync_verbosity "${verbose_mode}")
 
@@ -158,7 +157,7 @@ release_lib.get_sync_excluded_paths() {
     fi
 
     local __internal_list=()
-    local ostreedir="${MATRIXOS_OSTREE_DIR}"
+    local ostreedir="${MATRIXOS_OSTREE_REPO_DIR}"
     __internal_list+=(
         "${dst%/}${ostreedir}"
         # "${dst%/}/var/db/repos/*" -- this is needed to emerge --depclean later.
