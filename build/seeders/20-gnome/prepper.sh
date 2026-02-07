@@ -33,8 +33,9 @@ _prepper_dir="$(dirname "${0}")"
 _seeders_dir="$(dirname "${_prepper_dir}")"
 _seeder_name="$(basename "${_prepper_dir}")"
 
-# Import the preppers_lib functions.
-source "${_seeders_dir}"/lib/preppers_lib.sh
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/preppers_lib.sh
+
 
 gnome_prepper.sync_from_bedrock() {
     local latest_bedrock=
