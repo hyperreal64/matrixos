@@ -23,31 +23,27 @@ func TestIniConfig_Load_Expansion(t *testing.T) {
 [matrixOS]
 Root=` + rootPath + `
 PrivateGitRepoPath=` + privateRepoPath + `
-ArtifactsDir=artifacts
 LogsDir=/var/log/matrixos
 LocksDir=locks
-OutDir=out
-
-[Ostree]
-Dir=ostree
-RepoDir=repo
-GpgOfficialPublicKey=pubkeys/ostree.gpg
-DevGpgHomeDir=gpg-home
-GpgPrivateKey=keys/priv.key
-GpgPublicKey=keys/pub.key
 
 [Seeder]
-OutDir=seeder
-DownloadsDir=downloads
-DistfilesDir=distfiles
-BinpkgsDir=binpkgs
-PortageReposDir=repos
-GpgKeysDir=gpg-keys
+DownloadsDir=out/seeder/downloads
+DistfilesDir=out/seeder/distfiles
+BinpkgsDir=out/seeder/binpkgs
+PortageReposDir=out/seeder/repos
+GpgKeysDir=out/seeder/gpg-keys
 SecureBootPrivateKey=sb-keys/db.key
 SecureBootPublicKey=sb-keys/db.pem
 
 [Imager]
-OutDir=images
+ImagesDir=out/images
+
+[Ostree]
+RepoDir=ostree/repo
+DevGpgHomeDir=gpg-home
+GpgPrivateKey=keys/priv.key
+GpgPublicKey=keys/pub.key
+GpgOfficialPublicKey=pubkeys/ostree.gpg
 `
 	if _, err := tmpFile.WriteString(configContent); err != nil {
 		t.Fatalf("Failed to write to temp file: %v", err)
@@ -55,7 +51,7 @@ OutDir=images
 	tmpFile.Close()
 
 	// Load config
-	cfg, err := NewIniConfigFromFile(tmpFile.Name())
+	cfg, err := NewIniConfigFromFile(tmpFile.Name(), rootPath)
 	if err != nil {
 		t.Fatalf("Failed to create config: %v", err)
 	}
@@ -75,45 +71,27 @@ OutDir=images
 		}
 	}
 
-	// Level 0 (Roots)
 	check("matrixOS.Root", rootPath)
+
+	// Relative to matrixOS.Root
 	check("matrixOS.PrivateGitRepoPath", privateRepoPath)
-
-	// Level 1 (Relative to Root)
-	check("matrixOS.ArtifactsDir", filepath.Join(rootPath, "artifacts"))
 	check("matrixOS.LocksDir", filepath.Join(rootPath, "locks"))
-	check("Ostree.Dir", filepath.Join(rootPath, "ostree"))
 	check("Ostree.GpgOfficialPublicKey", filepath.Join(rootPath, "pubkeys/ostree.gpg"))
-	// Absolute path override check (LogsDir was set to /var/log/matrixos)
 	check("matrixOS.LogsDir", "/var/log/matrixos")
-
-	// Level 2 (Relative to ArtifactsDir)
-	artifactsDir := filepath.Join(rootPath, "artifacts")
-	check("matrixOS.OutDir", filepath.Join(artifactsDir, "out"))
-	check("Ostree.DevGpgHomeDir", filepath.Join(artifactsDir, "gpg-home"))
-
-	// Level 3 (Relative to OutDir)
-	outDir := filepath.Join(artifactsDir, "out")
-	check("Seeder.OutDir", filepath.Join(outDir, "seeder"))
-	check("Imager.OutDir", filepath.Join(outDir, "images"))
-
-	// Level 4 (Relative to Seeder.OutDir)
-	seederOutDir := filepath.Join(outDir, "seeder")
-	check("Seeder.DownloadsDir", filepath.Join(seederOutDir, "downloads"))
-	check("Seeder.DistfilesDir", filepath.Join(seederOutDir, "distfiles"))
-	check("Seeder.BinpkgsDir", filepath.Join(seederOutDir, "binpkgs"))
-	check("Seeder.PortageReposDir", filepath.Join(seederOutDir, "repos"))
-	check("Seeder.GpgKeysDir", filepath.Join(seederOutDir, "gpg-keys"))
+	check("Ostree.DevGpgHomeDir", filepath.Join(rootPath, "gpg-home"))
+	check("Imager.ImagesDir", filepath.Join(rootPath, "out/images"))
+	check("Seeder.DownloadsDir", filepath.Join(rootPath, "out/seeder/downloads"))
+	check("Seeder.DistfilesDir", filepath.Join(rootPath, "out/seeder/distfiles"))
+	check("Seeder.BinpkgsDir", filepath.Join(rootPath, "out/seeder/binpkgs"))
+	check("Seeder.PortageReposDir", filepath.Join(rootPath, "out/seeder/repos"))
+	check("Seeder.GpgKeysDir", filepath.Join(rootPath, "out/seeder/gpg-keys"))
+	check("Ostree.RepoDir", filepath.Join(rootPath, "ostree/repo"))
 
 	// Level X (Relative to PrivateGitRepoPath)
 	check("Seeder.SecureBootPrivateKey", filepath.Join(privateRepoPath, "sb-keys/db.key"))
 	check("Seeder.SecureBootPublicKey", filepath.Join(privateRepoPath, "sb-keys/db.pem"))
 	check("Ostree.GpgPrivateKey", filepath.Join(privateRepoPath, "keys/priv.key"))
 	check("Ostree.GpgPublicKey", filepath.Join(privateRepoPath, "keys/pub.key"))
-
-	// Level Y (Relative to Ostree.Dir)
-	ostreeDir := filepath.Join(rootPath, "ostree")
-	check("Ostree.RepoDir", filepath.Join(ostreeDir, "repo"))
 }
 
 func TestIniConfig_Defaults(t *testing.T) {
@@ -125,7 +103,7 @@ func TestIniConfig_Defaults(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
-	cfg, err := NewIniConfigFromFile(tmpFile.Name())
+	cfg, err := NewIniConfigFromFile(tmpFile.Name(), filepath.Dir(tmpFile.Name()))
 	if err != nil {
 		t.Fatalf("Failed to create config: %v", err)
 	}
