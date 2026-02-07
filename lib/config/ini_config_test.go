@@ -24,7 +24,6 @@ func TestIniConfig_Load_Expansion(t *testing.T) {
 Root=` + rootPath + `
 PrivateGitRepoPath=` + privateRepoPath + `
 ArtifactsDir=artifacts
-ConfDir=conf
 LogsDir=/var/log/matrixos
 LocksDir=locks
 OutDir=out
@@ -79,7 +78,6 @@ OutDir=images
 
 	// Level 1 (Relative to Root)
 	check("matrixOS.ArtifactsDir", filepath.Join(rootPath, "artifacts"))
-	check("matrixOS.ConfDir", filepath.Join(rootPath, "conf"))
 	check("matrixOS.LocksDir", filepath.Join(rootPath, "locks"))
 	check("Ostree.Dir", filepath.Join(rootPath, "ostree"))
 	check("Ostree.GpgOfficialPublicKey", filepath.Join(rootPath, "pubkeys/ostree.gpg"))
