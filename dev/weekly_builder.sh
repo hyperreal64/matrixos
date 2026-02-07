@@ -38,6 +38,7 @@ ARG_FORCE_IMAGES=
 ARG_ON_BUILD_SERVER=
 ARG_RESUME_SEEDERS=
 ARG_RUN_JANITOR=1  # default.
+ARG_CDN_PUSHER=
 ARG_HELP=
 
 
@@ -98,16 +99,28 @@ parse_args() {
         shift
         ;;
 
+        -rs|--resume-seeders)
+        ARG_RESUME_SEEDERS=1
+
+        shift
+        ;;
+
         -dj|--disable-janitor)
         ARG_RUN_JANITOR=
 
         shift
         ;;
 
-        -rs|--resume-seeders)
-        ARG_RESUME_SEEDERS=1
-
-        shift
+        -cp|--cdn-pusher|--cdn-pusher=*)
+        local val=
+        if [[ "${1}" =~ --cdn-pusher=.* ]]; then
+            val=${1/--cdn-pusher=/}
+            shift
+        else
+            val="${2}"
+            shift 2
+        fi
+        ARG_CDN_PUSHER="${val}"
         ;;
 
         -h|--help)
@@ -118,8 +131,10 @@ parse_args() {
         echo -e "-oi, --only-images  \t\t generate the images from the last committed branches, skipping seeder and releaser." >&2
         echo -e "-fi, --force-images  \t\t force images creation for all branches, after the seeder and releaser executed." >&2
         echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
-        echo -e "-dj, --disable-janitor  \t disable old artifacts cleanup at the end of the build (default is enabled)." >&2
         echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
+        echo -e "-dj, --disable-janitor  \t disable old artifacts cleanup at the end of the build (default is enabled)." >&2
+        echo -e "-cp, --cdn-pusher  \t\t hook to an executable that pushes the generated artifacts to a CDN." >&2
+        echo -e "               \t\t\t\t exported vars: MATRIXOS_BUILT_RELEASES='rel1 rel2 rel3' MATRIXOS_BUILT_IMAGES='<0|1>'" >&2
         echo >&2
         ARG_HELP=1
         exit 0
@@ -153,12 +168,16 @@ _on_build_server_flag() {
     [[ -n "${ARG_ON_BUILD_SERVER}" ]]
 }
 
+_resume_seeders_flag() {
+    [[ -n "${ARG_RESUME_SEEDERS}" ]]
+}
+
 _run_janitor_flag() {
     [[ -n "${ARG_RUN_JANITOR}" ]]
 }
 
-_resume_seeders_flag() {
-    [[ -n "${ARG_RESUME_SEEDERS}" ]]
+_cdn_pusher_flag() {
+    echo "${ARG_CDN_PUSHER}"
 }
 
 
@@ -268,29 +287,45 @@ main() {
             --productionize
             --create-qcow2
         )
+        local execute_imager=
         if [[ "${#built_releases[@]}" -gt 0 ]]; then
             printf -v reljoined ",%s" "${built_releases[@]}"
             imager_args+=(
                 "--only-releases=${reljoined:1}"
             )
             echo "Creating new images only for freshly built releases: ${reljoined:1} ..."
+            execute_imager=1
         elif _force_images_flag "${@}"; then
             echo "Forcing new images via --force-images."
-            # fall through.
+            execute_imager=1
         elif _only_images_flag "${@}"; then
             echo "Creating only images (all) via --only-images."
-            # fall through.
+            execute_imager=1
         else
             echo "No images to release. Yay?"
-            return 0
         fi
 
-        "${MATRIXOS_DEV_DIR}/image/image.releases" "${imager_args[@]}"
+        if [ -n "${execute_imager}" ]; then
+            "${MATRIXOS_DEV_DIR}/image/image.releases" "${imager_args[@]}"
+        fi
 
         if _run_janitor_flag "${@}"; then
             echo "Running janitor clean ups ..."
             "${MATRIXOS_DEV_DIR}"/dev/clean_old_builds.sh
             "${MATRIXOS_DEV_DIR}"/dev/janitor/run.sh
+        fi
+
+        local cdn_pusher=
+        cdn_pusher=$(_cdn_pusher_flag "${@}")
+        if [ -n "${cdn_pusher}" ] && [ -x "${cdn_pusher}" ]; then
+            (
+                export MATRIXOS_BUILT_RELEASES="${built_releases[*]}"
+                export MATRIXOS_BUILT_IMAGES="${execute_imager:-0}"
+                "${cdn_pusher}"
+            )
+        elif [ -n "${cdn_pusher}" ] && [ ! -x "${cdn_pusher}" ]; then
+            echo "ERROR: unable to push to CDN. ${cdn_pusher} not executable!" >&2
+            return 1
         fi
 
     ) > >(tee -a "${LOGFILE}") 2> >(tee -a "${LOGFILE}" >&2)
