@@ -178,6 +178,8 @@ func (c *IniConfig) Load() error {
 		"Seeder.BinpkgsDir",
 		"Seeder.PortageReposDir",
 		"Seeder.GpgKeysDir",
+		"Releaser.HooksDir",
+		"Releaser.LocksDir",
 		"Imager.ImagesDir",
 		"Imager.LocksDir",
 		"Imager.MountDir",

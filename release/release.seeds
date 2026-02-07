@@ -31,14 +31,6 @@ ARG_BUILT_RELEASES_FILE=
 
 
 parse_args() {
-
-    # When releasing seeds, we are not using chroot-dir=/ and so we should try
-    # to use this to preserve CoW-ed files if possible. But disabling it helps
-    # if we want to productionize a rootfs and continue to maintain it in parallel.
-    # But do we want that? it's probably better to start from the already built chroot
-    # and save that instead, no?
-    export MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=1
-
     while [[ ${#} -gt 0 ]]; do
     case ${1} in
 
@@ -99,12 +91,6 @@ parse_args() {
         ARG_ONLY_SEEDERS[-1]="${ARG_ONLY_SEEDERS[-1]%$'\n'}"
         ;;
 
-        -doc|--disable-ostree-consume)
-        export MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=0
-
-        shift
-        ;;
-
         -br|--built-releases-file|--built-releases-file=*)
         local val=
         if [[ "${1}" =~ --built-releases-file=.* ]]; then
@@ -129,7 +115,6 @@ parse_args() {
         echo -e "-o, --only-seeders  \t\t\t comma separated allow-list of seeders to accept (by name)." >&2
         echo -e "\t\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
         echo -e "-br, --built-releases-file \t\t path to a file where the list of succesfully built release branches will be written." >&2
-        echo -e "-doc, --disable-ostree-consume \t\t sets MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG=0" >&2
         echo >&2
         echo -e "Other arguments are passed directly to release_main.sh" >&2
         echo >&2
