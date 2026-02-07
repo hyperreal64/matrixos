@@ -335,6 +335,7 @@ ostree_lib.get_ostree_gpg_homedir() {
     if [ ! -d "${homedir}" ]; then
         mkdir -p "${homedir}"
     fi
+    ostree_lib.patch_ostree_gpg_homedir "${homedir}" >/dev/null
     echo "${homedir}"
 }
 
@@ -397,7 +398,7 @@ ostree_lib.gpg_sign_file() {
 }
 
 ostree_lib.patch_ostree_gpg_homedir() {
-    local homedir="${MATRIXOS_OSTREE_DEV_GPG_HOMEDIR}"
+    local homedir="${1:-${MATRIXOS_OSTREE_DEV_GPG_HOMEDIR}}"
     mkdir -p "${homedir}"
     chmod 700 "${homedir}"
     find "${homedir}" -type f -exec chmod 600 {} +
