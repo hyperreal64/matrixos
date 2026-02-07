@@ -10,7 +10,7 @@ source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
 source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/seeders_lib.sh
 
 preppers_lib.get_gpg_keychain_dir() {
-    kc_dir="${MATRIXOS_SEEDER_GPG_KEYS_DIR}"
+    local kc_dir="${MATRIXOS_SEEDER_GPG_KEYS_DIR}"
     [[ ! -d "${kc_dir}" ]] && mkdir -p "${kc_dir}"
     echo "${kc_dir}"
 }
