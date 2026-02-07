@@ -172,6 +172,7 @@ func (c *IniConfig) Load() error {
 		"matrixOS.PrivateGitRepoPath",
 		"matrixOS.LogsDir",
 		"matrixOS.LocksDir",
+		"Seeder.LocksDir",
 		"Seeder.DownloadsDir",
 		"Seeder.DistfilesDir",
 		"Seeder.BinpkgsDir",
