@@ -278,13 +278,13 @@ main() {
     (
 
         local built_releases=()
-        if ! _only_images_flag "${@}"; then
+        if ! _only_images_flag; then
             local seeder_args=(
                 --verbose
                 --built-seeders-file="${BUILT_SEEDERS_FILE}"
                 "${ARG_SEEDER_ARGS[@]}"
             )
-            if _resume_seeders_flag "${@}"; then
+            if _resume_seeders_flag; then
                 seeder_args+=(
                     --resume
                 )
@@ -310,7 +310,7 @@ main() {
                         "--only-seeders=${joined:1}"
                     )
                     echo "Releasing only for freshly built seeders: ${joined:1} ..."
-                elif _force_release_flag "${@}"; then
+                elif _force_release_flag; then
                     echo "Forcing releases and new images via --force-release."
                     # fall through.
                 else
@@ -331,7 +331,7 @@ main() {
 
             built_releases+=( $(cat "${BUILT_RELEASES_FILE}") )
 
-            if _on_build_server_flag "${@}"; then
+            if _on_build_server_flag; then
                 echo "Executing on a build server, branches are stored without remote names, so stripping that off ..."
                 built_releases=( $(for r in "${built_releases[@]}"; do echo "${r#*:}"; done) )
             fi
@@ -358,13 +358,13 @@ main() {
             )
             echo "Creating new images only for freshly built releases: ${reljoined:1} ..."
             execute_imager=1
-        elif _force_images_flag "${@}"; then
+        elif _force_images_flag; then
             echo "Forcing new images via --force-images."
             execute_imager=1
-        elif _only_images_flag "${@}"; then
+        elif _only_images_flag; then
             echo "Creating only images (all) via --only-images."
             execute_imager=1
-        elif _skip_images_flag "${@}"; then
+        elif _skip_images_flag; then
             echo "Skipping images creation via --skip-images."
         else
             echo "No images to release. Yay?"
@@ -374,14 +374,14 @@ main() {
             "${MATRIXOS_DEV_DIR}/image/image.releases" "${imager_args[@]}"
         fi
 
-        if _run_janitor_flag "${@}"; then
+        if _run_janitor_flag; then
             echo "Running janitor clean ups ..."
             "${MATRIXOS_DEV_DIR}"/dev/clean_old_builds.sh
             "${MATRIXOS_DEV_DIR}"/dev/janitor/run.sh
         fi
 
         local cdn_pusher=
-        cdn_pusher=$(_cdn_pusher_flag "${@}")
+        cdn_pusher=$(_cdn_pusher_flag)
         if [ -n "${cdn_pusher}" ] && [ -x "${cdn_pusher}" ]; then
             (
                 export MATRIXOS_BUILT_RELEASES="${built_releases[*]}"
