@@ -440,7 +440,7 @@ setup_chroot_dirs() {
     if [ ! -d "${chroot_dev_dir}" ]; then
         echo "Dev build toolkit at ${chroot_dev_dir} does not exist, pulling it ..."
         echo "Cloning ${MATRIXOS_GIT_REPO} into chroot's dir ${chroot_dev_dir} ..."
-        seeders_lib.retryable_cmd 6 git clone "${MATRIXOS_GIT_REPO}" "${chroot_dev_dir}"
+        seeders_lib.retryable_cmd 6 git clone --depth 1 "${MATRIXOS_GIT_REPO}" "${chroot_dev_dir}"
     fi
 
     local chroot_build_dir="${chroot_dir%/}${MATRIXOS_SEEDERS_PHASES_STATE_DIR}"
