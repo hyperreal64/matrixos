@@ -7,6 +7,7 @@ fi
 source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
 
 source "${MATRIXOS_DEV_DIR}/lib/ostree_lib.sh"
+source "${MATRIXOS_DEV_DIR}/lib/qa_lib.sh"
 
 
 # --- Constants & Colors ---
@@ -112,6 +113,9 @@ prompt_and_deploy() {
 }
 
 main() {
+    qa_lib.root_privs
+    ostree_lib.setup_environment
+
     local state
     state=$(get_current_state)
     local old_sha
