@@ -35,7 +35,9 @@ SecureBootPublicKey=sb-keys/db.pem
 LocksDir=locks/seeder
 
 [Imager]
+LocksDir=locks/imager
 ImagesDir=out/images
+MountDir=out/mounts
 
 [Ostree]
 RepoDir=ostree/repo
@@ -75,10 +77,12 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	check("matrixOS.PrivateGitRepoPath", privateRepoPath)
 	check("matrixOS.LocksDir", filepath.Join(rootPath, "locks"))
 	check("Seeder.LocksDir", filepath.Join(rootPath, "locks/seeder"))
+	check("Imager.LocksDir", filepath.Join(rootPath, "locks/imager"))
 	check("Ostree.GpgOfficialPublicKey", filepath.Join(rootPath, "pubkeys/ostree.gpg"))
 	check("matrixOS.LogsDir", "/var/log/matrixos")
 	check("Ostree.DevGpgHomeDir", filepath.Join(rootPath, "gpg-home"))
 	check("Imager.ImagesDir", filepath.Join(rootPath, "out/images"))
+	check("Imager.MountDir", filepath.Join(rootPath, "out/mounts"))
 	check("Seeder.DownloadsDir", filepath.Join(rootPath, "out/seeder/downloads"))
 	check("Seeder.DistfilesDir", filepath.Join(rootPath, "out/seeder/distfiles"))
 	check("Seeder.BinpkgsDir", filepath.Join(rootPath, "out/seeder/binpkgs"))
