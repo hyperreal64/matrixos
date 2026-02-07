@@ -142,6 +142,7 @@ qa_lib.verify_distro_rootfs_environment_setup() {
     fi
 
     local executables=(
+        blockdev
         btrfs
         chroot
         cryptsetup
@@ -222,6 +223,7 @@ qa_lib.verify_imager_environment_setup() {
     local gpg_enabled="${2}"  # can be empty.
 
     local executables=(
+        blockdev
         btrfs
         cryptsetup
         efibootmgr
