@@ -186,7 +186,7 @@ func (c *UpgradeCommand) readOriginRefspec(path string) (string, error) {
 }
 
 func (c *UpgradeCommand) upgradePull(sysroot string) error {
-	return c.runCommandSilent("ostree", getSysrootFlag(sysroot), "admin", "upgrade", "--pull-only")
+	return c.runCommand("ostree", getSysrootFlag(sysroot), "admin", "upgrade", "--pull-only")
 }
 
 func (c *UpgradeCommand) getCommitSHA(sysroot, ref string) (string, error) {
@@ -201,11 +201,6 @@ func (c *UpgradeCommand) runCommand(name string, args ...string) error {
 	cmd := execCommand(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func (c *UpgradeCommand) runCommandSilent(name string, args ...string) error {
-	cmd := execCommand(name, args...)
 	return cmd.Run()
 }
 
