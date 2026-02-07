@@ -37,6 +37,9 @@ func (c *LogsCleaner) getLogsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if val.Item == "" {
+		return "", fmt.Errorf("matrixOS.LogsDir is not set")
+	}
 	return val.Item, nil
 }
 
