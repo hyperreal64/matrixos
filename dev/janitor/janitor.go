@@ -10,31 +10,34 @@ import (
 func main() {
 	// Initialize all the known cleaners.
 
-	// For now, we just use a static config. In the future,
-	// we will be using the real and full matrixOS config.
-	cfg := config.StaticConfig{}
+	// Load the matrixOS config.
+	cfg, err := config.NewIniConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading config: %v\n", err)
+		os.Exit(1)
+	}
 	if err := cfg.Load(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error reading config: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Initializing images cleaner ...")
 	icln := &cleaners.ImagesCleaner{}
-	if err := icln.Init(&cfg); err != nil {
+	if err := icln.Init(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing images cleaner: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Initializing downloads cleaner ...")
 	dcln := &cleaners.DownloadsCleaner{}
-	if err := dcln.Init(&cfg); err != nil {
+	if err := dcln.Init(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing downloads cleaner: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Initializing logs cleaner ...")
 	lcln := &cleaners.LogsCleaner{}
-	if err := lcln.Init(&cfg); err != nil {
+	if err := lcln.Init(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing logs cleaner: %v\n", err)
 		os.Exit(1)
 	}
