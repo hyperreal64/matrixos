@@ -1,5 +1,0 @@
-# Always prefer rust to rust-bin, because rust-bin installs into /opt.
-# /opt install breaks on ostree based systems, because /opt is symlinked to
-# /var/opt, which is managed by ostree and content not directly transfered.
-dev-lang/rust-bin
-
