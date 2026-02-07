@@ -38,11 +38,17 @@ func ParseIni(reader io.Reader) (IniFile, error) {
 
 		// Parse key-value pair
 		parts := strings.SplitN(line, "=", 2)
-		if len(parts) < 3 {
+		if len(parts) < 1 {
 			continue
 		}
+
 		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(strings.Join(parts[1:], "="))
+		var value string
+		if len(parts) > 1 {
+			value = strings.TrimSpace(parts[1])
+		} else {
+			value = ""
+		}
 
 		if _, exists := ini[currentSection]; !exists {
 			ini[currentSection] = make(map[string]string)
