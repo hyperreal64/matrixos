@@ -447,8 +447,7 @@ setup_image() {
     )
     echo "Boot arguments: ${boot_args[@]}"
 
-    local efiboot_path
-    efiboot_path=$(dirname "${MATRIXOS_GRUB_CFG_RELATIVE_EFI_PATH}")
+    local efiboot_path="${MATRIXOS_RELATIVE_EFI_BOOT_PATH}"
     local efibootdir="${mount_efifs}${efiboot_path}"
 
     echo "Deploying ostree into ${mount_rootfs} ..."
