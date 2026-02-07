@@ -147,7 +147,6 @@ main() {
     qa_lib.verify_releaser_environment_setup "/"
     release_lib.check_matrixos
     release_lib.sync_filesystem "${ARG_CHROOT_DIR}" "${ARG_IMAGE_DIR}" "${ARG_VERBOSE_MODE}"
-    release_lib.sync_matrixos_dir "${ARG_IMAGE_DIR}"
     release_lib.pre_clean_qa_checks "${ARG_IMAGE_DIR}"
     release_lib.clean_rootfs "${ARG_IMAGE_DIR}"
     release_lib.setup_services "${ARG_IMAGE_DIR}" "MOUNTS" "${branch}"

@@ -207,21 +207,6 @@ release_lib.sync_filesystem() {
     fs_lib.check_hardlink_preservation "${chroot_dir}" "${imagedir}"
 }
 
-release_lib.sync_matrixos_dir() {
-    local imagedir="${1}"
-    if [ -z "${imagedir}" ]; then
-        echo "imagedir is empty" >&2
-        return 1
-    fi
-    if [ ! -d "${imagedir}" ]; then
-        echo "Creating ${imagedir}..."
-        mkdir -p "${imagedir}"
-    fi
-
-    _check_imagedir "${imagedir}"
-    cd "${imagedir}/${DEFAULT_MATRIXOS_DEV_DIR}" && git reset HEAD --hard && git pull
-}
-
 release_lib.pre_clean_qa_checks() {
     local imagedir="${1}"
     _check_imagedir "${imagedir}"
