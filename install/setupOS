@@ -132,8 +132,13 @@ change_luks_password() {
         return 0
     fi
 
-    echo "Please pick a password for the encrypted disk in the following command."
-    cryptsetup luksChangeKey "${luks_device}"
+    while true; do
+        echo "Please pick a password for the encrypted disk in the following command."
+        cryptsetup luksChangeKey "${luks_device}" || {
+            echo "Failed to change LUKS password. Please try again." >&2; continue; 
+        }
+        break
+    done
 }
 
 _setup_localization_keymap() {
@@ -310,10 +315,10 @@ add_matrixos_boot() {
 
 main() {
     check_root
+    change_luks_password
     change_username "${MATRIXOS_DEFAULT_USERNAME}"
     change_user_password "${USERNAME_AFTER_CHANGE}"
     change_user_password "root"
-    change_luks_password
     setup_localization
     detect_windows
     add_matrixos_boot
