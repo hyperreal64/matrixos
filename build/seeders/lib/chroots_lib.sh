@@ -68,9 +68,9 @@ chroots_lib.validate_portage_confdir_path() {
 
 chroots_lib.validate_matrixos_git_repo() {
     # matrixos.git is taken care of by seeder.sh, but check.
-    local matrixos_git_dir="${MATRIXOS_DEV_DIR}/.git"
-    if [ ! -d "${matrixos_git_dir}" ]; then
-        echo "${matrixos_git_dir} does not exist. Clone matrixos.git into ${MATRIXOS_DEV_DIR}." >&2
+    local matrixos_dev_dir_flag="${MATRIXOS_DEV_DIR}/.matrixos"
+    if [ ! -f "${matrixos_dev_dir_flag}" ]; then
+        echo "${matrixos_dev_dir_flag} does not exist. matrixos.git must be cloned into ${MATRIXOS_DEV_DIR}." >&2
         return 1
     fi
 }
