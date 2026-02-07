@@ -201,10 +201,10 @@ SystemAccount=false" > "${user_cfg}"
 }
 
 detect_windows() {
-    local efi_partitions=
-    efi_partitions=$(lsblk -no PATH,PARTTYPE | grep -i "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" \
-        | awk '{print $1}')
-    if [ -z "${efi_partitions}" ]; then
+    local efi_partitions=()
+    read -ra efi_partitions <<< "$(lsblk -no PATH,PARTTYPE | \
+        grep -i "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" | awk '{print $1}')"
+    if [[ "${#efi_partitions[@]}" -eq 0 ]]; then
         echo "No EFI System partitions detected. Weird." >&2
         return 0
     fi
@@ -220,7 +220,7 @@ detect_windows() {
     local existing_mount=
     local was_mounted=
     local msbl_path=/EFI/Microsoft/Boot/bootmgfw.efi
-    for part in ${efi_partitions}; do
+    for part in "${efi_partitions[@]}"; do
 
         existing_mount=$(lsblk -no MOUNTPOINT "${part}" | grep -v "^$" | head -n 1 || true)
         if [ -n "${existing_mount}" ]; then
