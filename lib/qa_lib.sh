@@ -33,7 +33,7 @@ qa_lib.check_secureboot() {
 
     local modulesdir="${imagedir}/lib/modules"
     local usb_storage_mods=
-    read -ra usb_storage_mods <<< "$(find "${modulesdir}" -type f -name "usb-storage.ko*")"
+    mapfile -t usb_storage_mods < <(find "${modulesdir}" -type f -name "usb-storage.ko*")
     if [[ "${#usb_storage_mods[@]}" -eq 0 ]]; then
         echo "No usb-storage.ko found in ${modulesdir}" >&2
         return 1
@@ -287,7 +287,7 @@ qa_lib.check_kernel_and_external_module() {
     fi
 
     local kernel_mods=
-    read -ra kernel_mods <<< "$(find "${modulesdir}"/* -type f -name "${module_name}")"
+    mapfile -t kernel_mods < <(find "${modulesdir}" -type f -name "${module_name}")
     if [[ "${#kernel_mods[@]}" -eq 0 ]]; then
         echo "No ${module_name} found in ${modulesdir}" >&2
         return 1

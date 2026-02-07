@@ -399,8 +399,8 @@ main() {
         echo "Requested install from ostree repo ${repodir} with ostree ref: ${wanted_ref}"
 
         ostree_lib.show_local_refs "${repodir}"
-        local local_refs=()
-        read -ra local_refs <<< "$(ostree_lib.local_refs "${repodir}")"
+        local local_refs=
+        mapfile -t local_refs < <(ostree_lib.local_refs "${repodir}")
         local found=
         for ref in "${local_refs[@]}"
         do
