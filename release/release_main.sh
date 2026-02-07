@@ -161,7 +161,7 @@ main() {
 
     # Remove /etc symlink before commit.
     release_lib.unlink_etc "${ARG_IMAGE_DIR}"
-    # Full tree.
+    local consume_allowed=
     release_lib.release \
         "${MATRIXOS_OSTREE_REPO_DIR}" \
         "${ARG_IMAGE_DIR}" \
@@ -169,7 +169,7 @@ main() {
         "${gpg_enabled}" \
         "${full_branch}" \
         "" \
-        "0"
+        "${consume_allowed}"
 
     # In post_clean_shrink we use emerge again, so fix /etc and /etc/portage temporarily.
     release_lib.symlink_etc "${ARG_IMAGE_DIR}"
@@ -183,6 +183,8 @@ main() {
 
     # Remove /etc symlink before commit.
     release_lib.unlink_etc "${ARG_IMAGE_DIR}"
+
+    consume_allowed=1
     # Commit to the smaller branch.
     release_lib.release \
         "${MATRIXOS_OSTREE_REPO_DIR}" \
@@ -191,7 +193,7 @@ main() {
         "${gpg_enabled}" \
         "${branch}" \
         "${full_branch}" \
-        "1"
+        "${consume_allowed}"
 
     echo "Committed image at ${ARG_IMAGE_DIR} to ostree at ${MATRIXOS_OSTREE_REPO_DIR}."
 }
