@@ -351,8 +351,8 @@ The main build process is orchestrated by scripts in the `dev/` directory. The g
 
 The `dev/build.sh` script automates this entire process. It is **very** important to keep in mind that
 **if** you want to make changes to the build configs in `seeders/`, you **must** fork this repository,
-and commit the changes there, then before launching `dev/build.sh`, you **must** export
-`MATRIXOS_GIT_REPO=<url of your forked git repo>`. The build tool is going to warn you about this
+and commit the changes there, then before launching `dev/build.sh`, you **must** edit
+`GitRepo` under the `[matrixOS]` section inside `conf/matrixos.conf`. The build tool is going to warn you about this
 whole thing. Example:
 
 > **Note:** The following command must be run as root.
@@ -362,7 +362,7 @@ whole thing. Example:
 # ... clone the forked repo
 # ... cd into your forked repo
 # ... make the necessary changes, commit and push them!
-export MATRIXOS_GIT_REPO=https://github.com/youruser/matrixos.git
+# ... edit conf/matrixos.conf matrixOS.GitRepo
 ./dev/build.sh
 ```
 
