@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"matrixos/lib/config"
+	"matrixos/vector/lib/config"
 )
 
 const (

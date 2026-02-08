@@ -3,7 +3,7 @@ package commands
 import (
 	"flag"
 	"fmt"
-	"matrixos/lib/config"
+	"matrixos/vector/lib/config"
 	"matrixos/vector/commands/cleaners"
 	"os"
 )

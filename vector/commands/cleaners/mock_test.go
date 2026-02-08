@@ -2,7 +2,7 @@ package cleaners
 
 import (
 	"fmt"
-	"matrixos/lib/config"
+	"matrixos/vector/lib/config"
 )
 
 // MockConfig is a mock implementation of the IConfig interface for testing purposes.

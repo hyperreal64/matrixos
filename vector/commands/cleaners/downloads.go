@@ -1,7 +1,7 @@
 package cleaners
 
 import (
-	"matrixos/lib/config"
+	"matrixos/vector/lib/config"
 	"time"
 )
 

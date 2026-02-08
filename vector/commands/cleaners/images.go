@@ -3,7 +3,7 @@ package cleaners
 import (
 	"errors"
 	"fmt"
-	"matrixos/lib/config"
+	"matrixos/vector/lib/config"
 	"os"
 	"path/filepath"
 	"regexp"
