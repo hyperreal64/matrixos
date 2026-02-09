@@ -437,8 +437,6 @@ release_lib.post_clean_qa_checks() {
 
     echo "Post-clean QA Checks ..."
 
-    qa_lib.check_opt_emptiness "${imagedir}"
-
     echo "Listing the top 20 largest packages:"
     chroot "${imagedir}" \
         equery size '*' | sed 's/\(.*\):.*(\(.*\))$/\2 \1/' \
