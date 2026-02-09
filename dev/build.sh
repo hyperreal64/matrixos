@@ -59,7 +59,7 @@ main() {
         )
     fi
 
-    exec "${MATRIXOS_DEV_DIR}/dev/weekly_builder.sh" --on-build-server "${@}"
+    exec "${MATRIXOS_DEV_DIR}/dev/weekly_builder.sh" --on-build-server --disable-send-mail "${@}"
 }
 
 main "${@}"
