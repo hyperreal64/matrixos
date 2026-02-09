@@ -1172,3 +1172,580 @@ func TestPullWithRemoteExplicit(t *testing.T) {
 		t.Errorf("PullWithRemote args mismatch: %v", lastArgs)
 	}
 }
+
+func TestConfigGettersErrors(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+		Bools: map[string]bool{},
+	}
+	o, _ := New(cfg)
+
+	if _, err := o.OsName(); err == nil {
+		t.Error("OsName should fail with empty config")
+	}
+	if _, err := o.Arch(); err == nil {
+		t.Error("Arch should fail with empty config")
+	}
+	if _, err := o.RepoDir(); err == nil {
+		t.Error("RepoDir should fail with empty config")
+	}
+	if _, err := o.Sysroot(); err == nil {
+		t.Error("Sysroot should fail with empty config")
+	}
+	if _, err := o.Remote(); err == nil {
+		t.Error("Remote should fail with empty config")
+	}
+	if _, err := o.RemoteURL(); err == nil {
+		t.Error("RemoteURL should fail with empty config")
+	}
+	if _, err := o.GpgPrivateKeyPath(); err == nil {
+		t.Error("GpgPrivateKeyPath should fail with empty config")
+	}
+	if _, err := o.GpgPublicKeyPath(); err == nil {
+		t.Error("GpgPublicKeyPath should fail with empty config")
+	}
+	if _, err := o.GpgOfficialPubKeyPath(); err == nil {
+		t.Error("GpgOfficialPubKeyPath should fail with empty config")
+	}
+	if _, err := o.FullBranchSuffix(); err == nil {
+		t.Error("FullBranchSuffix should fail with empty config")
+	}
+}
+
+func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var cmds []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, strings.Join(args, " "))
+		// Mock ListRemotes output
+		// args: --repo=... remote list
+		for i, arg := range args {
+			if arg == "remote" && i+1 < len(args) && args[i+1] == "list" {
+				fmt.Fprintln(stdout, "origin")
+				return nil
+			}
+		}
+		return nil
+	}
+
+	repoDir := t.TempDir()
+	// Create objects dir to simulate existing repo
+	os.MkdirAll(filepath.Join(repoDir, "objects"), 0755)
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir":   {repoDir},
+			"Ostree.Remote":    {"origin"},
+			"Ostree.RemoteUrl": {"http://url"},
+		},
+	}
+	o, _ := New(cfg)
+
+	if err := o.MaybeInitializeRemote(false); err != nil {
+		t.Fatalf("MaybeInitializeRemote failed: %v", err)
+	}
+
+	// Should NOT see "init" or "remote add"
+	for _, cmd := range cmds {
+		if strings.Contains(cmd, "init") {
+			t.Error("Should not have initialized repo")
+		}
+		if strings.Contains(cmd, "remote add") {
+			t.Error("Should not have added remote")
+		}
+	}
+}
+
+func setupMinimalHierarchy(_ *testing.T, imageDir string) {
+	dirs := []string{"tmp", "etc", "var/db/pkg", "opt", "srv", "usr/local"}
+	for _, d := range dirs {
+		os.MkdirAll(filepath.Join(imageDir, d), 0755)
+	}
+	os.WriteFile(filepath.Join(imageDir, "etc", "machine-id"), []byte("id"), 0644)
+}
+
+func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
+	// Case: Home is a directory
+	t.Run("HomeDir", func(t *testing.T) {
+		imageDir := t.TempDir()
+		setupMinimalHierarchy(t, imageDir)
+		os.Mkdir(filepath.Join(imageDir, "home"), 0755)
+
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Releaser.ReadOnlyVdb": {"/usr/var-db-pkg"},
+				"Imager.EfiRoot":       {"/efi"},
+			},
+		}
+		o, _ := New(cfg)
+		if err := o.PrepareFilesystemHierarchy(imageDir); err != nil {
+			t.Fatalf("PrepareFilesystemHierarchy failed: %v", err)
+		}
+		// Check if home is now a symlink
+		assertSymlink(t, filepath.Join(imageDir, "home"), "var/home")
+		// Check if var/home exists
+		assertDir(t, filepath.Join(imageDir, "var", "home"))
+	})
+
+	// Case: Home is invalid symlink
+	t.Run("HomeInvalidSymlink", func(t *testing.T) {
+		imageDir := t.TempDir()
+		setupMinimalHierarchy(t, imageDir)
+		os.MkdirAll(filepath.Join(imageDir, "var", "home"), 0755)
+		os.Symlink("/invalid", filepath.Join(imageDir, "home"))
+
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
+				"Imager.EfiRoot":       {"/efi"},
+			},
+		}
+		o, _ := New(cfg)
+		if err := o.PrepareFilesystemHierarchy(imageDir); err == nil {
+			t.Error("Expected error for invalid home symlink")
+		}
+	})
+}
+
+func TestListPackagesErrors(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{}, // Missing ReadOnlyVdb
+	}
+	o, _ := New(cfg)
+	if _, err := o.ListPackages("commit", "/sysroot", false); err == nil {
+		t.Error("ListPackages should fail if ReadOnlyVdb is missing")
+	}
+
+	cfg = &MockConfig{
+		Items: map[string][]string{
+			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
+		},
+	}
+	o, _ = New(cfg)
+	// Sysroot does not exist
+	if _, err := o.ListPackages("commit", "/sysroot", false); err == nil {
+		t.Error("ListPackages should fail if sysroot/var/db/pkg does not exist")
+	}
+}
+
+func TestPullInvalidRef(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir": {"/repo"},
+		},
+	}
+	o, _ := New(cfg)
+	if err := o.Pull("invalid-ref", false); err == nil {
+		t.Error("Pull should fail for ref without remote prefix")
+	}
+}
+
+func TestGpgArgsEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	os.WriteFile(pubKey, []byte("key"), 0644)
+
+	// Mock GpgKeyID execution
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		if len(args) > 0 && args[0] == "--homedir" {
+			fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
+		}
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
+			"Ostree.GpgPublicKey":  {pubKey},
+		},
+		Bools: map[string]bool{
+			"Ostree.Gpg": true,
+		},
+	}
+	o, _ := New(cfg)
+
+	args, err := o.GpgArgs()
+	if err != nil {
+		t.Fatalf("GpgArgs failed: %v", err)
+	}
+	if len(args) != 2 {
+		t.Errorf("Expected 2 args, got %d", len(args))
+	}
+	if !strings.Contains(args[0], "KEYID123") {
+		t.Errorf("Expected key ID in args, got %s", args[0])
+	}
+}
+
+func TestDeployedRootfsWithSysroot(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		fmt.Fprintln(stdout, "hash123")
+		return nil
+	}
+
+	path, err := DeployedRootfsWithSysroot("/sysroot", "/repo", "osname", "ref", false)
+	if err != nil {
+		t.Fatalf("DeployedRootfsWithSysroot failed: %v", err)
+	}
+	expected := "/sysroot/ostree/deploy/osname/deploy/hash123.0"
+	if path != expected {
+		t.Errorf("DeployedRootfsWithSysroot = %q, want %q", path, expected)
+	}
+}
+
+type errorReader struct{}
+
+func (e *errorReader) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("simulated error")
+}
+
+func TestReaderHelpers(t *testing.T) {
+	// readerToList
+	r := strings.NewReader("line1\n  line2  \n\nline3")
+	list, err := readerToList(r)
+	if err != nil {
+		t.Errorf("readerToList failed: %v", err)
+	}
+	if len(list) != 3 || list[1] != "line2" {
+		t.Errorf("readerToList mismatch: %v", list)
+	}
+
+	_, err = readerToList(&errorReader{})
+	if err == nil {
+		t.Error("readerToList should fail with errorReader")
+	}
+
+	// readerToFirstNonEmptyLine
+	r = strings.NewReader("\n  \n  first  \nsecond")
+	line, err := readerToFirstNonEmptyLine(r)
+	if err != nil {
+		t.Errorf("readerToFirstNonEmptyLine failed: %v", err)
+	}
+	if line != "first" {
+		t.Errorf("readerToFirstNonEmptyLine = %q, want 'first'", line)
+	}
+
+	_, err = readerToFirstNonEmptyLine(&errorReader{})
+	if err == nil {
+		t.Error("readerToFirstNonEmptyLine should fail with errorReader")
+	}
+}
+
+func TestFileHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	file := filepath.Join(tmpDir, "file")
+	os.WriteFile(file, []byte("content"), 0644)
+
+	if !pathExists(file) {
+		t.Error("pathExists(file) = false")
+	}
+	if !pathExists(tmpDir) {
+		t.Error("pathExists(dir) = false")
+	}
+	if pathExists(filepath.Join(tmpDir, "nonexistent")) {
+		t.Error("pathExists(nonexistent) = true")
+	}
+
+	if !fileExists(file) {
+		t.Error("fileExists(file) = false")
+	}
+	if fileExists(tmpDir) {
+		t.Error("fileExists(dir) = true")
+	}
+
+	if directoryExists(file) {
+		t.Error("directoryExists(file) = true")
+	}
+	if !directoryExists(tmpDir) {
+		t.Error("directoryExists(dir) = false")
+	}
+}
+
+func TestRunVerbose(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		if len(args) > 0 && args[0] == "--verbose" {
+			return nil
+		}
+		return fmt.Errorf("expected --verbose")
+	}
+
+	if err := Run(true, "arg"); err != nil {
+		t.Errorf("Run(true) failed: %v", err)
+	}
+}
+
+func TestOstreeWrappers(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir": {"/repo"},
+		},
+	}
+	o, _ := New(cfg)
+
+	if _, err := o.ListRemotes(false); err != nil {
+		t.Error(err)
+	}
+	if _, err := o.LocalRefs(false); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestListPackagesMocked(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock ls -R output
+		output := `d00755 0 0 0 /
+d00755 0 0 0 /var/db/pkg/cat/pkg
+-00644 0 0 0 /var/db/pkg/cat/pkg/CONTENTS
+d00755 0 0 0 /var/db/pkg/cat/other
+`
+		stdout.Write([]byte(output))
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
+		},
+	}
+	o, _ := New(cfg)
+
+	// We need directoryExists to return true for sysroot/var/db/pkg
+	sysroot := t.TempDir()
+	os.MkdirAll(filepath.Join(sysroot, "var/db/pkg"), 0755)
+
+	pkgs, err := o.ListPackages("commit", sysroot, false)
+	if err != nil {
+		t.Fatalf("ListPackages failed: %v", err)
+	}
+	if len(pkgs) != 2 {
+		t.Errorf("Expected 2 packages, got %d", len(pkgs))
+	}
+	if pkgs[0] != "cat/other" || pkgs[1] != "cat/pkg" {
+		t.Errorf("Unexpected packages: %v", pkgs)
+	}
+}
+
+func TestBranchHelpersErrors(t *testing.T) {
+	if _, err := BranchShortnameToNormal("", "short", "os", "arch"); err == nil {
+		t.Error("Should fail empty stage")
+	}
+	if _, err := BranchShortnameToNormal("stage", "", "os", "arch"); err == nil {
+		t.Error("Should fail empty shortname")
+	}
+	if _, err := BranchShortnameToNormal("stage", "short", "", "arch"); err == nil {
+		t.Error("Should fail empty os")
+	}
+	if _, err := BranchShortnameToNormal("stage", "short", "os", ""); err == nil {
+		t.Error("Should fail empty arch")
+	}
+}
+
+func TestOstreeBranchMethodsErrors(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.FullBranchSuffix": {"full"},
+		},
+	}
+	o, _ := New(cfg)
+
+	if _, err := o.IsBranchFullSuffixed(""); err == nil {
+		t.Error("IsBranchFullSuffixed should fail empty ref")
+	}
+	if _, err := o.BranchShortnameToFull("", "stage", "os", "arch"); err == nil {
+		t.Error("BranchShortnameToFull should fail empty shortname")
+	}
+	if _, err := o.BranchToFull(""); err == nil {
+		t.Error("BranchToFull should fail empty ref")
+	}
+	if _, err := o.RemoveFullFromBranch(""); err == nil {
+		t.Error("RemoveFullFromBranch should fail empty ref")
+	}
+}
+
+func TestDeploy_Errors(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	// Trigger error at specific steps
+	tests := []struct {
+		name      string
+		failAtCmd string
+		wantErr   bool
+	}{
+		{"rev-parse fail", "rev-parse", true},
+		{"init-fs fail", "init-fs", true},
+		{"os-init fail", "os-init", true},
+		{"pull-local fail", "pull-local", true},
+		{"refs create fail", "refs", true},
+		{"bootloader config fail", "bootloader", true},
+		{"deploy fail", "admin deploy", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+				cmdStr := strings.Join(args, " ")
+				if strings.Contains(cmdStr, tt.failAtCmd) {
+					return fmt.Errorf("simulated error")
+				}
+				// Mock essential returns
+				if len(args) > 0 && args[0] == "rev-parse" {
+					stdout.Write([]byte("hash\n"))
+				}
+				return nil
+			}
+
+			cfg := &MockConfig{
+				Items: map[string][]string{
+					"Ostree.RepoDir":  {"/repo"},
+					"Ostree.Sysroot":  {"/sysroot"},
+					"Ostree.Remote":   {"origin"},
+					"matrixOS.OsName": {"matrixos"},
+				},
+			}
+			o, _ := New(cfg)
+			err := o.Deploy("ref", nil, false)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Deploy() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestBootedStatus_Errors(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	tests := []struct {
+		name       string
+		jsonOutput string
+		mockErr    error
+		wantRefErr bool
+	}{
+		{
+			name:       "cmd failed",
+			mockErr:    fmt.Errorf("cmd failed"),
+			wantRefErr: true,
+		},
+		{
+			name:       "invalid json",
+			jsonOutput: "{ invalid json",
+			wantRefErr: true,
+		},
+		{
+			name:       "no booted deployment",
+			jsonOutput: `[{"booted": false}]`,
+			wantRefErr: true,
+		},
+	}
+
+	cfg := &MockConfig{Items: map[string][]string{"Ostree.Sysroot": {"/sysroot"}}}
+	o, _ := New(cfg)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+				if tt.mockErr != nil {
+					return tt.mockErr
+				}
+				stdout.Write([]byte(tt.jsonOutput))
+				return nil
+			}
+
+			_, err := o.BootedRef(false)
+			if (err != nil) != tt.wantRefErr {
+				t.Errorf("BootedRef() error = %v, wantErr %v", err, tt.wantRefErr)
+			}
+		})
+	}
+}
+
+func TestMiscWrappers_Errors(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("cmd error")
+	}
+
+	cfg := &MockConfig{Items: map[string][]string{"Ostree.RepoDir": {"/repo"}}}
+	o, _ := New(cfg)
+
+	if err := o.Pull("ref", false); err == nil {
+		t.Error("Pull should fail on cmd error")
+	}
+	if err := o.Prune("ref", false); err == nil {
+		t.Error("Prune should fail on cmd error")
+	}
+	if err := o.UpdateSummary(false); err == nil {
+		t.Error("UpdateSummary should fail on cmd error")
+	}
+	if err := o.GenerateStaticDelta("ref", false); err == nil {
+		t.Error("GenerateStaticDelta should fail on cmd error")
+	}
+	if err := o.Upgrade("/sys", nil, false); err == nil {
+		t.Error("Upgrade should fail on cmd error")
+	}
+}
+
+func TestLastCommit_Errors(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("not found")
+	}
+
+	// Test standalone LastCommit if exposed or wrapper
+	if _, err := LastCommit("/repo", "ref", false); err == nil {
+		t.Error("LastCommit should fail if cmd fails")
+	}
+}
+
+func TestListRemotes_Errors(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("error")
+	}
+
+	if _, err := ListRemotes("/repo", false); err == nil {
+		t.Error("ListRemotes should fail on error")
+	}
+}
+
+func TestAddRemote_Error(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("error")
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir": {"/repo"},
+			"Ostree.Remote":  {"origin"},
+		},
+	}
+	o, _ := New(cfg)
+	if err := o.AddRemote(false); err == nil {
+		t.Error("AddRemote should fail on error")
+	}
+}
