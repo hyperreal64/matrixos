@@ -782,10 +782,18 @@ ostree_lib.show_local_refs() {
 ostree_lib.local_refs() {
     local repodir="${1}"
     if [ -z "${repodir}" ]; then
-        echo "ostree_lib.show_local_refs: missing ostree repodir parameter" >&2
+        echo "ostree_lib.local_refs: missing ostree repodir parameter" >&2
         return 1
     fi
-    ostree_lib.run --repo="${repodir}" refs
+    local refs=
+    mapfile -t refs < <(ostree_lib.run_strict --repo="${repodir}" refs)
+    local r=
+    for r in "${refs[@]}"; do
+        if [ "${r}" = "ostree-metadata" ]; then
+            continue
+        fi
+        echo "${r}"
+    done
 }
 
 ostree_lib.show_remote_refs() {
