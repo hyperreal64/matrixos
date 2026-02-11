@@ -1,0 +1,35 @@
+From f87fb73761213cae982919ff7a4bf4e2c7791460 Mon Sep 17 00:00:00 2001
+From: Fabio Erculiani <m@lxnay.me>
+Date: Fri, 26 Dec 2025 15:34:27 +0100
+Subject: [PATCH] Change OS name to MatrixOS
+
+---
+ make_os_release | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/make_os_release b/make_os_release
+index 8fdba0ee..b57d6801 100755
+--- a/make_os_release
++++ b/make_os_release
+@@ -4,12 +4,12 @@ if [ -z "${1}" ]; then
+ 	exit 1
+ fi
+ cat <<EOF
+-NAME=Gentoo
+-ID=gentoo
+-PRETTY_NAME="Gentoo Linux"
++NAME=matrixOS
++ID=matrixos
++PRETTY_NAME="matrixOS (Gentoo-based)"
+ ANSI_COLOR="1;32"
+-HOME_URL="https://www.gentoo.org/"
+-SUPPORT_URL="https://www.gentoo.org/support/"
+-BUG_REPORT_URL="https://bugs.gentoo.org/"
++HOME_URL="https://www.matrixos.org/"
++SUPPORT_URL="https://www.matrixos.org/"
++BUG_REPORT_URL="https://bugs.matrixos.org/"
+ VERSION_ID="${1}"
+ EOF
+-- 
+2.51.2
+

@@ -1,0 +1,2 @@
+# Bedrock seeder, avoid circular dependency
+media-libs/libwebp -tiff
