@@ -28,7 +28,7 @@ _seeder_name=$(basename "$(dirname "${0}")")
 
 bedrock.system_bootstrap() {
     locale-gen
-    emerge-webrsync
+    emerge-webrsync --quiet
 
     local common_args
     read -ra common_args <<< "$(chroots_lib.emerge_common_args)"
