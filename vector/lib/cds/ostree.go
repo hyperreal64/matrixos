@@ -1288,7 +1288,9 @@ func (o *Ostree) GenerateStaticDelta(ref string, verbose bool) error {
 	revOld, _ := readerToFirstNonEmptyLine(stdout)
 
 	if revOld != "" {
-		err = Run(
+		err := run(
+			io.Discard,
+			os.Stderr,
 			verbose,
 			"--repo="+repoDir,
 			"rev-parse",
@@ -1298,6 +1300,25 @@ func (o *Ostree) GenerateStaticDelta(ref string, verbose bool) error {
 			fmt.Fprintf(
 				os.Stderr,
 				"WARNING: rev-parse for old revision %s failed, Falling back to full delta ...\n",
+				revOld,
+			)
+			revOld = ""
+		}
+	}
+	// SAFETY CHECK: Does the parent object actually exist?
+	if revOld != "" {
+		err := run(
+			io.Discard,
+			os.Stderr,
+			verbose,
+			"show",
+			"--repo="+repoDir,
+			revOld,
+		)
+		if err != nil {
+			fmt.Fprintf(
+				os.Stderr,
+				"WARNING: Parent commit %s is referenced but missing. Falling back to full delta.\n",
 				revOld,
 			)
 			revOld = ""
