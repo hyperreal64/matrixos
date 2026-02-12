@@ -407,9 +407,19 @@ fs_lib.check_hardlink_preservation() {
 
     echo "Checking hardlink preservation from ${src} to ${dst}..."
 
-    # with pipefail, we need to ignore SIGPIPE sent from head to sort.
+    # 1. Find files with multiple links.
+    # 2. Print Inode and Path.
+    # 3. Sort numerically by Inode so identical inodes are adjacent.
+    # 4. Use awk to find the first pair of lines where the Inode ($1) matches the previous line.
     local test_pair
-    test_pair=$(find "${src}" -type f -links +1 -printf '%i %p\n' | sort | head -n 2 || true)
+    test_pair=$(find "${src}" -type f -links +1 -printf '%i %p\n' | sort -k1,1n | awk '
+        $1 == last_inode {
+            print last_line
+            print $0
+            exit
+        }
+        { last_inode = $1; last_line = $0 }
+    ')
 
     if [[ -z "${test_pair}" ]]; then
         echo "WARNING: no hardlinked files found in source. Cannot verify." >&2
@@ -422,12 +432,16 @@ fs_lib.check_hardlink_preservation() {
     file1_src=$(echo "${test_pair}" | sed -n '1p' | cut -d' ' -f2-)
     file2_src=$(echo "${test_pair}" | sed -n '2p' | cut -d' ' -f2-)
 
+    echo "  Verifying pair:"
+    echo "    Src 1: ${file1_src}"
+    echo "    Src 2: ${file2_src}"
+
     # Map those paths to the destination
     local rel_path1="${file1_src#$src}"
     local rel_path2="${file2_src#$src}"
 
-    local file1_dst="${dst%/}/${rel_path1}"
-    local file2_dst="${dst%/}/${rel_path2}"
+    local file1_dst="${dst%/}/${rel_path1#/}"
+    local file2_dst="${dst%/}/${rel_path2#/}"
 
     # Compare Inode numbers in the destination
     local inode1_dst=
@@ -445,8 +459,8 @@ fs_lib.check_hardlink_preservation() {
         return 0
     else
         echo "CRITICAL: hardlinks BROKEN! Files were duplicated." >&2
-        echo "  File 1: ${inode1_dst}" >&2
-        echo "  File 2: ${inode2_dst}" >&2
+        echo "  File 1. inode: ${inode1_dst}, file: ${file1_dst}" >&2
+        echo "  File 2. inode: ${inode2_dst}, file: ${file2_dst}" >&2
         return 1
     fi
 }
