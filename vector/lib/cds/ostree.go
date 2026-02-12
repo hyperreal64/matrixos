@@ -1287,12 +1287,31 @@ func (o *Ostree) GenerateStaticDelta(ref string, verbose bool) error {
 	}
 	revOld, _ := readerToFirstNonEmptyLine(stdout)
 
+	if revOld != "" {
+		err = Run(
+			verbose,
+			"--repo="+repoDir,
+			"rev-parse",
+			revOld,
+		)
+		if err != nil {
+			fmt.Fprintf(
+				os.Stderr,
+				"WARNING: rev-parse for old revision %s failed, Falling back to full delta ...\n",
+				revOld,
+			)
+			revOld = ""
+		}
+	}
+
 	args := []string{
 		"--repo=" + repoDir,
 		"static-delta", "generate",
 		"--to=" + revNew,
 		"--inline",
 		"--min-fallback-size=0",
+		"--disable-bsdiff",
+		"--max-chunk-size=64",
 	}
 
 	if revOld == "" {

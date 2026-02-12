@@ -659,18 +659,31 @@ ostree_lib.generate_static_delta() {
     local rev_old=
     rev_new=$(ostree rev-parse --repo="${repodir}" "${branch}")
     rev_old=$(ostree rev-parse --repo="${repodir}" "${branch}^" 2>/dev/null || true)
+
+    # SAFETY CHECK: Does the parent object actually exist?
+    if [ -n "${rev_old}" ]; then
+        if ! ostree rev-parse --repo="${repodir}" "${rev_old}" >/dev/null; then
+            echo "WARNING: Parent commit ${rev_old} is referenced but missing. Falling back to full delta."
+            rev_old=""
+        fi
+    fi
+
     if [ -z "${rev_old}" ]; then
         ostree static-delta generate --repo="${repodir}" \
             --to="${rev_new}" \
             --empty \
             --inline \
-            --min-fallback-size=0
+            --min-fallback-size=0 \
+            --disable-bsdiff \
+            --max-chunk-size=64
     else
         ostree static-delta generate --repo="${repodir}" \
             --from="${rev_old}" \
             --to="${rev_new}" \
             --inline \
-            --min-fallback-size=0
+            --min-fallback-size=0 \
+            --disable-bsdiff \
+            --max-chunk-size=64
     fi
 }
 
