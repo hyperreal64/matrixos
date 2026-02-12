@@ -23,11 +23,11 @@ setup_greetd() {
     local greetd_cfg="${greetd_dir}/config.toml"
     cat > "${greetd_cfg}" << EOF
 [terminal]
-vt = 1
+vt = 7
 
 [default_session]
-command = "cosmic-comp /usr/bin/cosmic-greeter"
-user = "greetd"
+command = "/usr/bin/dbus-run-session /usr/bin/cosmic-comp /usr/bin/cosmic-greeter 2>&1 | /usr/bin/logger -t cosmic-greeter"
+user = "cosmic-greeter"
 EOF
 }
 
