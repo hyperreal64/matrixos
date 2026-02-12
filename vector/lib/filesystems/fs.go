@@ -1,7 +1,6 @@
 package filesystems
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -469,51 +468,52 @@ func CheckHardlinkPreservation(src, dst string) error {
 	}
 	log.Printf("Checking hardlink preservation from %s to %s...", src, dst)
 
-	// 1. Find files with multiple links.
-	// 2. Print Inode and Path.
-	// 3. Scan output to find the first pair of files sharing the same inode.
-	// Using a map for O(1) checks instead of sorting.
-	cmd := execCommand("find", src, "-type", "f", "-links", "+1", "-printf", "%i %p\n")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
+	// 1. Walk the source directory to find files with multiple links.
+	// 2. Track Inodes to find the first pair of files sharing the same inode.
+	// Using a map for O(1) checks.
 
-	scanner := bufio.NewScanner(stdout)
-	// Map from Inode -> Path
-	seenInodes := make(map[string]string)
+	// Map from Inode (uint64) -> Path
+	seenInodes := make(map[uint64]string)
 
 	var file1Src, file2Src string
 	foundPair := false
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) != 2 {
-			continue
+	// Sentinel error to stop walking early
+	errFoundPair := fmt.Errorf("found pair")
+
+	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
 		}
 
-		inode, path := parts[0], parts[1]
-
-		if existingPath, ok := seenInodes[inode]; ok {
-			// Found our pair!
-			file1Src = existingPath
-			file2Src = path
-			foundPair = true
-			break
+		info, err := d.Info()
+		if err != nil {
+			return err
 		}
 
-		seenInodes[inode] = path
-	}
+		sys, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return nil
+		}
 
-	// Terminate the find process gracefully if it's still running.
-	if cmd.Process != nil {
-		cmd.Process.Signal(os.Interrupt)
+		if sys.Nlink > 1 {
+			if existingPath, ok := seenInodes[sys.Ino]; ok {
+				file1Src = existingPath
+				file2Src = path
+				foundPair = true
+				return errFoundPair
+			}
+			seenInodes[sys.Ino] = path
+		}
+		return nil
+	})
+
+	if err != nil && err != errFoundPair {
+		return fmt.Errorf("error walking source directory: %w", err)
 	}
-	cmd.Wait() // Clean up resources
 
 	if !foundPair {
 		log.Println("WARNING: no hardlinked file pairs found in source. Cannot verify.")
