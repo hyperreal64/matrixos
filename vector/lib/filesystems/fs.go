@@ -10,12 +10,21 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 var (
 	execCommand     = exec.Command
 	devMapperPrefix = "/dev/mapper"
+	sysMount        = unix.Mount
+	sysUnmount      = unix.Unmount
+	sysIoctl        = unix.Syscall
 )
+
+// BLKFLSBUF is the ioctl command to flush block device buffers.
+// It is commonly 0x1261 on Linux.
+const BLKFLSBUF = 0x1261
 
 // DevicesSettle waits for udev events to settle.
 func DevicesSettle() {
@@ -27,7 +36,17 @@ func FlushBlockDeviceBuffers(devPath string) error {
 	if devPath == "" {
 		return fmt.Errorf("missing devPath parameter")
 	}
-	return execCommand("blockdev", "--flushbufs", devPath).Run()
+
+	f, err := os.Open(devPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, _, errno := sysIoctl(unix.SYS_IOCTL, f.Fd(), uintptr(BLKFLSBUF), 0); errno != 0 {
+		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", errno)
+	}
+	return nil
 }
 
 // GetLuksRootfsDevicePath returns the device path for a given LUKS name.
@@ -101,9 +120,9 @@ func CleanupMounts(mounts []string) {
 			continue
 		}
 		log.Printf("Unmounting %s ...", mnt)
-		if err := execCommand("umount", mnt).Run(); err != nil {
+		if err := sysUnmount(mnt, 0); err != nil {
 			FlushBlockDeviceBuffers(mnt)
-			log.Printf("Unable to umount %s", mnt)
+			log.Printf("Unable to umount %s: %v", mnt, err)
 			out, _ := execCommand("findmnt", mnt).CombinedOutput()
 			log.Println(string(out))
 			continue
@@ -228,12 +247,12 @@ func SetupCommonRootfsMounts(mnt string) ([]string, error) {
 		if err := os.MkdirAll(dst, 0755); err != nil {
 			return nil, err
 		}
-		if err := execCommand("mount", "-v", "--bind", d, dst).Run(); err != nil {
-			return nil, err
+		if err := sysMount(d, dst, "", unix.MS_BIND, ""); err != nil {
+			return nil, fmt.Errorf("failed to bind mount %s: %w", d, err)
 		}
 		mountsList = append(mountsList, dst)
-		if err := execCommand("mount", "-v", "--make-slave", dst).Run(); err != nil {
-			return nil, err
+		if err := sysMount("", dst, "", unix.MS_SLAVE, ""); err != nil {
+			return nil, fmt.Errorf("failed to make slave %s: %w", dst, err)
 		}
 	}
 
@@ -241,12 +260,8 @@ func SetupCommonRootfsMounts(mnt string) ([]string, error) {
 	if err := os.MkdirAll(chrootDevShm, 0755); err != nil {
 		return nil, err
 	}
-	err := execCommand(
-		"mount", "-v", "-t", "tmpfs", "devshm", chrootDevShm,
-		"-o", "rw,mode=1777,nosuid,nodev",
-	).Run()
-	if err != nil {
-		return nil, err
+	if err := sysMount("devshm", chrootDevShm, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=1777"); err != nil {
+		return nil, fmt.Errorf("failed to mount devshm: %w", err)
 	}
 	mountsList = append(mountsList, chrootDevShm)
 
@@ -254,9 +269,8 @@ func SetupCommonRootfsMounts(mnt string) ([]string, error) {
 	if err := os.MkdirAll(chrootProc, 0755); err != nil {
 		return nil, err
 	}
-	err = execCommand("mount", "-t", "proc", "proc", chrootProc).Run()
-	if err != nil {
-		return nil, err
+	if err := sysMount("proc", chrootProc, "proc", 0, ""); err != nil {
+		return nil, fmt.Errorf("failed to mount proc: %w", err)
 	}
 	mountsList = append(mountsList, chrootProc)
 
@@ -264,12 +278,8 @@ func SetupCommonRootfsMounts(mnt string) ([]string, error) {
 	if err := os.MkdirAll(runLock, 0755); err != nil {
 		return nil, err
 	}
-	err = execCommand(
-		"mount", "-v", "-t", "tmpfs", "none", runLock,
-		"-o", "rw,nosuid,nodev,noexec,relatime,size=5120k",
-	).Run()
-	if err != nil {
-		return nil, err
+	if err := sysMount("none", runLock, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC|unix.MS_RELATIME, "size=5120k"); err != nil {
+		return nil, fmt.Errorf("failed to mount run/lock: %w", err)
 	}
 	mountsList = append(mountsList, runLock)
 
@@ -326,11 +336,11 @@ func BindMount(src, dst string) (string, error) {
 	}
 
 	// log.Printf("Binding %s to %s", src, dst)
-	if err := execCommand("mount", "-v", "--bind", src, dst).Run(); err != nil {
-		return "", err
+	if err := sysMount(src, dst, "", unix.MS_BIND, ""); err != nil {
+		return "", fmt.Errorf("mount bind failed: %w", err)
 	}
-	if err := execCommand("mount", "-v", "--make-slave", dst).Run(); err != nil {
-		return "", err
+	if err := sysMount("", dst, "", unix.MS_SLAVE, ""); err != nil {
+		return "", fmt.Errorf("mount make-slave failed: %w", err)
 	}
 	return dst, nil
 }

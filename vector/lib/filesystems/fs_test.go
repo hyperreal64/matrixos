@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 // fakeExecCommand mocks exec.Command for testing purposes.
@@ -22,6 +24,34 @@ func fakeExecCommand(command string, args ...string) *exec.Cmd {
 		}
 	}
 	return cmd
+}
+
+func setupMockSyscalls(t *testing.T) {
+	origMount := sysMount
+	origUnmount := sysUnmount
+	origIoctl := sysIoctl
+
+	sysMount = func(source string, target string, fstype string, flags uintptr, data string) error {
+		if os.Getenv("MOCK_MOUNT_FAIL") == "1" {
+			return fmt.Errorf("mock mount failed")
+		}
+		return nil
+	}
+	sysUnmount = func(target string, flags int) error {
+		if os.Getenv("MOCK_UMOUNT_FAIL") == "1" {
+			return fmt.Errorf("mock unmount failed")
+		}
+		return nil
+	}
+	sysIoctl = func(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err unix.Errno) {
+		return 0, 0, 0
+	}
+
+	t.Cleanup(func() {
+		sysMount = origMount
+		sysUnmount = origUnmount
+		sysIoctl = origIoctl
+	})
 }
 
 // TestHelperProcess is the mock process that runs instead of the real commands.
@@ -451,6 +481,7 @@ func TestCheckHardlinkPreservation(t *testing.T) {
 func TestCleanupMounts(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("SuccessfulUnmount", func(t *testing.T) {
 		os.Setenv("MOCK_FINDMNT_OUTPUT", "/mnt/test")
@@ -476,6 +507,7 @@ func TestCleanupMounts(t *testing.T) {
 func TestSetupCommonRootfsMounts(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	tmpDir := t.TempDir()
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
@@ -494,6 +526,7 @@ func TestSetupCommonRootfsMounts(t *testing.T) {
 func TestBindMount(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	src := t.TempDir()
 	dst := t.TempDir()
@@ -564,9 +597,15 @@ func TestDevicesSettle(t *testing.T) {
 func TestFlushBlockDeviceBuffers(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
-		if err := FlushBlockDeviceBuffers("/dev/sda"); err != nil {
+		f, err := os.CreateTemp(t.TempDir(), "blockdev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		if err := FlushBlockDeviceBuffers(f.Name()); err != nil {
 			t.Errorf("FlushBlockDeviceBuffers failed: %v", err)
 		}
 	})
@@ -581,6 +620,7 @@ func TestFlushBlockDeviceBuffers(t *testing.T) {
 func TestUnsetupCommonRootfsMounts(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -608,6 +648,7 @@ func TestUnsetupCommonRootfsMounts(t *testing.T) {
 func TestBindUmount(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -634,6 +675,7 @@ func TestBindUmount(t *testing.T) {
 func TestBindMountDistdir(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
 		distfilesDir := t.TempDir()
@@ -647,6 +689,7 @@ func TestBindMountDistdir(t *testing.T) {
 func TestBindUmountDistdir(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
 		rootfs := t.TempDir()
@@ -666,6 +709,7 @@ func TestBindUmountDistdir(t *testing.T) {
 func TestBindMountBinpkgs(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
 		binpkgsDir := t.TempDir()
@@ -679,6 +723,7 @@ func TestBindMountBinpkgs(t *testing.T) {
 func TestBindUmountBinpkgs(t *testing.T) {
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
 		rootfs := t.TempDir()
