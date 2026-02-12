@@ -53,6 +53,16 @@ cosmic.tweak_nsswitch() {
         "/etc/nsswitch.conf"
 }
 
+cosmic.tweak_resolved() {
+    # Disable multicast DNS support in systemd-resolved as atm
+    # avahi-daemon is providing it.
+    local resolved_conf="/etc/systemd/resolved.conf"
+    if [ -f "${resolved_conf}" ]; then
+        echo "# matrixOS uses avahi for Multicast DNS." >> "${resolved_conf}"
+        echo "MulticastDNS=no" >> "${resolved_conf}"
+    fi
+}
+
 main() {
 
     local phases=(
@@ -60,6 +70,7 @@ main() {
         cosmic.portage_bootstrap
         cosmic.build_everything
         cosmic.tweak_nsswitch
+        cosmic.tweak_resolved
         cosmic.clean_temporary_artifacts
     )
 
