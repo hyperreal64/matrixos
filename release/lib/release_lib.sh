@@ -367,30 +367,37 @@ release_lib.setup_services() {
         esac
     done
 
+    local skip_proc="1"
+    fs_lib.setup_common_rootfs_mounts "${!_ss_mounts}" "${imagedir}" "${skip_proc}"
+
+    # Use the weird syntax to run systemctl in chroot and capture the exit code properly
+    # This way we force the disabling of the exec() optimization of /bin/sh -c and
+    # we get systemctl behave and write to std* instead of thinking it's PID 1 and using
+    # /dev/kmsg.
     for svc in "${services_to_enable[@]}"; do
         echo "Enabling service: ${svc}"
-        systemctl --root="${imagedir}" enable "${svc}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl enable ${svc}; exit \$?" || true
     done
     for svc in "${services_to_disable[@]}"; do
         echo "Disabling service: ${svc}"
-        systemctl --root="${imagedir}" disable "${svc}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl disable ${svc}; exit \$?" || true
     done
     for svc in "${services_to_mask[@]}"; do
         echo "Masking service: ${svc}"
-        systemctl --root="${imagedir}" mask "${svc}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl mask ${svc}; exit \$?" || true
     done
 
     for svc in "${global_service_presets_to_enable[@]}"; do
         echo "Preset enabling for service: ${svc}"
-        systemctl --root="${imagedir}" --global enable "${svc}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl --global enable ${svc}; exit \$?" || true
     done
     for svc in "${global_service_presets_to_disable[@]}"; do
         echo "Preset disabling for service: ${svc}"
-        systemctl --root="${imagedir}" --global disable "${svc}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl --global disable ${svc}; exit \$?" || true
     done
     for svc in "${global_service_presets_to_mask[@]}"; do
         echo "Preset masking for service: ${svc}"
-        systemctl --root="${imagedir}" --global mask "${svc}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl --global mask ${svc}; exit \$?" || true
     done
 
     # check if we have multiple default targets
@@ -401,8 +408,10 @@ release_lib.setup_services() {
         # pick the last default_targets element
         local last_default_target="${default_targets[-1]}"
         echo "Setting default target to: ${last_default_target}"
-        systemctl --root="${imagedir}" set-default "${last_default_target}" || true
+        fs_lib.chroot "${imagedir}" /bin/sh -c "systemctl set-default ${last_default_target}; exit \$?" || true
     fi
+
+    fs_lib.unsetup_common_rootfs_mounts "${imagedir}"
 }
 
 release_lib.release_hook() {
