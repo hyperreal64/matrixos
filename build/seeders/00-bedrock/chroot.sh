@@ -67,6 +67,12 @@ bedrock.build_resolve_conflicts() {
     USE="-gpm" chroots_lib.generic_build -1 sys-libs/ncurses:0
     USE="-sysprof -avif -truetype" chroots_lib.generic_build -1 dev-libs/glib:2
     chroots_lib.generic_build -1 dev-libs/glib
+
+    # Starting 2026-02-08, Gentoo stage3 are erroneously shipped with
+    # too many Pythons.
+    mapfile -t python_extra_vers < <(qlist -ISe dev-lang/python | sort | tail -n +2)
+    echo "Found extra Python versions: ${python_extra_vers[@]}"
+    chroots_lib.generic_build --depclean "${python_extra_vers[@]}"
 }
 
 bedrock.build_kernel() {
