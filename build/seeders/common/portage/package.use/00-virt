@@ -11,4 +11,5 @@ media-libs/libglvnd X
 net-dns/dnsmasq script
 net-libs/gnutls pkcs11 tools
 net-wireless/wpa_supplicant -gui
+sys-block/nbdkit lzma libvirt libssh curl
 sys-libs/snapd-glib -qt6 -qml
