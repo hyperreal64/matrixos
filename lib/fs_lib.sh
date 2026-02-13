@@ -61,6 +61,8 @@ fs_lib.cleanup_mounts() {
             blockdev --flushbufs "${mnt}" || true
             echo "Unable to umount ${mnt}" >&2
             findmnt "${mnt}" 1>&2 || true
+            echo "For safety, calling umount -l ${mnt}" >&2
+            umount -l "${mnt}" || true
             continue
         fi
     done
