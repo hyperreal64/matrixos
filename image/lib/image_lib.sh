@@ -334,11 +334,12 @@ image_lib.install_bootloader() {
     local boot_chroot_mount="${ostree_deploy_rootfs}${MATRIXOS_BOOT_ROOT}"
     fs_lib.bind_mount "${!_bootloader_mounts}" "${mount_bootfs}" "${boot_chroot_mount}"
 
-    fs_lib.setup_common_rootfs_mounts "${!_bootloader_mounts}" "${ostree_deploy_rootfs}"
+    local skip_proc="1"
+    fs_lib.setup_common_rootfs_mounts "${!_bootloader_mounts}" "${ostree_deploy_rootfs}" "${skip_proc}"
 
     # MATRIXOS_EFI_ROOT mounted inside the chroot at /efi
     # MATRIXOS_BOOT_ROOT mounted inside the chroot at /boot
-    chroot "${ostree_deploy_rootfs}" \
+    fs_lib.chroot "${ostree_deploy_rootfs}" \
         /usr/bin/grub-install \
         --target=x86_64-efi \
         --directory="/usr/lib/grub/x86_64-efi" \
