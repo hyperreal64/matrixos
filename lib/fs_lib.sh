@@ -186,7 +186,7 @@ fs_lib.setup_common_rootfs_mounts() {
         return 1
     fi
 
-    local skip_proc="${3}"  # can be empty.
+    local skip_proc="${3:-}"  # can be empty.
 
     fs_lib.check_dir_not_fs_root "${mnt}"
 
