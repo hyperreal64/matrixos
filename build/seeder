@@ -415,7 +415,8 @@ setup_chroot_mounts() {
         echo "Missing parameter to setup_chroot_mounts" >&2
         return 1
     fi
-    fs_lib.setup_common_rootfs_mounts "MOUNTS" "${mnt}"
+    local skip_proc="1"
+    fs_lib.setup_common_rootfs_mounts "MOUNTS" "${mnt}" "${skip_proc}"
     setup_special_ro_mounts "${mnt}"
     bind_mount_distdir "${mnt}"
     bind_mount_binpkgs "${mnt}"
@@ -560,7 +561,7 @@ seeder_worker() {
     (
         # Inside the chroot, we always want /matrixos.
         export MATRIXOS_DEV_DIR="${DEFAULT_MATRIXOS_DEV_DIR}"
-        chroot "${chroot_dir}" "./${chroot_seeder_exec}"
+        fs_lib.chroot "${chroot_dir}" "./${chroot_seeder_exec}"
     )
     fs_lib.cleanup_mounts "${MOUNTS[@]}"
 
