@@ -54,7 +54,7 @@ qa_lib.check_secureboot() {
         mod="${mod#${imagedir%/}}"
         echo "Checking module signature for: ${mod}"
         local sig_key=
-        sig_key=$(chroot "${imagedir}" modinfo -F sig_key "${mod}")
+        sig_key=$(fs_lib.chroot "${imagedir}" modinfo -F sig_key "${mod}")
         if [ -z "${sig_key}" ]; then
             echo "No sig_key found for ${mod}" >&2
             return 1
@@ -102,7 +102,7 @@ qa_lib._verify_environment_setup() {
                 fi
             else
                 local found=
-                found=$(chroot "${imagedir}" which "${exe}" 2>/dev/null || true)
+                found=$(fs_lib.chroot "${imagedir}" which "${exe}" 2>/dev/null || true)
                 if [ -z "${found}" ]; then
                     echo "${exe} not found" >&2
                     ret=1
@@ -307,7 +307,7 @@ qa_lib.check_kernel_and_external_module() {
         mod_count=$((mod_count+1))
         echo "Testing module: ${kernel_mod}"
 
-        kernel_mod_vermagic=$(chroot "${imagedir}" modinfo -F vermagic "${kernel_mod}")
+        kernel_mod_vermagic=$(fs_lib.chroot "${imagedir}" modinfo -F vermagic "${kernel_mod}")
         module_kernel_ver=$(echo "${kernel_mod_vermagic}" | awk '{print $1}')
         echo "${kernel_mod}: vermagic is: ${kernel_mod_vermagic}, kernel ver is: ${module_kernel_ver}"
 
