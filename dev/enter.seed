@@ -153,10 +153,11 @@ main() {
         echo "Found seed: ${chroot_dir}"
     done
 
+    local skip_proc="1"
     local chroot_dir=
     for chroot_dir in "${chroot_dirs[@]}"; do
         echo "Entering seed: ${chroot_dir}"
-        fs_lib.setup_common_rootfs_mounts "MOUNTS" "${chroot_dir}"
+        fs_lib.setup_common_rootfs_mounts "MOUNTS" "${chroot_dir}" "${skip_proc}"
         fs_lib.bind_mount_distdir "MOUNTS" "${MATRIXOS_SEEDER_DISTFILES_DIR}" "${chroot_dir}"
         fs_lib.bind_mount_binpkgs "MOUNTS" "${MATRIXOS_SEEDER_BINPKGS_DIR}" "${chroot_dir}"
 
@@ -172,7 +173,7 @@ main() {
             priv_repo_mounted=1
         fi
 
-        chroot "${chroot_dir}"
+        fs_lib.chroot "${chroot_dir}" "/bin/sh" --login
 
         if [ -n "${priv_repo_mounted}" ]; then
             fs_lib.bind_umount "${chroot_priv_repo_path}"
