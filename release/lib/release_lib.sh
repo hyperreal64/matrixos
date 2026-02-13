@@ -367,32 +367,30 @@ release_lib.setup_services() {
         esac
     done
 
-    fs_lib.setup_common_rootfs_mounts "${!_ss_mounts}" "${imagedir}"
-
     for svc in "${services_to_enable[@]}"; do
         echo "Enabling service: ${svc}"
-        chroot "${imagedir}" systemctl enable "${svc}" || true
+        systemctl --root="${imagedir}" enable "${svc}" || true
     done
     for svc in "${services_to_disable[@]}"; do
         echo "Disabling service: ${svc}"
-        chroot "${imagedir}" systemctl disable "${svc}" || true
+        systemctl --root="${imagedir}" disable "${svc}" || true
     done
     for svc in "${services_to_mask[@]}"; do
         echo "Masking service: ${svc}"
-        chroot "${imagedir}" systemctl mask "${svc}" || true
+        systemctl --root="${imagedir}" mask "${svc}" || true
     done
 
     for svc in "${global_service_presets_to_enable[@]}"; do
         echo "Preset enabling for service: ${svc}"
-        chroot "${imagedir}" systemctl --global enable "${svc}" || true
+        systemctl --root="${imagedir}" --global enable "${svc}" || true
     done
     for svc in "${global_service_presets_to_disable[@]}"; do
         echo "Preset disabling for service: ${svc}"
-        chroot "${imagedir}" systemctl --global disable "${svc}" || true
+        systemctl --root="${imagedir}" --global disable "${svc}" || true
     done
     for svc in "${global_service_presets_to_mask[@]}"; do
         echo "Preset masking for service: ${svc}"
-        chroot "${imagedir}" systemctl --global mask "${svc}" || true
+        systemctl --root="${imagedir}" --global mask "${svc}" || true
     done
 
     # check if we have multiple default targets
@@ -403,10 +401,8 @@ release_lib.setup_services() {
         # pick the last default_targets element
         local last_default_target="${default_targets[-1]}"
         echo "Setting default target to: ${last_default_target}"
-        chroot "${imagedir}" systemctl set-default "${last_default_target}" || true
+        systemctl --root="${imagedir}" set-default "${last_default_target}" || true
     fi
-
-    fs_lib.unsetup_common_rootfs_mounts "${imagedir}"
 }
 
 release_lib.release_hook() {
@@ -462,11 +458,10 @@ release_lib.post_clean_shrink() {
 
     echo "Shrinking the rootfs to save space ..."
 
-    local packages=()
     local skip_proc="1"
     fs_lib.setup_common_rootfs_mounts "${!_pcs_mounts}" "${imagedir}" "${skip_proc}"
     # remove everything --with-bdeps=n not in new world file, for the not-full branch.
-    fs_lib.chroot "${imagedir}" emerge --depclean --with-bdeps=n --complete-graph "${packages[@]}"
+    fs_lib.chroot "${imagedir}" emerge --depclean --with-bdeps=n --complete-graph
     fs_lib.unsetup_common_rootfs_mounts "${imagedir}"
 
     # Note: /usr/src presence is required by some snap binaries. So, keep the dir around.
