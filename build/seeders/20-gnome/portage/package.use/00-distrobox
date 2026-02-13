@@ -1,2 +1,1 @@
-app-containers/containerd btrfs
-app-containers/docker btrfs
+../../../common/portage/package.use/00-distrobox

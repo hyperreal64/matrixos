@@ -1,1 +1,1 @@
-app-crypt/pinentry -qt6
+../../../common/portage/package.use/00-pinentry

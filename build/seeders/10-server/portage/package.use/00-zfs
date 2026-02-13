@@ -1,1 +1,1 @@
-sys-fs/zfs -dist-kernel minimal
+../../../common/portage/package.use/00-zfs

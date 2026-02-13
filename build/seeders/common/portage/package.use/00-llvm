@@ -1,0 +1,2 @@
+# Align with other profiles to speed up compilation.
+llvm-core/clang xml

@@ -1,2 +1,1 @@
-# Align with other profiles to speed up compilation.
-llvm-core/clang xml
+../../../common/portage/package.use/00-llvm
