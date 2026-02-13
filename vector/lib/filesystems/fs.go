@@ -766,3 +766,45 @@ func DirEmpty(dir string) (bool, error) {
 	}
 	return false, nil
 }
+
+// ChrootCmd runs a command in a chroot environment using unshare.
+func ChrootCmd(chrootDir, chrootExec string, args ...string) (*exec.Cmd, error) {
+	if chrootDir == "" {
+		return nil, fmt.Errorf("missing chrootDir parameter")
+	}
+	if chrootExec == "" {
+		return nil, fmt.Errorf("missing chrootExec parameter")
+	}
+
+	cmdArgs := []string{
+		"--pid",
+		"--fork",
+		"--kill-child",
+		"--mount",
+		"--uts",
+		"--ipc",
+		fmt.Sprintf("--mount-proc=%s/proc", chrootDir),
+		"chroot",
+		chrootDir,
+		chrootExec,
+	}
+	cmdArgs = append(cmdArgs, args...)
+
+	return execCommand("unshare", cmdArgs...), nil
+}
+
+// Chroot runs a command in a chroot environment using unshare.
+func Chroot(chrootDir, chrootExec string, args ...string) error {
+	cmd, err := ChrootCmd(chrootDir, chrootExec, args...)
+	if err != nil {
+		return err
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("chroot failed: %w", err)
+	}
+	return nil
+}

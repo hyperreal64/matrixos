@@ -125,6 +125,11 @@ func TestHelperProcess(t *testing.T) {
 		}
 	case "udevadm", "blockdev":
 		// No-op success
+	case "unshare":
+		if os.Getenv("MOCK_UNSHARE_FAIL") == "1" {
+			fmt.Fprintln(os.Stderr, "unshare failed")
+			os.Exit(1)
+		}
 	default:
 		// Pass for other commands
 	}
@@ -820,6 +825,70 @@ func TestCpReflinkCopyAllowed(t *testing.T) {
 		}
 		if allowed {
 			t.Error("Expected reflink copy to be not allowed on root")
+		}
+
+	})
+}
+
+func TestChrootCmd(t *testing.T) {
+	execCommand = fakeExecCommand
+	defer func() { execCommand = exec.Command }()
+
+	t.Run("Success", func(t *testing.T) {
+		cmd, err := ChrootCmd("/target", "/bin/sh", "-c", "echo hello")
+		if err != nil {
+			t.Fatalf("ChrootCmd failed: %v", err)
+		}
+		if cmd == nil {
+			t.Fatal("Expected cmd to be non-nil")
+		}
+		// Basic check of arguments (implementation detail, but good for regression)
+		args := cmd.Args
+		if len(args) < 10 {
+			t.Fatalf("Expected at least 10 args, got %d", len(args))
+		}
+		if args[len(args)-1] != "echo hello" {
+			t.Errorf("Expected last arg to be 'echo hello', got %s", args[len(args)-1])
+		}
+	})
+
+	t.Run("MissingChrootDir", func(t *testing.T) {
+		_, err := ChrootCmd("", "/bin/sh")
+		if err == nil {
+			t.Error("Expected error for missing chrootDir, got nil")
+		}
+	})
+
+	t.Run("MissingChrootExec", func(t *testing.T) {
+		_, err := ChrootCmd("/target", "")
+		if err == nil {
+			t.Error("Expected error for missing chrootExec, got nil")
+		}
+	})
+}
+
+func TestChroot(t *testing.T) {
+	execCommand = fakeExecCommand
+	defer func() { execCommand = exec.Command }()
+
+	t.Run("Success", func(t *testing.T) {
+		if err := Chroot("/target", "/bin/true"); err != nil {
+			t.Errorf("Chroot failed: %v", err)
+		}
+	})
+
+	t.Run("CommandFail", func(t *testing.T) {
+		os.Setenv("MOCK_UNSHARE_FAIL", "1")
+		defer os.Unsetenv("MOCK_UNSHARE_FAIL")
+
+		if err := Chroot("/target", "/bin/false"); err == nil {
+			t.Error("Expected error from unshare failure, got nil")
+		}
+	})
+
+	t.Run("MissingArgs", func(t *testing.T) {
+		if err := Chroot("", "/bin/true"); err == nil {
+			t.Error("Expected error for missing chrootDir, got nil")
 		}
 	})
 }
