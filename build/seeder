@@ -328,7 +328,7 @@ validate_env() {
         echo "MATRIXOS_DEV_DIR is unset." >&2
         return 1
     fi
-    qa_lib.check_matrixos_private
+    qa_lib.check_matrixos_private "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
 }
 
 import_gentoo_gpg_keys() {
