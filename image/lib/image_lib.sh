@@ -906,15 +906,8 @@ image_lib.show_test_info() {
     done
 
     echo
-    echo "How to test (as user):"
-    echo "cp /usr/share/edk2-ovmf/OVMF_VARS.fd ./my_vars.fd"
-    echo "qemu-system-x86_64 -enable-kvm -m 8G \\
-    -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2-ovmf/OVMF_CODE.fd \\
-    -drive if=pflash,format=raw,file=./my_vars.fd \\
-    -drive file=IMAGE_PATH,format=raw \\
-    -device virtio-vga-gl,hostmem=512M,blob=true,venus=on -display gtk,gl=on -cpu host -smp 4 \\
-    -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \\
-    -audiodev pa,id=snd0 -device intel-hda -device hda-duplex,audiodev=snd0"
+    echo "How to test:"
+    echo "$ vector dev vm -image IMAGE_PATH -memory 8G -interactive"
     echo
     echo "To move to a USB stick:"
     echo "    dd if=IMAGE_PATH of=/dev/sdX bs=4M conv=sparse,sync status=progress"

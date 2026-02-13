@@ -26,6 +26,7 @@ Usage:
   jailbreak   - permanently turns this system into a regular mutable Gentoo.
   dev 	      - development toolkit command, orchestrates development workflow and tools.
     janitor      cleans up development toolkit artifacts, such as old images and downloads.
+    vm           runs generated image tests using QEMU.
 `
 )
 
