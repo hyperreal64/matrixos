@@ -161,6 +161,7 @@ qa_lib.verify_distro_rootfs_environment_setup() {
         sha256sum
         sgdisk
         udevadm
+        unshare
         wget
         xz
     )
@@ -188,6 +189,8 @@ qa_lib.verify_releaser_environment_setup() {
         gpg
         openssl
         ostree
+        systemctl
+        unshare
     )
     local dirs=(
         "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
@@ -206,6 +209,7 @@ qa_lib.verify_seeder_environment_setup() {
         gpg
         openssl
         ostree
+        unshare
         wget
     )
     local dirs=(
@@ -225,6 +229,7 @@ qa_lib.verify_imager_environment_setup() {
     local executables=(
         blockdev
         btrfs
+        chroot
         cryptsetup
         efibootmgr
         findmnt
@@ -241,6 +246,7 @@ qa_lib.verify_imager_environment_setup() {
         sha256sum
         sgdisk
         udevadm
+        unshare
         xz
     )
     local dirs=(
