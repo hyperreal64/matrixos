@@ -3,21 +3,24 @@ package commands
 import (
 	"flag"
 	"fmt"
-	"matrixos/vector/lib/config"
 	"matrixos/vector/commands/cleaners"
+	"matrixos/vector/lib/config"
 	"os"
 )
 
 // JanitorCommand is a command for cleaning up development toolkit artifacts
 type JanitorCommand struct {
-	fs *flag.FlagSet
+	fs           *flag.FlagSet
+	confFilePath string
 }
 
 // NewJanitorCommand creates a new JanitorCommand
 func NewJanitorCommand() ICommand {
-	return &JanitorCommand{
+	c := &JanitorCommand{
 		fs: flag.NewFlagSet("janitor", flag.ExitOnError),
 	}
+	c.fs.StringVar(&c.confFilePath, "conf", "", "Path to a custom config file")
+	return c
 }
 
 // Name returns the name of the command
@@ -42,7 +45,14 @@ func (c *JanitorCommand) Run() error {
 	}
 
 	// Load the matrixOS config.
-	cfg, err := config.NewIniConfig()
+	var cfg config.IConfig
+	var err error
+	if c.confFilePath != "" {
+		cfg, err = config.NewIniConfigFromFile(c.confFilePath, ".")
+	} else {
+		cfg, err = config.NewIniConfig()
+	}
+
 	if err != nil {
 		return fmt.Errorf("error reading config: %w", err)
 	}
