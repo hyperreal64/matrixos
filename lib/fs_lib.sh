@@ -66,7 +66,12 @@ fs_lib.cleanup_cryptsetup_devices() {
         cdpath=$(fs_lib.get_luks_rootfs_device_path "${cd}")
         if [ -e "${cdpath}" ]; then
             echo "Closing LUKS device: ${cd} ..."
-            cryptsetup close "${cd}" || true
+            blockdev --flushbufs "${cdpath}" || true
+            if ! cryptsetup close "${cd}"; then
+                echo "Unable to cryptsetup close ${cdpath}" >&2
+                findmnt "${cdpath}" 1>&2 || true
+                continue
+            fi
         fi
     done
     udevadm settle
