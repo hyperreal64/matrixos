@@ -8,7 +8,10 @@ fi
 
 set -eu
 
-source "${MATRIXOS_DEV_DIR:-/matrixos}"/headers/env.include.sh
+if [ -z "${MATRIXOS_DEV_DIR:-}" ]; then
+    MATRIXOS_DEV_DIR="$(realpath $(dirname "${0}")/../)"
+fi
+source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
 source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/seedersenv.include.sh
 
 source "${MATRIXOS_DEV_DIR}"/build/seeders/lib/seeders_lib.sh
