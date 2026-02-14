@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -27,7 +28,7 @@ type VMDriver struct {
 
 func NewVMDriver(args []string) (*VMDriver, error) {
 	cmd := exec.Command(qemuSystemX86_64, args...)
-	cmd.Stderr = os.Stderr
+	// cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -56,20 +57,38 @@ func (vm *VMDriver) Expect(target string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// Compile regex to strip specific terminal control sequences that pollute output
+	// Matches CSI sequences (excluding SGR/colors 'm') and Device Control Strings
+	ansiStrip := regexp.MustCompile(`\x1b\[[0-9;?]*[a-ln-zA-Z]|\x1bP.*?\x1b\\`)
+
 	resultCh := make(chan error)
 
 	go func() {
+		buf := make([]byte, 1024)
+		var matchBuf string
 		for {
-			line, err := vm.reader.ReadString('\n')
-			if err != nil {
-				resultCh <- err
-				return
+			n, err := vm.reader.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				fmt.Print(ansiStrip.ReplaceAllString(chunk, ""))
+				matchBuf += chunk
+				if strings.Contains(matchBuf, target) {
+					resultCh <- nil
+					return
+				}
+				// Prevent unbounded growth of the match buffer
+				// Keep enough context for the target string
+				if len(matchBuf) > 4096 {
+					matchBuf = matchBuf[len(matchBuf)-2048:]
+				}
 			}
-			// Print VM output for debugging
-			fmt.Print("[VM] " + line)
-
-			if strings.Contains(line, target) {
-				resultCh <- nil
+			if err != nil {
+				if err != io.EOF {
+					resultCh <- err
+				} else {
+					// EOF reached but target not found yet, loop will exit next read
+					resultCh <- fmt.Errorf("EOF reached while waiting for pattern: %q", target)
+				}
 				return
 			}
 		}
@@ -240,7 +259,7 @@ func (c *VMCommand) runTests(vm *VMDriver) error {
 	if err := vm.Expect("Password:", 5*time.Second); err != nil {
 		return fmt.Errorf("password prompt missing: %w", err)
 	}
-	if err := vm.Send("matrixos"); err != nil {
+	if err := vm.Send("matrix"); err != nil {
 		return err
 	}
 
