@@ -9,11 +9,11 @@ set -eu
 
 cd "$(dirname "$0")"
 
-mkdir -p bin
-echo "Building janitor..."
-go build -o bin/janitor .
-
 cd ../.. # the root
+
+mkdir -p dev/janitor/bin
+echo "Building janitor..."
+go build -o dev/janitor/bin/janitor ./dev/janitor
 
 echo "Running janitor..."
 exec dev/janitor/bin/janitor "${@}"
