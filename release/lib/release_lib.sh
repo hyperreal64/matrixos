@@ -703,14 +703,9 @@ EOFZ
     echo "Committing ostree rootfs from ${imagedir} to branch: ${branch}"
     echo "Running: ostree commit ${ostree_commit_args[@]}"
     ostree_lib.run commit "${ostree_commit_args[@]}"
-
-    echo "Pruning ostree repo for ${repodir} ..."
-    ostree_lib.run --repo="${repodir}" prune --depth=5 \
-        --refs-only --keep-younger-than="${MATRIXOS_OSTREE_KEEP_OBJECTS_YOUNGER_THAN}" \
-        --only-branch="${branch}"
-
-    echo "Updating ostree summary ..."
-    ostree_lib.run --repo="${repodir}" summary --update $(ostree_lib.ostree_gpg_args "${gpg_enabled}")
+    ostree_lib.prune "${repodir}" "${branch}"
+    ostree_lib.generate_static_delta "${repodir}" "${branch}"
+    ostree_lib.update_summary "${repodir}" "${gpg_enabled}"
 
     rm -f "${commit_body_file}"  # leave it there if commit fails.
 }
