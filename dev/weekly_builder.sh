@@ -43,6 +43,7 @@ ARG_RESUME_SEEDERS=
 ARG_SEEDER_ARGS=()
 ARG_RELEASER_ARGS=()
 ARG_RUN_JANITOR=1  # default.
+ARG_SEND_MAIL=1  # default.
 ARG_CDN_PUSHER=
 ARG_HELP=
 
@@ -63,12 +64,14 @@ finish() {
     mail_dest="$(id -n -u)"
     local mutt_exec=
     mutt_exec=$(command -v mutt 2>/dev/null || true)
-    if [ -n "${mutt_exec}" ]; then
+    if [ -n "${mutt_exec}" ] && [ -n "${ARG_SEND_MAIL}" ]; then
         local mutt_args=()
         if [ -n "${LOGFILE}" ] && [ -f "${LOGFILE}" ]; then
             mutt_args+=( -a "${LOGFILE}" )
         fi
         mutt -s "${subject}" "${mutt_args[@]}" -- "${mail_dest}" < /dev/null
+    elif [ -z "${ARG_SEND_MAIL}" ]; then
+        echo "Not seding an email to ${mail_dest} with the build results."
     else
         echo "mutt not installed, not emailing ${mail_dest} with build status." >&2
     fi
@@ -106,6 +109,12 @@ parse_args() {
 
         -bs|--on-build-server)
         ARG_ON_BUILD_SERVER=1
+
+        shift
+        ;;
+
+        -no-sm|--disable-send-mail)
+        ARG_SEND_MAIL=
 
         shift
         ;;
@@ -186,6 +195,7 @@ parse_args() {
         echo -e "-fi, --force-images  \t\t force images creation for all branches, after the seeder and releaser executed." >&2
         echo -e "-si, --skip-images  \t\t skip images generation for all branches, after the seeder and releaser executed." >&2
         echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
+        echo -e "--no-sm, --disable-send-mail \t disable email sending (to root) at the end of the build." >&2
         echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
         echo -e "-s, --skip-seeders  \t\t comma separated list of seeders to skip (by name)." >&2
         echo -e "\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
