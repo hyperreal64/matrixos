@@ -209,6 +209,7 @@ fs_lib.unsetup_common_rootfs_mounts() {
     done
 
     mounts+=(
+        "${mnt%/}/dev/shm"
         "${mnt%/}/proc"
         "${mnt%/}/run/lock"
     )
