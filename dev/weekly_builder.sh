@@ -119,7 +119,7 @@ parse_args() {
         shift
         ;;
 
-        -rs|--resume-seeders)
+        -rs|--resume)
         ARG_RESUME_SEEDERS=1
 
         shift
@@ -196,7 +196,7 @@ parse_args() {
         echo -e "-si, --skip-images  \t\t skip images generation for all branches, after the seeder and releaser executed." >&2
         echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
         echo -e "--no-sm, --disable-send-mail \t disable email sending (to root) at the end of the build." >&2
-        echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
+        echo -e "-rs, --resume \t\t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
         echo -e "-s, --skip-seeders  \t\t comma separated list of seeders to skip (by name)." >&2
         echo -e "\t\t\t\t\t Example: (00-bedrock,01-server)." >&2
         echo -e "-o, --only-seeders  \t\t comma separated allow-list of seeders to accept (by name)." >&2
