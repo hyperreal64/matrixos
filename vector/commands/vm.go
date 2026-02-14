@@ -192,6 +192,12 @@ func (c *VMCommand) Run() error {
 		)
 	}
 
+	if !c.interactive {
+		// Inject a custom SMBIOS serial number to trigger serial console in GRUB
+		// See image/boot/*/*/*/grub.cfg
+		qemuArgs = append(qemuArgs, "-smbios", "type=1,serial=matrixos-testmode=serial")
+	}
+
 	if !c.noAudio {
 		qemuArgs = append(qemuArgs,
 			"-audiodev", "pa,id=snd0",
