@@ -257,7 +257,13 @@ image_lib.setup_bootloader_config() {
     echo "Found boot commit: ${ostree_boot_commit}"
 
     local boot_deploy_dir="${MATRIXOS_DEV_DIR}/image/boot/${ref}"
-    local src_grubcfg_path="${boot_deploy_dir}/grub.cfg"
+    local src_grubcfg_path
+    src_grubcfg_path="$(realpath "${boot_deploy_dir}/grub.cfg")"
+    if [ ! -f "${src_grubcfg_path}" ]; then
+        echo "Grub config ${src_grubcfg_path} does not exist." >&2
+        return 1
+    fi
+    echo "Using grub config from ${src_grubcfg_path}"
 
     # This can be called before grub-install, so make sure to have the dir.
     mkdir -p "${efibootdir}"
@@ -287,6 +293,34 @@ image_lib.setup_bootloader_config() {
 
     echo "Current grub.cfg:"
     cat "${dst_grubcfg_path}"
+    echo "EOF"
+}
+
+image_lib.setup_vmtest_config() {
+    local bootdir="${1}"
+    if [ -z "${bootdir}" ]; then
+        echo "image_lib.setup_vmtest_config: missing bootdir parameter" >&2
+        return 1
+    fi
+
+    echo "Setting up vmtest grub config based on the ostree boot config in ${bootdir} ..."
+
+    local ostree_cfg_dir="${bootdir}/loader/entries"
+    local ostree_boot_cfg="${ostree_cfg_dir}/ostree-1.conf"
+    if [ ! -f "${ostree_boot_cfg}" ]; then
+        echo "${ostree_boot_cfg} does not exist, cannot set up vmtest config" >&2
+        return 1
+    fi
+
+    local vmtest_cfg_dir="${bootdir}/.imager.vmtest/entries"
+    mkdir -p "${vmtest_cfg_dir}"
+    local vmtest_boot_cfg="${vmtest_cfg_dir}/ostree-1.conf"
+    cp -v "${ostree_boot_cfg}" "${vmtest_boot_cfg}"
+    sed -i "s:splash::g" "${vmtest_boot_cfg}"
+    sed -i "s:quiet:console=ttyS0,115200:g" "${vmtest_boot_cfg}"
+    echo "Set up vmtest grub config at ${vmtest_boot_cfg}"
+    echo "Current vmtest grub config:"
+    cat "${vmtest_boot_cfg}"
     echo "EOF"
 }
 

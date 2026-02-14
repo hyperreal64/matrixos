@@ -469,6 +469,7 @@ setup_image() {
 
     image_lib.install_bootloader "MOUNTS" "${rootfs}" "${mount_efifs}" "${mount_bootfs}" \
         "${block_device}" "${efibootdir}"
+    image_lib.setup_vmtest_config "${mount_bootfs}"
 
     image_lib.install_secureboot_certs "${rootfs}" "${mount_efifs}" "${efibootdir}"
     image_lib.install_memtest "${rootfs}" "${efibootdir}"
