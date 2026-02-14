@@ -31,6 +31,15 @@ fs_lib.device_partuuid() {
     blkid -s PARTUUID -o value "${devpath}"
 }
 
+fs_lib.mountpoint_to_device() {
+    local mnt="${1}"
+    if [ -z "${mnt}" ]; then
+        echo "fs_lib.mount_device: missing mnt parameter" >&2
+        return 1
+    fi
+    findmnt -no SOURCES "${mnt}" | head -n 1
+}
+
 fs_lib.cleanup_mounts() {
     local mounts=( "${@}" )
     # umount in reverse.
