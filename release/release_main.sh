@@ -99,9 +99,9 @@ parse_args() {
         echo >&2
         echo -e "Arguments:" >&2
         echo -e "-b, --branch \t\t set the OSTree branch short name to work on (default: stable)." >&2
-        echo -e "-d, --chroot-dir  \t\t\t\t override the default inferred chroot dir." >&2
-        echo -e "-i, --image-dir  \t\t\t\t override the default inferred image dir." >&2
-        echo -e "-dgpg, --disable-gpg  \t\t\t\t force disable gpg support." >&2
+        echo -e "-d, --chroot-dir  \t override the default inferred chroot dir." >&2
+        echo -e "-i, --image-dir  \t override the default inferred image dir." >&2
+        echo -e "-dgpg, --disable-gpg  \t force disable gpg support." >&2
         echo -e "-v, --verbose \t\t enable verbose mode (default: false)." >&2
         echo >&2
         exit 0
