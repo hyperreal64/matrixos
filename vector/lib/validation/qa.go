@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"matrixos/vector/lib/config"
+	"matrixos/vector/lib/filesystems"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,7 +92,10 @@ func (q *QA) CheckSecureBoot(imageDir, sbcertPath string) error {
 	for _, mod := range usbMods {
 		rel := strings.TrimPrefix(mod, strings.TrimRight(imageDir, "/"))
 
-		cmd := execCommand("chroot", imageDir, "modinfo", "-F", "sig_key", rel)
+		cmd, err := filesystems.ChrootCmd(imageDir, "modinfo", "-F", "sig_key", rel)
+		if err != nil {
+			return fmt.Errorf("chroot %s failed: %v", imageDir, err)
+		}
 		out, err := cmd.Output()
 		if err != nil {
 			return fmt.Errorf("chroot modinfo failed for %s: %w", rel, err)
@@ -196,9 +200,19 @@ func verifyEnvironmentSetup(imageDir string, executables, dirs []string) error {
 
 		if !found {
 			// fallback to chroot when available
-			cmd := execCommand("chroot", imageDir, "which", exe)
+			cmd, err := filesystems.ChrootCmd(imageDir, "which", exe)
+			if err != nil {
+				retErrs = append(
+					retErrs,
+					fmt.Sprintf("chroot %s failed: %v", imageDir, err),
+				)
+				continue
+			}
 			if out, err := cmd.Output(); err != nil || len(bytes.TrimSpace(out)) == 0 {
-				retErrs = append(retErrs, fmt.Sprintf("%s not found", exe))
+				retErrs = append(
+					retErrs,
+					fmt.Sprintf("%s not found in chroot %s", exe, imageDir),
+				)
 			}
 		}
 	}
@@ -241,6 +255,7 @@ func (q *QA) VerifyDistroRootfsEnvironmentSetup(imageDir string) error {
 		"sha256sum",
 		"sgdisk",
 		"udevadm",
+		"unshare",
 		"wget",
 		"xz",
 	}
@@ -256,7 +271,15 @@ func (q *QA) VerifyReleaserEnvironmentSetup(imageDir string) error {
 	if imageDir == "" {
 		return errors.New("missing parameter imageDir")
 	}
-	executables := []string{"chroot", "find", "findmnt", "gpg", "openssl", "ostree"}
+	executables := []string{
+		"chroot",
+		"find",
+		"findmnt",
+		"gpg",
+		"openssl",
+		"ostree",
+		"unshare",
+	}
 
 	path, err := q.cfg.GetItem("matrixOS.PrivateGitRepoPath")
 	if err != nil {
@@ -271,7 +294,14 @@ func (q *QA) VerifySeederEnvironmentSetup(imageDir string) error {
 	if imageDir == "" {
 		return errors.New("missing parameter imageDir")
 	}
-	executables := []string{"chroot", "gpg", "openssl", "ostree", "wget"}
+	executables := []string{
+		"chroot",
+		"gpg",
+		"openssl",
+		"ostree",
+		"unshare",
+		"wget",
+	}
 
 	path, err := q.cfg.GetItem("matrixOS.PrivateGitRepoPath")
 	if err != nil {
@@ -289,6 +319,7 @@ func (q *QA) VerifyImagerEnvironmentSetup(imageDir string, _gpgEnabled string) e
 	executables := []string{
 		"blockdev",
 		"btrfs",
+		"chroot",
 		"cryptsetup",
 		"efibootmgr",
 		"findmnt",
@@ -304,6 +335,7 @@ func (q *QA) VerifyImagerEnvironmentSetup(imageDir string, _gpgEnabled string) e
 		"qemu-img",
 		"sha256sum",
 		"sgdisk",
+		"unshare",
 		"udevadm",
 		"xz",
 	}
@@ -365,8 +397,12 @@ func (q *QA) CheckKernelAndExternalModule(imageDir, moduleName string) error {
 		rel := strings.TrimPrefix(kernelMod, strings.TrimRight(imageDir, "/"))
 		modCount++
 		fmt.Printf("Testing module: %s\n", rel)
-
-		out, err := execCommand("chroot", imageDir, "modinfo", "-F", "vermagic", rel).Output()
+		cmd, err := filesystems.ChrootCmd(imageDir, "modinfo", "-F", "vermagic", rel)
+		if err != nil {
+			failure = true
+			continue
+		}
+		out, err := cmd.Output()
 		if err != nil {
 			failure = true
 			continue
