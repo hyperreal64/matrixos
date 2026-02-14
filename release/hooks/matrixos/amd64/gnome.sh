@@ -12,6 +12,13 @@
 set -e
 source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
 
+setup_gnome_shell() {
+    local imagedir="${1}"
+    chroot "${imagedir}" \
+        eselect gnome-shell-extensions enable \
+            dash-to-panel@jderose9.github.com
+}
+
 setup_gnome_accounts() {
     local imagedir="${1}"
 
@@ -45,6 +52,7 @@ SystemAccount=false" > "${user_cfg}"
 }
 
 main() {
+    setup_gnome_shell "${CHROOT_DIR}"
     setup_gnome_accounts "${CHROOT_DIR}"
 }
 
