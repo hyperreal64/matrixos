@@ -12,9 +12,11 @@
 set -e
 source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
 
+source "${MATRIXOS_DEV_DIR}/lib/fs_lib.sh"
+
 setup_gnome_shell() {
     local imagedir="${1}"
-    chroot "${imagedir}" \
+    fs_lib.chroot "${imagedir}" \
         eselect gnome-shell-extensions enable \
             dash-to-panel@jderose9.github.com
 }
