@@ -137,12 +137,11 @@ func BranchShortnameToNormal(relStage, shortname, osName, arch string) (string, 
 }
 
 // ListRemotes lists the remotes in an ostree repository.
-func ListRemotes(repoDir string, verbose bool) ([]string, error) {
+func ListRemotes(repoDir string) ([]string, error) {
 	if repoDir == "" {
 		return nil, errors.New("invalid repoDir parameter")
 	}
 	stdout, err := RunWithStdoutCapture(
-		verbose,
 		"--repo="+repoDir,
 		"remote",
 		"list",
@@ -154,12 +153,11 @@ func ListRemotes(repoDir string, verbose bool) ([]string, error) {
 }
 
 // ListLocalRefs lists the local refs in an ostree repo.
-func ListLocalRefs(repoDir string, verbose bool) ([]string, error) {
+func ListLocalRefs(repoDir string) ([]string, error) {
 	if repoDir == "" {
 		return nil, errors.New("invalid repoDir parameter")
 	}
 	stdout, err := RunWithStdoutCapture(
-		verbose,
 		"--repo="+repoDir,
 		"refs",
 	)
@@ -183,7 +181,7 @@ func ListLocalRefs(repoDir string, verbose bool) ([]string, error) {
 }
 
 // ListRemoteRefs lists the remote refs present in the given remote.
-func ListRemoteRefs(repoDir, remote string, verbose bool) ([]string, error) {
+func ListRemoteRefs(repoDir, remote string) ([]string, error) {
 	if repoDir == "" {
 		return nil, errors.New("invalid repoDir parameter")
 	}
@@ -191,7 +189,6 @@ func ListRemoteRefs(repoDir, remote string, verbose bool) ([]string, error) {
 		return nil, errors.New("invalid remote parameter")
 	}
 	stdout, err := RunWithStdoutCapture(
-		verbose,
 		"--repo="+repoDir,
 		"remote",
 		"refs",
@@ -204,7 +201,7 @@ func ListRemoteRefs(repoDir, remote string, verbose bool) ([]string, error) {
 }
 
 // LastCommit returns the commit hash of the latest commit in the given ref.
-func LastCommit(repoDir, ref string, verbose bool) (string, error) {
+func LastCommit(repoDir, ref string) (string, error) {
 	if repoDir == "" {
 		return "", errors.New("invalid repoDir parameter")
 	}
@@ -213,7 +210,6 @@ func LastCommit(repoDir, ref string, verbose bool) (string, error) {
 	}
 
 	stdout, err := RunWithStdoutCapture(
-		verbose,
 		"--repo="+repoDir,
 		"rev-parse",
 		ref,
@@ -232,17 +228,17 @@ func LastCommit(repoDir, ref string, verbose bool) (string, error) {
 }
 
 // LastCommitWithSysroot returns the last commit for a given ref in a sysroot.
-func LastCommitWithSysroot(sysroot, ref string, verbose bool) (string, error) {
+func LastCommitWithSysroot(sysroot, ref string) (string, error) {
 	if sysroot == "" {
 		return "", errors.New("invalid sysroot parameter")
 	}
 
 	repoDir := filepath.Join(strings.TrimRight(sysroot, "/"), "ostree", "repo")
-	return LastCommit(repoDir, ref, verbose)
+	return LastCommit(repoDir, ref)
 }
 
 // DeployedRootfsWithSysroot returns the path to the deployed rootfs given a sysroot and repoDir.
-func DeployedRootfsWithSysroot(sysroot, repoDir, osName, ref string, verbose bool) (string, error) {
+func DeployedRootfsWithSysroot(sysroot, repoDir, osName, ref string) (string, error) {
 	if sysroot == "" {
 		return "", errors.New("invalid sysroot parameter")
 	}
@@ -256,7 +252,7 @@ func DeployedRootfsWithSysroot(sysroot, repoDir, osName, ref string, verbose boo
 		return "", errors.New("invalid ref parameter")
 	}
 
-	ostreeCommit, err := LastCommit(repoDir, ref, verbose)
+	ostreeCommit, err := LastCommit(repoDir, ref)
 	if err != nil {
 		return "", fmt.Errorf("cannot get last ostree commit: %w", err)
 	}
@@ -277,7 +273,6 @@ func ostreeAdminStatusJson(sysroot string) (*[]byte, error) {
 		return nil, errors.New("invalid ostree sysroot parameter")
 	}
 	stdout, err := RunWithStdoutCapture(
-		false,
 		"--sysroot="+sysroot,
 		"admin",
 		"status",
@@ -287,8 +282,8 @@ func ostreeAdminStatusJson(sysroot string) (*[]byte, error) {
 		return nil, err
 	}
 
-	var data []byte
-	if _, err := stdout.Read(data); err != nil {
+	data, err := io.ReadAll(stdout)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read ostree status: %w", err)
 	}
 	return &data, nil
@@ -577,10 +572,9 @@ func Run(verbose bool, args ...string) error {
 	return runOstreeCommand(os.Stdout, os.Stderr, finalArgs...)
 }
 
-func RunWithStdoutCapture(verbose bool, args ...string) (stdout io.Reader, err error) {
-	var stdo *bytes.Buffer
-
-	err = runOstreeCommand(stdo, os.Stderr, args...)
+func RunWithStdoutCapture(args ...string) (io.Reader, error) {
+	stdo := new(bytes.Buffer)
+	err := runOstreeCommand(stdo, os.Stderr, args...)
 	return stdo, err
 }
 
@@ -760,31 +754,31 @@ func (o *Ostree) BootCommit(sysroot string) (string, error) {
 }
 
 // ListRemotes lists all the remote refs in the configuration's ostree repository.
-func (o *Ostree) ListRemotes(verbose bool) ([]string, error) {
+func (o *Ostree) ListRemotes() ([]string, error) {
 	repoDir, err := o.RepoDir()
 	if err != nil {
 		return nil, err
 	}
-	return ListRemotes(repoDir, verbose)
+	return ListRemotes(repoDir)
 }
 
 // LastCommit returns the last commit for a given ref.
-func (o *Ostree) LastCommit(ref string, verbose bool) (string, error) {
+func (o *Ostree) LastCommit(ref string) (string, error) {
 	repoDir, err := o.RepoDir()
 	if err != nil {
 		return "", err
 	}
-	return LastCommit(repoDir, ref, verbose)
+	return LastCommit(repoDir, ref)
 }
 
 // LastCommitWithSysroot returns the last commit for a given ref in a sysroot.
-func (o *Ostree) LastCommitWithSysroot(ref string, verbose bool) (string, error) {
+func (o *Ostree) LastCommitWithSysroot(ref string) (string, error) {
 	sysroot, err := o.cfg.GetItem("Ostree.Sysroot")
 	if err != nil {
 		return "", err
 	}
 	repoDir := filepath.Join(strings.TrimRight(sysroot, "/"), "ostree", "repo")
-	return LastCommit(repoDir, ref, verbose)
+	return LastCommit(repoDir, ref)
 }
 
 func (o *Ostree) getDevGpgHomedir() (string, error) {
@@ -1021,7 +1015,7 @@ func (o *Ostree) MaybeInitializeRemote(verbose bool) error {
 		fmt.Printf("ostree repo at %v already initialized. Reusing ...\n", repoDir)
 	}
 
-	remotes, err := ListRemotes(repoDir, verbose)
+	remotes, err := ListRemotes(repoDir)
 	if err != nil {
 		return err
 	}
@@ -1116,7 +1110,6 @@ func (o *Ostree) GenerateStaticDelta(ref string, verbose bool) error {
 	fmt.Printf("Generating static delta for %s and ref %s ...\n", repoDir, ref)
 
 	stdout, err := RunWithStdoutCapture(
-		false,
 		"--repo="+repoDir,
 		"rev-parse",
 		ref,
@@ -1131,15 +1124,14 @@ func (o *Ostree) GenerateStaticDelta(ref string, verbose bool) error {
 	}
 
 	stdout, err = RunWithStdoutCapture(
-		false,
 		"--repo="+repoDir,
 		"rev-parse",
 		ref+"^",
 	)
 	if err != nil {
-		return err
+		// This is not a fatal error, the branch might not have a previous commit.
 	}
-	revOld, err := readerToFirstNonEmptyLine(stdout)
+	revOld, _ := readerToFirstNonEmptyLine(stdout)
 
 	args := []string{
 		"--repo=" + repoDir,
@@ -1247,16 +1239,16 @@ func (o *Ostree) AddRemoteWithSysroot(sysroot string, verbose bool) error {
 }
 
 // LocalRefs lists the locally available ostree refs.
-func (o *Ostree) LocalRefs(verbose bool) ([]string, error) {
+func (o *Ostree) LocalRefs() ([]string, error) {
 	repoDir, err := o.RepoDir()
 	if err != nil {
 		return nil, err
 	}
-	return ListLocalRefs(repoDir, verbose)
+	return ListLocalRefs(repoDir)
 }
 
 // RemoteRefs lists the remote available ostree refs.
-func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
+func (o *Ostree) RemoteRefs() ([]string, error) {
 	repoDir, err := o.RepoDir()
 	if err != nil {
 		return nil, err
@@ -1265,11 +1257,11 @@ func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ListRemoteRefs(repoDir, remote, verbose)
+	return ListRemoteRefs(repoDir, remote)
 }
 
 // DeployedRootfs returns the path to the deployed rootfs.
-func (o *Ostree) DeployedRootfs(ref string, verbose bool) (string, error) {
+func (o *Ostree) DeployedRootfs(ref string) (string, error) {
 	sysroot, err := o.Sysroot()
 	if err != nil {
 		return "", err
@@ -1283,7 +1275,7 @@ func (o *Ostree) DeployedRootfs(ref string, verbose bool) (string, error) {
 		return "", err
 	}
 
-	ostreeCommit, err := o.LastCommit(ref, verbose)
+	ostreeCommit, err := o.LastCommit(ref)
 	if err != nil {
 		return "", fmt.Errorf("cannot get last ostree commit: %w", err)
 	}
