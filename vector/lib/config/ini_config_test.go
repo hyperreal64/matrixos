@@ -133,3 +133,22 @@ func TestIniConfig_Defaults(t *testing.T) {
 		t.Errorf("Default matrixOS.Root should be absolute, got %q", val)
 	}
 }
+
+func TestIniConfig_GetItem_LastValue(t *testing.T) {
+	// Create an IniConfig manually with multiple values for a key
+	cfg := &IniConfig{
+		cfg: map[string][]string{
+			"Test.Key": {"value1", "value2", "value3"},
+		},
+	}
+
+	val, err := cfg.GetItem("Test.Key")
+	if err != nil {
+		t.Fatalf("GetItem returned error: %v", err)
+	}
+
+	expected := "value3"
+	if val != expected {
+		t.Errorf("GetItem returned %q, expected %q (last value)", val, expected)
+	}
+}

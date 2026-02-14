@@ -7,6 +7,7 @@ type IConfig interface {
 	Load() error
 
 	// GetItem retrieves the single config value associated to the provided config key.
+	// If multiple values are present, it returns the last one.
 	// Config keys can be of type: category.name.
 	GetItem(key string) (string, error)
 

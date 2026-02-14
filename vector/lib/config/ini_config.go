@@ -204,6 +204,8 @@ func (c *IniConfig) Load() error {
 	return nil
 }
 
+// GetItem retrieves the single config value associated to the provided config key.
+// If multiple values are present, it returns the last one.
 func (c *IniConfig) GetItem(key string) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("config is nil")
@@ -216,7 +218,7 @@ func (c *IniConfig) GetItem(key string) (string, error) {
 
 	var val string
 	if len(lst) > 0 {
-		val = lst[0]
+		val = lst[len(lst)-1]
 	}
 	return val, nil
 }
