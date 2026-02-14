@@ -4,7 +4,6 @@
   - Rewrite codebase to Golang.
     - Load() should validate.
 - [Imaging]
-  - Test and integrate Hyprland.
   - Test systemd-boot.
   - Test bootc & migration to UKI.
   - Support Cloud Init.
