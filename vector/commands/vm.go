@@ -138,7 +138,7 @@ func NewVMCommand() ICommand {
 		fs: flag.NewFlagSet("vm", flag.ExitOnError),
 	}
 	c.fs.StringVar(&c.imagePath, "image", "", "Path to the matrixOS image")
-	c.fs.StringVar(&c.memory, "memory", "8G", "Amount of RAM for the VM")
+	c.fs.StringVar(&c.memory, "memory", "4G", "Amount of RAM for the VM")
 	c.fs.StringVar(&c.port, "port", "2222", "Local port for SSH forwarding")
 	c.fs.IntVar(&c.waitBoot, "wait_boot", 300, "Seconds to wait for boot login prompt")
 	c.fs.BoolVar(&c.nographic, "nographic", false, "Disable graphical output")
