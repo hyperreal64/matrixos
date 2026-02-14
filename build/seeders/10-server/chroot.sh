@@ -44,6 +44,16 @@ server.tweak_nsswitch() {
         "/etc/nsswitch.conf"
 }
 
+server.tweak_resolved() {
+    # Disable multicast DNS support in systemd-resolved as atm
+    # avahi-daemon is providing it.
+    local resolved_conf="/etc/systemd/resolved.conf"
+    if [ -f "${resolved_conf}" ]; then
+        echo "# matrixOS uses avahi for Multicast DNS." >> "${resolved_conf}"
+        echo "MulticastDNS=no" >> "${resolved_conf}"
+    fi
+}
+
 main() {
 
     local phases=(
@@ -52,6 +62,7 @@ main() {
         server.build_everything
         server.tweak_nsswitch
         server.clean_temporary_artifacts
+        server.tweak_resolved
     )
 
     # Pre-run tests to check that for every phase we have a function declared
