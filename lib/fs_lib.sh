@@ -169,12 +169,11 @@ fs_lib.setup_common_rootfs_mounts() {
         mount -v --make-slave "${dst}"
     done
 
-    local devshm="/dev/shm"
     local chroot_devshm="${mnt%/}/dev/shm"
     if [ ! -d "${chroot_devshm}" ]; then
         mkdir -p "${chroot_devshm}"
     fi
-    mount -v -t tmpfs "${devshm}" "${chroot_devshm}" \
+    mount -v -t tmpfs "devshm" "${chroot_devshm}" \
         -o rw,mode=1777,nosuid,nodev
     __mounts_list+=( "${chroot_devshm}" )
 
