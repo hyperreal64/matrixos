@@ -519,6 +519,7 @@ seeder_worker() {
     # Call the prepper first.
     (
         # export the latest values for the prepper to use.
+        export MATRIXOS_DEV_DIR
         export SEEDER_CHROOT_NAME
         export SEEDER_CHROOTS_DIR
         export PREFERRED_SEEDER_CHROOT_DIR
