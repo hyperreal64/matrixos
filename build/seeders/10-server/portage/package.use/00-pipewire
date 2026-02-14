@@ -1,4 +1,1 @@
-media-video/pipewire pipewire-alsa extra gsettings sound-server loudness fftw echo-cancel
-
-# Not needed on a matrixOS Bedrock. If enabled, please add USE=harfbuzz to freetype.
-media-video/pipewire -gstreamer
+../../../common/portage/package.use/00-pipewire

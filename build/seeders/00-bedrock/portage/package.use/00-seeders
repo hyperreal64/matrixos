@@ -1,2 +1,1 @@
-# Bedrock seeder, avoid circular dependency
-media-libs/libwebp -tiff
+../../../common/portage/package.use/00-seeders

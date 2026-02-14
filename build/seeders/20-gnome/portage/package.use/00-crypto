@@ -1,1 +1,1 @@
-sys-apps/systemd cryptsetup
+../../../common/portage/package.use/00-crypto
