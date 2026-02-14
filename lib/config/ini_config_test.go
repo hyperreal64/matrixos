@@ -55,7 +55,10 @@ OutDir=images
 	tmpFile.Close()
 
 	// Load config
-	cfg := NewIniConfig(tmpFile.Name())
+	cfg, err := NewIniConfigFromFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
 	if err := cfg.Load(); err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -122,7 +125,10 @@ func TestIniConfig_Defaults(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
-	cfg := NewIniConfig(tmpFile.Name())
+	cfg, err := NewIniConfigFromFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
 	if err := cfg.Load(); err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
