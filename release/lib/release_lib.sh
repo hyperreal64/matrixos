@@ -605,26 +605,6 @@ release_lib.maybe_ostree_init() {
     ostree_lib.run --repo="${repodir}" config set "core.gpg-verify" "${gpg_val}"
 }
 
-_get_ostree_commit_consume_flag() {
-    local consume_allowed="${1}"
-    if [ -z "${consume_allowed}" ]; then
-        return 0
-    fi
-    if [ "${consume_allowed}" != "1" ]; then
-        return 0
-    fi
-
-    local consume_enabled="${MATRIXOS_USE_OSTREE_COMMIT_CONSUME_FLAG}"
-    if [ -z "${consume_enabled}" ]; then
-        return 0
-    fi
-    if [ "${consume_enabled}" != "1" ]; then
-        return 0
-    fi
-
-    echo "--consume"
-}
-
 release_lib.release() {
     local repodir="${1}"
     if [ -z "${repodir}" ]; then
@@ -666,7 +646,9 @@ release_lib.release() {
     local verbose_args=
     verbose_args=$(_get_ostree_verbosity "${verbose_mode}")
     local consume_flag=
-    consume_flag=$(_get_ostree_commit_consume_flag "${consume_allowed}")
+    if [ -n "${consume_allowed}" ]; then
+        consume_flag="--consume"
+    fi
 
     local metadata=
     local metadata_file="${imagedir}${MATRIXOS_SEEDER_BUILD_METADATA_FILE}"

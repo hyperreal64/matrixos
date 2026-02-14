@@ -34,6 +34,10 @@ SecureBootPrivateKey=sb-keys/db.key
 SecureBootPublicKey=sb-keys/db.pem
 LocksDir=locks/seeder
 
+[Releaser]
+LocksDir=locks/releaser
+HooksDir=release/hooks
+
 [Imager]
 LocksDir=locks/imager
 ImagesDir=out/images
@@ -76,18 +80,24 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	// Relative to matrixOS.Root
 	check("matrixOS.PrivateGitRepoPath", privateRepoPath)
 	check("matrixOS.LocksDir", filepath.Join(rootPath, "locks"))
-	check("Seeder.LocksDir", filepath.Join(rootPath, "locks/seeder"))
-	check("Imager.LocksDir", filepath.Join(rootPath, "locks/imager"))
-	check("Ostree.GpgOfficialPublicKey", filepath.Join(rootPath, "pubkeys/ostree.gpg"))
 	check("matrixOS.LogsDir", "/var/log/matrixos")
-	check("Ostree.DevGpgHomeDir", filepath.Join(rootPath, "gpg-home"))
-	check("Imager.ImagesDir", filepath.Join(rootPath, "out/images"))
-	check("Imager.MountDir", filepath.Join(rootPath, "out/mounts"))
+
+	check("Seeder.LocksDir", filepath.Join(rootPath, "locks/seeder"))
 	check("Seeder.DownloadsDir", filepath.Join(rootPath, "out/seeder/downloads"))
 	check("Seeder.DistfilesDir", filepath.Join(rootPath, "out/seeder/distfiles"))
 	check("Seeder.BinpkgsDir", filepath.Join(rootPath, "out/seeder/binpkgs"))
 	check("Seeder.PortageReposDir", filepath.Join(rootPath, "out/seeder/repos"))
 	check("Seeder.GpgKeysDir", filepath.Join(rootPath, "out/seeder/gpg-keys"))
+
+	check("Releaser.LocksDir", filepath.Join(rootPath, "locks/releaser"))
+	check("Releaser.HooksDir", filepath.Join(rootPath, "release/hooks"))
+
+	check("Imager.LocksDir", filepath.Join(rootPath, "locks/imager"))
+	check("Imager.ImagesDir", filepath.Join(rootPath, "out/images"))
+	check("Imager.MountDir", filepath.Join(rootPath, "out/mounts"))
+
+	check("Ostree.DevGpgHomeDir", filepath.Join(rootPath, "gpg-home"))
+	check("Ostree.GpgOfficialPublicKey", filepath.Join(rootPath, "pubkeys/ostree.gpg"))
 	check("Ostree.RepoDir", filepath.Join(rootPath, "ostree/repo"))
 
 	// Relative to PrivateGitRepoPath
