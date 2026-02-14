@@ -135,15 +135,11 @@ parse_args() {
             vals="${2}"
             shift 2
         fi
-        local skip_seeders=()
-        readarray -d ',' -t skip_seeders <<< "${vals}"
-        # Important: readarray keeps the delimiter unless you trim it.
-        skip_seeders[-1]="${skip_seeders[-1]%$'\n'}"
         ARG_SEEDER_ARGS+=(
-            "--skip-seeders=${skip_seeders[@]}"
+            "--skip-seeders=${vals}"
         )
         ARG_RELEASER_ARGS+=(
-            "--skip-seeders=${skip_seeders[@]}"
+            "--skip-seeders=${vals}"
         )
         ;;
 
@@ -156,15 +152,11 @@ parse_args() {
             vals="${2}"
             shift 2
         fi
-        local only_seeders=()
-        readarray -d ',' -t only_seeders <<< "${vals}"
-        # Important: readarray keeps the delimiter unless you trim it.
-        only_seeders[-1]="${only_seeders[-1]%$'\n'}"
         ARG_SEEDER_ARGS+=(
-            "--only-seeders=${only_seeders[@]}"
+            "--only-seeders=${vals}"
         )
         ARG_RELEASER_ARGS+=(
-            "--only-seeders=${only_seeders[@]}"
+            "--only-seeders=${vals}"
         )
         ;;
 
