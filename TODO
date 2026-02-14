@@ -1,7 +1,6 @@
 # TODO for Milestone 4
 
 - [Build & Releasing]
-  - Migrate to ini configs so that I can move code to Golang.
   - Rewrite codebase to Golang.
 - [Imaging]
   - Test and integrate Hyprland.
