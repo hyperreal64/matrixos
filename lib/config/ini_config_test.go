@@ -32,6 +32,7 @@ PortageReposDir=out/seeder/repos
 GpgKeysDir=out/seeder/gpg-keys
 SecureBootPrivateKey=sb-keys/db.key
 SecureBootPublicKey=sb-keys/db.pem
+LocksDir=locks/seeder
 
 [Imager]
 ImagesDir=out/images
@@ -73,6 +74,7 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	// Relative to matrixOS.Root
 	check("matrixOS.PrivateGitRepoPath", privateRepoPath)
 	check("matrixOS.LocksDir", filepath.Join(rootPath, "locks"))
+	check("Seeder.LocksDir", filepath.Join(rootPath, "locks/seeder"))
 	check("Ostree.GpgOfficialPublicKey", filepath.Join(rootPath, "pubkeys/ostree.gpg"))
 	check("matrixOS.LogsDir", "/var/log/matrixos")
 	check("Ostree.DevGpgHomeDir", filepath.Join(rootPath, "gpg-home"))
