@@ -438,7 +438,7 @@ release_lib.post_clean_qa_checks() {
     echo "Post-clean QA Checks ..."
 
     echo "Listing the top 20 largest packages:"
-    chroot "${imagedir}" \
+    fs_lib.chroot "${imagedir}" \
         equery size '*' | sed 's/\(.*\):.*(\(.*\))$/\2 \1/' \
             | sort -n | numfmt --to=iec-i | tail -n 20
 
@@ -463,9 +463,10 @@ release_lib.post_clean_shrink() {
     echo "Shrinking the rootfs to save space ..."
 
     local packages=()
-    fs_lib.setup_common_rootfs_mounts "${!_pcs_mounts}" "${imagedir}"
+    local skip_proc="1"
+    fs_lib.setup_common_rootfs_mounts "${!_pcs_mounts}" "${imagedir}" "${skip_proc}"
     # remove everything --with-bdeps=n not in new world file, for the not-full branch.
-    chroot "${imagedir}" emerge --depclean --with-bdeps=n --complete-graph "${packages[@]}"
+    fs_lib.chroot "${imagedir}" emerge --depclean --with-bdeps=n --complete-graph "${packages[@]}"
     fs_lib.unsetup_common_rootfs_mounts "${imagedir}"
 
     # Note: /usr/src presence is required by some snap binaries. So, keep the dir around.
