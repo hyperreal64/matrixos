@@ -1,1 +1,1 @@
-sys-kernel/linux-firmware ~amd64
+../../../common/portage/package.accept_keywords/linux-firmware

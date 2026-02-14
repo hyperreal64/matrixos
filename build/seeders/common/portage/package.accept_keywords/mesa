@@ -1,0 +1,4 @@
+# Unstable mesa to stable, remove when this becomes stable
+~media-libs/mesa-26.0.0 ~amd64
+~dev-util/mesa_clc-26.0.0 ~amd64
+~dev-util/sysprof-capture-49.0 ~amd64

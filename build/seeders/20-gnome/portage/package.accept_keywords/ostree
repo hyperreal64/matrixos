@@ -1,3 +1,1 @@
-# Need blscfg which is in 2.14
-=sys-boot/grub-2.14* ~amd64
-sys-boot/grub-themes-gentoo ~amd64
+../../../common/portage/package.accept_keywords/ostree
