@@ -2,7 +2,7 @@ package cleaners
 
 import (
 	"fmt"
-	"matrixos/lib/config"
+	"matrixos/vector/lib/config"
 	"path"
 	"time"
 )
