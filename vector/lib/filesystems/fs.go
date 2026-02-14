@@ -469,7 +469,10 @@ func CheckHardlinkPreservation(src, dst string) error {
 	}
 	log.Printf("Checking hardlink preservation from %s to %s...", src, dst)
 
-	// find files with >1 links, print inode and path.
+	// 1. Find files with multiple links.
+	// 2. Print Inode and Path.
+	// 3. Scan output to find the first pair of files sharing the same inode.
+	// Using a map for O(1) checks instead of sorting.
 	cmd := execCommand("find", src, "-type", "f", "-links", "+1", "-printf", "%i %p\n")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -480,31 +483,37 @@ func CheckHardlinkPreservation(src, dst string) error {
 	}
 
 	scanner := bufio.NewScanner(stdout)
-	inodes := make(map[string][]string)
+	// Map from Inode -> Path
+	seenInodes := make(map[string]string)
+
 	var file1Src, file2Src string
 	foundPair := false
 
-	// Stream output to avoid reading everything if not needed?
-	// Actually we need to Find TWO files with SAME inode.
-	// We scan until we fill an inode entry with 2 paths.
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.SplitN(line, " ", 2)
 		if len(parts) != 2 {
 			continue
 		}
-		ino, path := parts[0], parts[1]
-		inodes[ino] = append(inodes[ino], path)
-		if len(inodes[ino]) >= 2 {
-			file1Src = inodes[ino][0]
-			file2Src = inodes[ino][1]
+
+		inode, path := parts[0], parts[1]
+
+		if existingPath, ok := seenInodes[inode]; ok {
+			// Found our pair!
+			file1Src = existingPath
+			file2Src = path
 			foundPair = true
 			break
 		}
+
+		seenInodes[inode] = path
 	}
-	// Kill the find process if it's still running, we got what we need.
-	cmd.Process.Signal(os.Interrupt)
-	cmd.Wait() // clean up
+
+	// Terminate the find process gracefully if it's still running.
+	if cmd.Process != nil {
+		cmd.Process.Signal(os.Interrupt)
+	}
+	cmd.Wait() // Clean up resources
 
 	if !foundPair {
 		log.Println("WARNING: no hardlinked file pairs found in source. Cannot verify.")
