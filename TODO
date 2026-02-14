@@ -1,10 +1,6 @@
-# TODO for Milestone 3
+# TODO for Milestone 4
 
 - [Build & Releasing]
-  - ostree static-delta generate move to release_lib.
-  - move _productionize_image to image_lib.
-  - create and publish docker app that embeds image and allows install
-    via a simple docker run {installer args}.
   - Migrate to ini configs so that I can move code to Golang.
   - Rewrite codebase to Golang.
 - [Imaging]
