@@ -2,6 +2,7 @@
 
 - [Build & Releasing]
   - Rewrite codebase to Golang.
+    - Load() should validate.
 - [Imaging]
   - Test and integrate Hyprland.
   - Test systemd-boot.
