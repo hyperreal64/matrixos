@@ -148,11 +148,15 @@ fs_lib.chroot() {
         echo "fs_lib.chroot: missing chroot_dir parameter" >&2
         return 1
     fi
-    local chroot_exec="${2}"
+    shift
+
+    local chroot_exec="${1}"
     if [ -z "${chroot_exec}" ]; then
         echo "fs_lib.chroot: missing chroot_exec parameter" >&2
         return 1
     fi
+    shift
+
     unshare \
         --pid \
         --fork \
@@ -160,7 +164,7 @@ fs_lib.chroot() {
         --uts \
         --ipc \
         --mount-proc="${chroot_dir}/proc" \
-        chroot "${chroot_dir}" "${chroot_exec}"
+        chroot "${chroot_dir}" "${chroot_exec}" "${@}"
 }
 
 fs_lib.setup_common_rootfs_mounts() {
