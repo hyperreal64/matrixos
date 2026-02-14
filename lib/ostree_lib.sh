@@ -262,7 +262,7 @@ ostree_lib.prepare_filesystem_hierarchy() {
 
     echo "Setting up /lab (for everything homelabbing and your LAN)..."
     local labdir="${imagedir}/lab"
-    if [ -d "${labdir}" ]; then
+    if [ ! -d "${labdir}" ]; then
         mkdir -p "${labdir}"
     fi
 
