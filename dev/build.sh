@@ -18,10 +18,12 @@ fi
 source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
 export MATRIXOS_DEV_DIR
 
+source "${MATRIXOS_DEV_DIR}/lib/ostree_lib.sh"
 source "${MATRIXOS_DEV_DIR}/lib/qa_lib.sh"
 
 
 main() {
+    ostree_lib.setup_environment
     qa_lib.root_privs
 
     echo "ATTENTION PLEASE"

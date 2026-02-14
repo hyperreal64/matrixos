@@ -210,6 +210,7 @@ image_worker() {
 }
 
 main() {
+    ostree_lib.setup_environment
     parse_args "${@}"
     qa_lib.root_privs
 

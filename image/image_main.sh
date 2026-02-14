@@ -620,6 +620,7 @@ _productionize_image() {
 main() {
     trap clean_exit EXIT
 
+    ostree_lib.setup_environment
     parse_args "${@}"
     qa_lib.root_privs
 
