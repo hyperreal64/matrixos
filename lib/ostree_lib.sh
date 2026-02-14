@@ -145,7 +145,23 @@ ostree_lib.collection_id_args() {
 }
 
 ostree_lib.get_gpg_pubkey_path() {
-    echo "${MATRIXOS_OSTREE_GPG_PUB_PATH}"
+    local mos_private_pub="${MATRIXOS_OSTREE_GPG_PUB_PATH}"
+    local official_pub="${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
+
+    if [ -f "${mos_private_pub}" ]; then
+        # If we have /etc/matrixos-private/... pubkey, use this.
+        echo "Using user-provided GPG public key: ${mos_private_pub} ..." >&2
+        echo "${mos_private_pub}"
+    elif [ -f "${official_pub}" ]; then
+        # If we don't have any /etc/matrixos-private, we are probably
+        # in the install.device scenario (installing matrixos from matrixos).
+        # We should have the official pub key.
+        echo "Using official matrixOS GPG public key: ${official_pub} ..." >&2
+        echo "${official_pub}"
+    else
+        echo "ERROR: Unable to find a valid GPG pub key. Neither: ${mos_private_pub} nor ${official_pub} exist." >&2
+        return 1
+    fi
 }
 
 ostree_lib.ostree_gpg_args() {
