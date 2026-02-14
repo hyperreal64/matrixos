@@ -4,7 +4,9 @@ set -eu
 
 MATRIXOS_DEV_DIR=$(realpath $(dirname "${0}")/../)
 source "${MATRIXOS_DEV_DIR}"/headers/env.include.sh
+
 source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
+source "${MATRIXOS_DEV_DIR}"/image/lib/image_lib.sh
 
 USER_REGEX='^[a-z_][a-z0-9_-]{0,31}$'
 USERNAME_AFTER_CHANGE=
@@ -266,6 +268,44 @@ menuentry \"${entry_name}\" --class windows {\
     done
 }
 
+add_matrixos_boot() {
+    local efi_device=
+    efi_device=$(fs_lib.mountpoint_to_device "${MATRIXOS_EFI_ROOT}" || true)
+    if [ -z "${efi_device}" ]; then
+        echo "Unable to find device for ${MATRIXOS_EFI_ROOT}. Skipping adding matrixOS to EFI boot options." >&2
+        return 1
+    fi
+
+    local partno=
+    partno=$(image_lib.partition_number "${efi_device}")  # can return whitespaces.
+    if [ -z "${partno}" ]; then
+        echo "Unable to get partition number for ${efi_device}. Skipping adding matrixOS to EFI boot options." >&2
+        return 1
+    fi
+
+    local label=
+    label=$(image_lib.partition_label "${efi_device}")
+    if [ -z "${label}" ]; then
+        echo "Unable to get partition label for ${efi_device}. Skipping adding matrixOS to EFI boot options." >&2
+        return 1
+    fi
+
+    local block_device=
+    block_device=$(image_lib.block_device_for_partition_path "${efi_device}")
+    if [ -z "${block_device}" ]; then
+        echo "Unable to find block device for ${efi_device}. Skipping adding matrixOS to EFI boot options." >&2
+        return 1
+    fi
+
+    echo "Installing (${MATRIXOS_FANCY_OSNAME} on ${label}) to ESP via efibootmgr ..."
+    echo "Note: if this fails, you should already have a no-name entry. But YMMV."
+    efibootmgr --create \
+        --disk "${efi_device}" \
+        --part ${partno} \
+        --label "${MATRIXOS_FANCY_OSNAME} on ${label}" \
+        --loader "${MATRIXOS_EFI_STANDARD_BOOT_EXECUTABLE_PATH}"
+}
+
 main() {
     check_root
     change_username "${MATRIXOS_DEFAULT_USERNAME}"
@@ -274,6 +314,7 @@ main() {
     change_luks_password
     setup_localization
     detect_windows
+    add_matrixos_boot
 
     echo "Please reboot and enjoy matrixOS."
 }
