@@ -12,6 +12,8 @@ MATRIXOS_SEEDERS_DIR=$(env_lib.get_simple_var "matrixOS" "DefaultRoot")/build/se
 MATRIXOS_SEEDERS_BUILD_ARTIFACTS_DIR=$(env_lib.get_simple_var "Seeder" "ChrootBuildArtifactsDir")
 MATRIXOS_SEEDERS_PHASES_STATE_DIR=$(env_lib.get_simple_var "Seeder" "ChrootSeedersPhasesStateDir")
 MATRIXOS_DISABLED_SEEDER_FILE=$(env_lib.get_simple_var "Seeder" "SeederDisabledFileName")
+MATRIXOS_USE_LOCAL_GIT_REPO_INSIDE_CHROOT=$(env_lib.get_bool_var "Seeder" "UseLocalGitRepoInsideChroot")
+MATRIXOS_DELETE_DOT_GIT_FROM_GIT_REPO=$(env_lib.get_bool_var "Seeder" "DeleteDotGitFromGitRepo")
 
 _seeder_flag_prefix=$(env_lib.get_simple_var "Seeder" "ChrootSeederDoneFlagFileNamePrefix")
 MATRIXOS_SEEDER_DONE_FLAG_FILE="${MATRIXOS_SEEDERS_PHASES_STATE_DIR}/${_seeder_flag_prefix}"
