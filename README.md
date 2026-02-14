@@ -282,8 +282,7 @@ and a Golang based version (still WIP):
 > **Note:** The following command must be run as root.
 
 ```shell
-cd vector/
-go run vector.go upgrade
+./vector/vector upgrade
 ```
 
 ### How to hop between matrixOS images with (almost no harm)
