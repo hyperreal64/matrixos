@@ -125,6 +125,8 @@ func CleanupMounts(mounts []string) {
 			log.Printf("Unable to umount %s: %v", mnt, err)
 			out, _ := execCommand("findmnt", mnt).CombinedOutput()
 			log.Println(string(out))
+			log.Printf("For safety, calling umount -l %s", mnt)
+			sysUnmount(mnt, unix.MNT_DETACH)
 			continue
 		}
 	}
