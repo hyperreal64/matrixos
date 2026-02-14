@@ -1293,6 +1293,7 @@ func (o *Ostree) GenerateStaticDelta(ref string, verbose bool) error {
 		"--to=" + revNew,
 		"--inline",
 		"--min-fallback-size=0",
+		"--disable-bsdiff",
 	}
 
 	if revOld == "" {

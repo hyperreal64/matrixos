@@ -664,13 +664,15 @@ ostree_lib.generate_static_delta() {
             --to="${rev_new}" \
             --empty \
             --inline \
-            --min-fallback-size=0
+            --min-fallback-size=0 \
+            --disable-bsdiff
     else
         ostree static-delta generate --repo="${repodir}" \
             --from="${rev_old}" \
             --to="${rev_new}" \
             --inline \
-            --min-fallback-size=0
+            --min-fallback-size=0 \
+            --disable-bsdiff
     fi
 }
 
