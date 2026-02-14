@@ -7,7 +7,6 @@ import (
 )
 
 func TestIniConfig_Load_Expansion(t *testing.T) {
-	// Create a temporary config file
 	tmpFile, err := os.CreateTemp("", "matrixos-test-*.conf")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
@@ -18,7 +17,6 @@ func TestIniConfig_Load_Expansion(t *testing.T) {
 	rootPath := "/tmp/matrixos-root"
 	privateRepoPath := "/tmp/matrixos-private"
 
-	// Write config content that mimics matrixos.conf structure
 	configContent := `
 [matrixOS]
 Root=` + rootPath + `
@@ -50,7 +48,6 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	}
 	tmpFile.Close()
 
-	// Load config
 	cfg, err := NewIniConfigFromFile(tmpFile.Name(), rootPath)
 	if err != nil {
 		t.Fatalf("Failed to create config: %v", err)
@@ -87,7 +84,7 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	check("Seeder.GpgKeysDir", filepath.Join(rootPath, "out/seeder/gpg-keys"))
 	check("Ostree.RepoDir", filepath.Join(rootPath, "ostree/repo"))
 
-	// Level X (Relative to PrivateGitRepoPath)
+	// Relative to PrivateGitRepoPath
 	check("Seeder.SecureBootPrivateKey", filepath.Join(privateRepoPath, "sb-keys/db.key"))
 	check("Seeder.SecureBootPublicKey", filepath.Join(privateRepoPath, "sb-keys/db.pem"))
 	check("Ostree.GpgPrivateKey", filepath.Join(privateRepoPath, "keys/priv.key"))
