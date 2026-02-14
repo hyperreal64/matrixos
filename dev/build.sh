@@ -27,13 +27,15 @@ main() {
     qa_lib.root_privs
 
     echo "ATTENTION PLEASE"
-    echo "Using Git repo: ${MATRIXOS_GIT_REPO}"
+    echo "Using Git repo: ${MATRIXOS_GIT_REPO} (from conf/matrixos.conf)"
     echo "If you want to make changes to the build configs, it's preferred to fork the official repo"
-    echo "and > export MATRIXOS_GIT_REPO=<the URL to your ${MATRIXOS_OSNAME}.git repo fork>"
-    echo "The repo will be cloned inside seed chroots. All uncommitted changes for building will not"
-    echo "be picked up by the build process."
+    echo "and > edit conf/matrixos.conf GitRepo parameter, setting the URL to your ${MATRIXOS_OSNAME}.git repo fork."
+    echo "Alternatively, use UseLocalGitRepoInsideChroot and optionally also DeleteDotGitFromGitRepo conf/matrixos.conf"
+    echo "settings, to do a local clone of the git repository inside the chroot for bootstrapping."
+    echo "In both cases, the repo will be cloned inside seed chroots via git clone. This means that all uncommitted"
+    echo "changes will NOT be picked up by the build process. The build will start in 10 seconds ..."
     echo
-    sleep 5
+    sleep 10
 
     local private_git_url="${MATRIXOS_PRIVATE_EXAMPLE_GIT_REPO}"
     local private_repo_path="${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
