@@ -51,6 +51,16 @@ gnome.tweak_nsswitch() {
         "/etc/nsswitch.conf"
 }
 
+gnome.tweak_resolved() {
+    # Disable multicast DNS support in systemd-resolved as atm
+    # avahi-daemon is providing it.
+    local resolved_conf="/etc/systemd/resolved.conf"
+    if [ -f "${resolved_conf}" ]; then
+        echo "# matrixOS uses avahi for Multicast DNS." >> "${resolved_conf}"
+        echo "MulticastDNS=no" >> "${resolved_conf}"
+    fi
+}
+
 main() {
 
     local phases=(
@@ -58,6 +68,7 @@ main() {
         gnome.portage_bootstrap
         gnome.build_everything
         gnome.tweak_nsswitch
+        gnome.tweak_resolved
         gnome.clean_temporary_artifacts
     )
 
