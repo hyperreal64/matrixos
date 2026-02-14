@@ -213,7 +213,7 @@ detect_windows() {
         return 0
     fi
 
-    local grub_cfg="${MATRIXOS_GRUB_CFG_EFI_PATH}"
+    local grub_cfg="${MATRIXOS_EFI_ROOT}/${MATRIXOS_RELATIVE_EFI_BOOT_PATH}/grub.cfg"
     if [ ! -e "${grub_cfg}" ]; then
         echo "No ${grub_cfg} found. Skipping Windows detection." >&2
         return 0
