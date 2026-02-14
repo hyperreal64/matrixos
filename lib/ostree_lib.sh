@@ -665,14 +665,16 @@ ostree_lib.generate_static_delta() {
             --empty \
             --inline \
             --min-fallback-size=0 \
-            --disable-bsdiff
+            --disable-bsdiff \
+            --max-chunk-size=64
     else
         ostree static-delta generate --repo="${repodir}" \
             --from="${rev_old}" \
             --to="${rev_new}" \
             --inline \
             --min-fallback-size=0 \
-            --disable-bsdiff
+            --disable-bsdiff \
+            --max-chunk-size=64
     fi
 }
 
