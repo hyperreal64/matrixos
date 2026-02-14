@@ -476,7 +476,6 @@ To achieve the goals in the Roadmap, the work is chunked into three milestones f
 
 ### Milestone 3 (Focus: User Friendliness)
 
-- [ ] Integrate Hyprland as a desktop environment option.
 - [x] Allow switching between OSTree branches to move between focus areas (e.g., Gaming to Workstation).
 - [x] Battle-test and document OSTree rollbacks and roll-forwards.
 - [x] Refine software selection, image sizes, and distribution of pre-built flavors.
