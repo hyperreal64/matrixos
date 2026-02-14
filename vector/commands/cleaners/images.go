@@ -36,7 +36,7 @@ func (c *ImagesCleaner) isDryRun() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return val.Item == "true", nil
+	return val == "true", nil
 }
 
 func (c *ImagesCleaner) MinAmountOfImages() (int, error) {
@@ -44,7 +44,7 @@ func (c *ImagesCleaner) MinAmountOfImages() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	amount, err := strconv.Atoi(val.Item)
+	amount, err := strconv.Atoi(val)
 	if err != nil {
 		return 0, err
 	}
@@ -114,7 +114,7 @@ func (c *ImagesCleaner) Run() error {
 	if err != nil {
 		return err
 	}
-	imgDir := val.Item
+	imgDir := val
 
 	minAmountOfImages, err := c.MinAmountOfImages()
 	if err != nil {

@@ -2,7 +2,6 @@ package cleaners
 
 import (
 	"fmt"
-	"matrixos/vector/lib/config"
 )
 
 // MockConfig is a mock implementation of the IConfig interface for testing purposes.
@@ -14,20 +13,29 @@ func (m *MockConfig) Load() error {
 	return nil
 }
 
-func (m *MockConfig) GetItem(key string) (config.SingleConfigValue, error) {
+func (m *MockConfig) GetItem(key string) (string, error) {
 	if val, ok := m.values[key]; ok {
 		if str, ok := val.(string); ok {
-			return config.SingleConfigValue{Item: str}, nil
+			return str, nil
 		}
 	}
-	return config.SingleConfigValue{}, fmt.Errorf("item with key '%s' not found", key)
+	return "", fmt.Errorf("item with key '%s' not found", key)
 }
 
-func (m *MockConfig) GetItems(key string) (config.MultipleConfigValues, error) {
+func (m *MockConfig) GetBool(key string) (bool, error) {
 	if val, ok := m.values[key]; ok {
-		if items, ok := val.([]string); ok {
-			return config.MultipleConfigValues{Items: items}, nil
+		if b, ok := val.(bool); ok {
+			return b, nil
 		}
 	}
-	return config.MultipleConfigValues{}, fmt.Errorf("items with key '%s' not found", key)
+	return false, fmt.Errorf("bool with key '%s' not found", key)
+}
+
+func (m *MockConfig) GetItems(key string) ([]string, error) {
+	if val, ok := m.values[key]; ok {
+		if items, ok := val.([]string); ok {
+			return items, nil
+		}
+	}
+	return nil, fmt.Errorf("items with key '%s' not found", key)
 }

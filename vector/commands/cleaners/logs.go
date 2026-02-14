@@ -29,7 +29,7 @@ func (c *LogsCleaner) isDryRun() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return val.Item == "true", nil
+	return val == "true", nil
 }
 
 func (c *LogsCleaner) getLogsDir() (string, error) {
@@ -37,10 +37,10 @@ func (c *LogsCleaner) getLogsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if val.Item == "" {
+	if val == "" {
 		return "", fmt.Errorf("matrixOS.LogsDir is not set")
 	}
-	return val.Item, nil
+	return val, nil
 }
 
 func (c *LogsCleaner) Run() error {

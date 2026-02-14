@@ -204,34 +204,42 @@ func (c *IniConfig) Load() error {
 	return nil
 }
 
-func (c *IniConfig) GetItem(key string) (SingleConfigValue, error) {
-	cfg := SingleConfigValue{}
+func (c *IniConfig) GetItem(key string) (string, error) {
 	if c == nil {
-		return cfg, fmt.Errorf("config is nil")
+		return "", fmt.Errorf("config is nil")
 	}
 
 	lst, ok := c.cfg[key]
 	if !ok {
-		return cfg, fmt.Errorf("invalid key %s", key)
+		return "", fmt.Errorf("invalid key %s", key)
 	}
+
+	var val string
 	if len(lst) > 0 {
-		cfg.Item = lst[0]
+		val = lst[0]
 	}
-	return cfg, nil
+	return val, nil
 }
 
-func (c *IniConfig) GetItems(key string) (MultipleConfigValues, error) {
-	cfg := MultipleConfigValues{}
+func (c *IniConfig) GetBool(key string) (bool, error) {
+	val, err := c.GetItem(key)
+	if err != nil {
+		return false, err
+	}
+	return val == "true", nil
+}
+
+func (c *IniConfig) GetItems(key string) ([]string, error) {
+	var vals []string
 	if c == nil {
-		return cfg, fmt.Errorf("config is nil")
+		return vals, fmt.Errorf("config is nil")
 	}
 
 	lst, ok := c.cfg[key]
 	if !ok {
-		return cfg, fmt.Errorf("invalid key %s", key)
+		return vals, fmt.Errorf("invalid key %s", key)
 	}
-	cfg.Items = lst
-	return cfg, nil
+	return lst, nil
 }
 
 func (c *IniConfig) getVal(key string) (string, bool) {

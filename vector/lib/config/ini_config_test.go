@@ -70,8 +70,8 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 			t.Errorf("GetItem(%q) returned error: %v", key, err)
 			return
 		}
-		if val.Item != expected {
-			t.Errorf("Key %q: expected %q, got %q", key, expected, val.Item)
+		if val != expected {
+			t.Errorf("Key %q: expected %q, got %q", key, expected, val)
 		}
 	}
 
@@ -129,7 +129,7 @@ func TestIniConfig_Defaults(t *testing.T) {
 	if err != nil {
 		t.Errorf("GetItem(matrixOS.Root) error: %v", err)
 	}
-	if !filepath.IsAbs(val.Item) {
-		t.Errorf("Default matrixOS.Root should be absolute, got %q", val.Item)
+	if !filepath.IsAbs(val) {
+		t.Errorf("Default matrixOS.Root should be absolute, got %q", val)
 	}
 }

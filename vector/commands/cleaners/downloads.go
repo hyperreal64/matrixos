@@ -27,7 +27,7 @@ func (c *DownloadsCleaner) isDryRun() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return val.Item == "true", nil
+	return val == "true", nil
 }
 
 func (c *DownloadsCleaner) getDownloadsDir() (string, error) {
@@ -35,7 +35,7 @@ func (c *DownloadsCleaner) getDownloadsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return val.Item, nil
+	return val, nil
 }
 
 func (c *DownloadsCleaner) Run() error {
