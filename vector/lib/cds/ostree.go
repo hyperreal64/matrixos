@@ -1517,8 +1517,7 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 		return fmt.Errorf("config item Releaser.ReadOnlyVdb is not set")
 	}
 
-	relUsrVarDbPkg := strings.TrimPrefix(matrixOsRoVdb, "/")
-	usrVarDbPkg := filepath.Join(imageDir, relUsrVarDbPkg)
+	usrVarDbPkg := filepath.Join(imageDir, matrixOsRoVdb)
 
 	fmt.Printf("Moving %s to %s\n", varDbPkg, usrVarDbPkg)
 	// Ensure parent exists
@@ -1530,7 +1529,7 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 	}
 
 	// ln -s "../../${relusrvardbpkg}" "${vardbpkg}"
-	if err := os.Symlink(filepath.Join("..", "..", relUsrVarDbPkg), varDbPkg); err != nil {
+	if err := os.Symlink(filepath.Join("..", "..", matrixOsRoVdb), varDbPkg); err != nil {
 		return fmt.Errorf("failed to symlink var/db/pkg: %w", err)
 	}
 
@@ -1657,8 +1656,7 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 	}
 
 	fmt.Printf("Setting up %s...\n", efiRoot)
-	efiRelRoot := strings.TrimPrefix(efiRoot, "/")
-	os.MkdirAll(filepath.Join(imageDir, efiRelRoot), 0755)
+	os.MkdirAll(filepath.Join(imageDir, efiRoot), 0755)
 
 	fmt.Println("Setting up /usr/local...")
 	usrLocalDir := filepath.Join(imageDir, "usr", "local")
