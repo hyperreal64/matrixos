@@ -46,13 +46,14 @@ fs_lib.cleanup_mounts() {
     local len=${#mounts[@]}
     local mnt=
     local i=
+    udevadm settle
     for (( i=$len-1; i>=0; i-- )); do
         mnt="${mounts[$i]}"
         local mounted=
         mounted=$(findmnt -n "${mnt}" || true)
         if [ -n "${mounted}" ]; then
             echo "Umounting ${mnt} ..."
-            umount -l "${mnt}" || true
+            umount "${mnt}" || true
         fi
     done
     udevadm settle
@@ -61,6 +62,7 @@ fs_lib.cleanup_mounts() {
 fs_lib.cleanup_cryptsetup_devices() {
     local cryptsetup_devices=( "${@}" )
     local cd=
+    udevadm settle
     for cd in "${cryptsetup_devices[@]}"; do
         local cdpath=
         cdpath=$(fs_lib.get_luks_rootfs_device_path "${cd}")
@@ -81,6 +83,7 @@ fs_lib.cleanup_loop_devices() {
     local loop_devices=( "${@}" )
     local ld=
     local losetup_find=
+    udevadm settle
     for ld in "${loop_devices[@]}"; do
         if [ ! -e "${ld}" ]; then
             continue
@@ -119,8 +122,9 @@ fs_lib.check_dir_not_fs_root() {
     fi
 }
 
-_fs_lib_rslave_mounts=(
+_fs_lib_slave_mounts=(
         /dev
+        /dev/pts
         /sys
 )
 
@@ -143,13 +147,22 @@ fs_lib.setup_common_rootfs_mounts() {
 
     fs_lib.check_dir_not_fs_root "${mnt}"
 
-    for d in "${_fs_lib_rslave_mounts[@]}"; do
+    for d in "${_fs_lib_slave_mounts[@]}"; do
         local dst="${mnt%/}${d}"
         mkdir -p "${dst}"
-        mount -v --rbind "${d}" "${dst}"
+        mount -v --bind "${d}" "${dst}"
         __mounts_list+=( "${dst}" )
-        mount -v --make-rslave "${dst}"
+        mount -v --make-slave "${dst}"
     done
+
+    local devshm="/dev/shm"
+    local chroot_devshm="${mnt%/}/dev/shm"
+    if [ ! -d "${chroot_devshm}" ]; then
+        mkdir -p "${chroot_devshm}"
+    fi
+    mount -v -t tmpfs "${devshm}" "${chroot_devshm}" \
+        -o rw,mode=1777,nosuid,nodev
+    __mounts_list+=( "${chroot_devshm}" )
 
     local chroot_proc="${mnt%/}/proc"
     mkdir -p "${chroot_proc}"
@@ -177,7 +190,7 @@ fs_lib.unsetup_common_rootfs_mounts() {
 
     local mounts=()
     local d=
-    for d in "${_fs_lib_rslave_mounts[@]}"; do
+    for d in "${_fs_lib_slave_mounts[@]}"; do
         mounts+=( "${mnt%/}${d}" )
     done
 
