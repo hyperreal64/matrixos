@@ -4,5 +4,5 @@ set -eu
 cd "$(dirname "$(realpath "${0}")")"
 
 mkdir -p bin
-go build -o bin/vector .
+go build -buildvcs=false -o bin/vector .
 exec ./bin/vector "${@}"
