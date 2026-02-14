@@ -270,12 +270,13 @@ release_lib.clean_rootfs() {
         /var/tmp/portage
     )
     local removefiles=(
+        /etc/resolv.conf
+        /etc/portage/secureboot.x509
         /root/.bash_history
         /root/.lesshst
         /root/.bashrc
         /root/.bash_history
         /root/.xauth*
-        /etc/portage/secureboot.x509
         /var/lib/sbctl/keys
     )
 
