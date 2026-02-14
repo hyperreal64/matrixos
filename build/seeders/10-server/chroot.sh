@@ -8,7 +8,10 @@ source "${MATRIXOS_DEV_DIR}/build/seeders/headers/seedersenv.include.sh"
 
 source "${MATRIXOS_DEV_DIR}/build/seeders/lib/chroots_lib.sh"
 
-
+# TODO: maybe we can infer the kernel from the package list.
+BUILD_KERNEL_PACKAGES=(
+    sys-kernel/matrixos-kernel::matrixos
+)
 UPSTREAM_PORTAGE_REPOS=()
 
 _seeder_name=$(basename "$(dirname "${0}")")
@@ -24,6 +27,9 @@ server.portage_bootstrap() {
 
 server.build_everything() {
     chroots_lib.default_build_everything "${_seeder_name}"
+    # Trigger a rebuild of the kernel so that we bundle the latest and
+    # correct initramfs setup.
+    chroots_lib.generic_forced_rebuild "${BUILD_KERNEL_PACKAGES[@]}"
 }
 
 server.clean_temporary_artifacts() {
