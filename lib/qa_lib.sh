@@ -189,7 +189,6 @@ qa_lib.verify_releaser_environment_setup() {
         gpg
         openssl
         ostree
-        systemctl
         unshare
     )
     local dirs=(
