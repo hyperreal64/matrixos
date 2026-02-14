@@ -434,13 +434,21 @@ ostree_lib.maybe_initialize_gpg() {
     local signing_pubkey=
     signing_pubkey=$(ostree_lib.get_gpg_pubkey_path)
 
-    ostree_lib.import_gpg_key "${MATRIXOS_OSTREE_GPG_KEY_PATH}"
-    ostree_lib.import_gpg_key "${signing_pubkey}"
-    ostree_lib.import_gpg_key "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
-    ostree_lib.run --repo="${repodir}" remote gpg-import "${remote}" \
-        -k "${MATRIXOS_OSTREE_GPG_KEY_PATH}" \
-        -k "${signing_pubkey}" \
-        -k "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
+    local keys=(
+        "${MATRIXOS_OSTREE_GPG_KEY_PATH}"
+        "${signing_pubkey}"
+        "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
+    )
+    local key=
+    for key in "${keys[@]}"; do
+        if [ ! -f "${key}" ]; then
+            echo "WARNING: ${key} not present, skipping import ..." >&2
+            continue
+        fi
+        ostree_lib.import_gpg_key "${key}"
+        ostree_lib.run --repo="${repodir}" remote gpg-import "${remote}" \
+            -k "${key}"
+    done
 }
 
 ostree_lib.maybe_initialize_remote() {
