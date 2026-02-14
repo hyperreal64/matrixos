@@ -18,6 +18,7 @@ type DevCommand struct {
 func NewDevCommand() *DevCommand {
 	subcommands := map[string]func() ICommand{
 		"janitor": NewJanitorCommand,
+		"vm":      NewVMCommand,
 	}
 	return &DevCommand{
 		fs:          flag.NewFlagSet("dev", flag.ExitOnError),
@@ -56,11 +57,6 @@ func (c *DevCommand) Init(args []string) error {
 
 // Run runs the command
 func (c *DevCommand) Run() error {
-	// Check if we are running as root. If running as user, exit with error.
-	if getEuid() != 0 {
-		return fmt.Errorf("this command must be run as root")
-	}
-
 	sf, ok := c.subcommands[c.sub]
 	if !ok {
 		return fmt.Errorf("unknown subcommand: %s", c.sub)
