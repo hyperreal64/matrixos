@@ -35,6 +35,7 @@ ARG_POSITIONALS=()
 ARG_FORCE_RELEASE=
 ARG_ONLY_IMAGES=
 ARG_FORCE_IMAGES=
+ARG_SKIP_IMAGES=
 ARG_ON_BUILD_SERVER=
 ARG_RESUME_SEEDERS=
 ARG_SEEDER_ARGS=()
@@ -91,6 +92,12 @@ parse_args() {
 
         -fi|--force-images)
         ARG_FORCE_IMAGES=1
+
+        shift
+        ;;
+
+        -si|--skip-images)
+        ARG_SKIP_IMAGES=1
 
         shift
         ;;
@@ -175,6 +182,7 @@ parse_args() {
         echo -e "-fr, --force-release \t\t force the re-release of the latest built seeds." >&2
         echo -e "-oi, --only-images  \t\t generate the images from the last committed branches, skipping seeder and releaser." >&2
         echo -e "-fi, --force-images  \t\t force images creation for all branches, after the seeder and releaser executed." >&2
+        echo -e "-si, --skip-images  \t\t skip images generation for all branches, after the seeder and releaser executed." >&2
         echo -e "-bs, --on-build-server  \t optimize execution if seeding, release and imaging happens on the same machine." >&2
         echo -e "-rs, --resume-seeders \t\t allow seeder to resume seeds (chroots) build from a checkpoint." >&2
         echo -e "-s, --skip-seeders  \t\t comma separated list of seeders to skip (by name)." >&2
@@ -211,6 +219,10 @@ _force_release_flag() {
 
 _force_images_flag() {
     [[ -n "${ARG_FORCE_IMAGES}" ]]
+}
+
+_skip_images_flag() {
+    [[ -n "${ARG_SKIP_IMAGES}" ]]
 }
 
 _on_build_server_flag() {
@@ -352,6 +364,8 @@ main() {
         elif _only_images_flag "${@}"; then
             echo "Creating only images (all) via --only-images."
             execute_imager=1
+        elif _skip_images_flag "${@}"; then
+            echo "Skipping images creation via --skip-images."
         else
             echo "No images to release. Yay?"
         fi
