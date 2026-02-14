@@ -47,7 +47,7 @@ release_lib.check_matrixos() {
         echo "matrixOS dev dir: ${MATRIXOS_DEV_DIR} does not exit" >&2
         return 1
     fi
-    qa_lib.check_matrixos_private
+    qa_lib.check_matrixos_private "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
 }
 
 release_lib._cp_reflink_copy() {

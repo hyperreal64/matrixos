@@ -15,14 +15,23 @@ qa_lib.root_privs() {
     fi
 }
 
+_mos_private_message() {
+    echo "Please set it in conf/matrixos.conf, matrixOS.PrivateGitRepoPath." >&2
+    echo "See README.md and https://github.com/lxnay/matrixos-private-example for more details." >&2
+    echo "This directory contains YOUR GPG private keys and SecureBoot certs necessary to build" >&2
+    echo "and release a custom matrixOS Gentoo build." >&2
+}
+
 qa_lib.check_matrixos_private() {
-    local matrixos_private="${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+    local matrixos_private="${1}"
+    if [ -z "${matrixos_private}" ]; then
+        echo "matrixOS.PrivateGitRepoPath is empty ..." >&2
+        _mos_private_message
+        return 1
+    fi
     if [ ! -d "${matrixos_private}" ]; then
         echo "${matrixos_private} does not exist ..." >&2
-        echo "Please set a valid MATRIXOS_PRIVATE_GIT_REPO_PATH directory path." >&2
-        echo "See README.md and https://github.com/lxnay/matrixos-private-example for more details." >&2
-        echo "This directory contains YOUR GPG private keys and SecureBoot certs necessary to build" >&2
-        echo "and release a custom matrixOS Gentoo build." >&2
+        _mos_private_message
         return 1
     fi
 }
@@ -43,7 +52,7 @@ qa_lib.check_secureboot() {
     sb_serial=$(openssl x509 -in "${sbcert_path}" -noout -serial \
         | cut -d'=' -f2 | sed 's/..\B/&:/g')
     if [ -z "${sb_serial}" ]; then
-        echo "Cannot extract SecureBoot serial from: ${sbcert_path}"
+        echo "Cannot extract SecureBoot serial from: ${sbcert_path}" >&2
         return 1
     fi
     echo "SecureBoot Serial of cert ${sbcert_path}: '${sb_serial}' ::"

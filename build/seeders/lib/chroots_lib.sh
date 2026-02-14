@@ -6,6 +6,8 @@ set -eu
 source "${MATRIXOS_DEV_DIR:-/matrixos}/headers/env.include.sh"
 source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/seedersenv.include.sh
 
+source "${MATRIXOS_DEV_DIR}/lib/qa_lib.sh"
+
 _get_phase_path() {
     echo "${MATRIXOS_SEEDERS_PHASES_STATE_DIR}/${1}.done"
 }
@@ -76,21 +78,15 @@ chroots_lib.validate_matrixos_git_repo() {
 }
 
 chroots_lib.validate_matrixos_private() {
-    if [ -z "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" ]; then
-        echo "${0}: missing parameter to validate_matrixos_private" >&2
-        return 1
-    fi
-    if [ ! -d "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" ]; then
-        echo "${0}: ${MATRIXOS_PRIVATE_GIT_REPO_PATH} does not exist." >&2
-        return 1
-    fi
+    local matrixos_private="${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+    qa_lib.check_matrixos_private "${matrixos_private}"
 
     # This is usually bind-mount. Make sure it is and not
     # copied over.
     local mounted=
-    mounted=$(findmnt -n -o TARGET "${MATRIXOS_PRIVATE_GIT_REPO_PATH}")
-    if [ "${mounted}" != "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" ]; then
-        echo "${MATRIXOS_PRIVATE_GIT_REPO_PATH} is not a bind-mount. seeder.sh should do this." >&2
+    mounted=$(findmnt -n -o TARGET "${matrixos_private}")
+    if [ "${mounted}" != "${matrixos_private}" ]; then
+        echo "${matrixos_private} is not a bind-mount. seeder should do this." >&2
         return 1
     fi
 }
