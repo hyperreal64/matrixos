@@ -17,7 +17,7 @@ type BranchCommand struct {
 }
 
 // NewBranchCommand creates a new BranchCommand
-func NewBranchCommand() *BranchCommand {
+func NewBranchCommand() ICommand {
 	return &BranchCommand{
 		fs: flag.NewFlagSet("branch", flag.ExitOnError),
 	}

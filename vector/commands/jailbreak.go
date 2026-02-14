@@ -12,7 +12,7 @@ type JailbreakCommand struct {
 }
 
 // NewJailbreakCommand creates a new JailbreakCommand
-func NewJailbreakCommand() *JailbreakCommand {
+func NewJailbreakCommand() ICommand {
 	return &JailbreakCommand{
 		fs: flag.NewFlagSet("jailbreak", flag.ExitOnError),
 	}

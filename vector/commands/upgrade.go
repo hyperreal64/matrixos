@@ -30,7 +30,7 @@ type UpgradeCommand struct {
 }
 
 // NewUpgradeCommand creates a new UpgradeCommand
-func NewUpgradeCommand() *UpgradeCommand {
+func NewUpgradeCommand() ICommand {
 	c := &UpgradeCommand{
 		fs: flag.NewFlagSet("upgrade", flag.ExitOnError),
 	}

@@ -24,6 +24,8 @@ Usage:
   setupOS     - setup tool, configures passwords, accounts, languages, etc.
   readwrite   - temporarily (until next upgrade) turn matrixOS into a (mutable) read-write system.
   jailbreak   - permanently turns this system into a regular mutable Gentoo.
+  dev 	      - development toolkit command, orchestrates development workflow and tools.
+    janitor      cleans up development toolkit artifacts, such as old images and downloads.
 `
 )
 
@@ -39,12 +41,13 @@ func main() {
 		commands.NewReadWriteCommand(),
 		commands.NewSetupOSCommand(),
 		commands.NewJailbreakCommand(),
+		commands.NewDevCommand(),
 	}
 
 	cmdStr := os.Args[1]
 	subcmdArgs := os.Args[2:]
 
-	if cmdStr == "help" {
+	if cmdStr == "help" || cmdStr == "--help" || cmdStr == "-h" {
 		fmt.Print(helpMessage)
 		os.Exit(0)
 	}
