@@ -503,6 +503,7 @@ ostree_lib.maybe_initialize_remote() {
     local remotes=
     remotes=$( ostree_lib.list_remotes "${repodir}" )
     local remote_found=
+    local r=
     for r in "${remotes[@]}"; do
         if [ "${r}" = "${remote}" ]; then
             remote_found=1
