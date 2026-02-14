@@ -66,8 +66,6 @@ fsenc_lib.luks_encrypt() {
     # Update caller tracking variables of resources so that they can be disposed on exit.
     device_mappers+=( "${luks_name}" )
 
-    udevadm settle
-
     # Wait for the loop device to be really ready.
     udevadm settle
 
