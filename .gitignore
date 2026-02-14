@@ -2,7 +2,6 @@ ostree/
 out/
 locks/
 logs/
-build/seeders/*/__disabled__
 **/*.img*
 
 # Local image testing with qemu
