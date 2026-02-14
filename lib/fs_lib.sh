@@ -162,6 +162,7 @@ fs_lib.chroot() {
     unshare \
         --pid \
         --fork \
+        --kill-child \
         --mount \
         --uts \
         --ipc \
