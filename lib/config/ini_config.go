@@ -57,7 +57,6 @@ func (c *IniConfig) Load() error {
 	// Level 1: Relative to Root
 	rootDependents := []string{
 		"matrixOS.ArtifactsDir",
-		"matrixOS.ConfDir",
 		"matrixOS.LogsDir",
 		"matrixOS.LocksDir",
 		"Ostree.Dir",
