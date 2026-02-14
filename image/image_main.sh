@@ -744,6 +744,9 @@ main() {
     qa_lib.verify_imager_environment_setup "/" "${gpg_enabled}"
     if [ -n "${ARG_USE_LOCAL_OSTREE}" ]; then
         ostree_lib.show_local_refs "${repodir}"
+        # Initialize remote anyway if it's not initialized, with the defaults we have.
+        # Otherwise maybe_initialize_gpg will error out saying that the remote does not exist.
+        ostree_lib.maybe_initialize_remote "${remote}" "${remote_url}" "${gpg_enabled}" "${repodir}"
         ostree_lib.maybe_initialize_gpg "${gpg_enabled}" "${remote}" "${repodir}"
     else
         ostree_lib.maybe_initialize_remote "${remote}" "${remote_url}" "${gpg_enabled}" "${repodir}"
