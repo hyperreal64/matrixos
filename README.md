@@ -7,6 +7,8 @@ Our two main goals are:
 - **Reliability**: Providing a stable, immutable base system through OSTree, which allows for atomic upgrades and rollbacks.
 - **Gaming-Friendly**: Shipping with the Steam loader, Lutris and optimizations to get you gaming on both NVIDIA and AMD GPUs with minimal fuss.
 
+..and our motto is: `emerge once, deploy everywhere`.
+
 TL;DR: Download from: [Cloudflare](https://images.matrixos.org)
 
 <table align="center">
@@ -44,9 +46,22 @@ TL;DR: Download from: [Cloudflare](https://images.matrixos.org)
   </tr>
 </table>
 
+## 🛠️ Disambiguation
+
+Hey! It looks like the name `matrixOS` is a cool one, so cool that not
+only this page and project exist, but others worth checking out, too!
+
+- [The OG matrixOS](https://matrixos.ca), a Debian based distribution shipping
+  with Trinity Desktop.
+- [MatrixOS](https://github.com/203-Systems/MatrixOS), an Operating System for
+  Software Defined Controllers.
+
+We need more entropy in this world! (pun intendedm for those who get it).
+
 ## ⚠️ Disclaimer
 
-matrixOS is a hobby project created to maintain a personal homelab setup. It is **not** intended for production environments where reliability is paramount. While I can be my own SRE, I can't be yours. :-)
+matrixOS is a hobby project. Do not take it too seriously. It's born because 
+I needed something for my homelab setup. It is **not** intended for production environments where reliability is paramount. While I can be my own SRE, I can't be yours. :-)
 
 Everything in this repository is provided "AS IS" and comes with **NO WARRANTY**. Please see the License section for more details.
 
