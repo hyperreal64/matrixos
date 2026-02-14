@@ -145,6 +145,7 @@ qa_lib.verify_distro_rootfs_environment_setup() {
         btrfs
         chroot
         cryptsetup
+        efibootmgr
         find
         findmnt
         fstrim
@@ -223,6 +224,7 @@ qa_lib.verify_imager_environment_setup() {
     local executables=(
         btrfs
         cryptsetup
+        efibootmgr
         findmnt
         fstrim
         gpg
