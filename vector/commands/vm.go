@@ -275,6 +275,32 @@ func (c *VMCommand) runTests(vm *VMDriver) error {
 		return fmt.Errorf("OS check failed: %w", err)
 	}
 
+	var lastErr error
+	start := time.Now()
+	end := start.Add(30 * time.Second)
+	for ; time.Now().Before(end); time.Sleep(2 * time.Second) {
+		// Ensure resolv.conf is healthy.
+		log.Println("Checking resolv.conf...")
+		if err := vm.Send("grep nameserver /etc/resolv.conf"); err != nil {
+			lastErr = err
+			log.Printf("Failed to send resolv.conf check command, retrying... : %v\n", err)
+			continue
+		}
+		if err := vm.Expect("nameserver", 5*time.Second); err != nil {
+			lastErr = err
+			log.Printf("Failed to send resolv.conf check command, retrying... : %v\n", err)
+			continue
+		}
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil {
+		log.Println("resolv.conf check failed after multiple attempts.")
+		return fmt.Errorf("resolv.conf check failed after multiple attempts: %w", lastErr)
+	}
+
+	log.Println("resolv.conf looks good.")
 	log.Println("SUCCESS: Image verified successfully.")
 	return nil
 }
