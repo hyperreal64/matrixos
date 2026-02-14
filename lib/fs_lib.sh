@@ -142,6 +142,27 @@ _fs_lib_slave_mounts=(
         /sys
 )
 
+fs_lib.chroot() {
+    local chroot_dir="${1}"
+    if [ -z "${chroot_dir}" ]; then
+        echo "fs_lib.chroot: missing chroot_dir parameter" >&2
+        return 1
+    fi
+    local chroot_exec="${2}"
+    if [ -z "${chroot_exec}" ]; then
+        echo "fs_lib.chroot: missing chroot_exec parameter" >&2
+        return 1
+    fi
+    unshare \
+        --pid \
+        --fork \
+        --mount \
+        --uts \
+        --ipc \
+        --mount-proc="${chroot_dir}/proc" \
+        chroot "${chroot_dir}" "${chroot_exec}"
+}
+
 fs_lib.setup_common_rootfs_mounts() {
     if [ -z "${1}" ]; then
         echo "fs_lib.setup_common_rootfs_mounts: missing array parameter" >&2
@@ -158,6 +179,8 @@ fs_lib.setup_common_rootfs_mounts() {
         echo "${mnt} does not exist ..." >&2
         return 1
     fi
+
+    local skip_proc="${3}"  # can be empty.
 
     fs_lib.check_dir_not_fs_root "${mnt}"
 
@@ -179,8 +202,10 @@ fs_lib.setup_common_rootfs_mounts() {
 
     local chroot_proc="${mnt%/}/proc"
     mkdir -p "${chroot_proc}"
-    mount -t proc proc "${chroot_proc}"
-    __mounts_list+=( "${chroot_proc}" )
+    if [ -z "${skip_proc}" ]; then
+        mount -t proc proc "${chroot_proc}"
+        __mounts_list+=( "${chroot_proc}" )
+    fi
 
 	mkdir -p "${mnt%/}/run/lock"
 	mount -v -t tmpfs none "${mnt%/}/run/lock" \
