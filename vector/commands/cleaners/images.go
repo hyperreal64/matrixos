@@ -110,7 +110,7 @@ func buildBuckets(candidates []string, regex *regexp.Regexp) map[string]map[stri
 }
 
 func (c *ImagesCleaner) Run() error {
-	val, err := c.cfg.GetItem("Imager.OutDir")
+	val, err := c.cfg.GetItem("Imager.ImagesDir")
 	if err != nil {
 		return err
 	}
