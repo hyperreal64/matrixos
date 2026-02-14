@@ -451,8 +451,7 @@ setup_image() {
     )
     echo "Boot arguments: ${boot_args[@]}"
 
-    local efiboot_path="${MATRIXOS_RELATIVE_EFI_BOOT_PATH}"
-    local efibootdir="${mount_efifs}${efiboot_path}"
+    local efibootdir="${mount_efifs}/${MATRIXOS_RELATIVE_EFI_BOOT_PATH}"
 
     echo "Deploying ostree into ${mount_rootfs} ..."
     # Set the remote locally forcefully to avoid getting imager confused
