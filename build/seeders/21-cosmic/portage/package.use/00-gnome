@@ -1,0 +1,9 @@
+gnome-base/gvfs samba archive fuse google gphoto2 mtp nfs
+gnome-extra/gnome-software dkms snap
+gnome-base/gnome -extras
+# wpa_supplicant pulls in qt6
+net-wireless/wpa_supplicant -gui
+gnome-base/gdm plymouth
+
+# Keep this around until spidermonkey-128 is gone
+=dev-lang/spidermonkey-128* llvm_slot_19
