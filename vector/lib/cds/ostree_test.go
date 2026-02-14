@@ -1,4 +1,4 @@
-package ostree
+package cds
 
 import (
 	"fmt"
