@@ -1,0 +1,6 @@
+app-containers/snapd apparmor
+app-emulation/qemu alsa virgl pipewire pulseaudio spice virtfs zstd gtk wayland
+media-libs/virglrenderer venus
+net-dns/dnsmasq script
+net-libs/gnutls pkcs11 tools
+sys-libs/snapd-glib -qt6 -qml
