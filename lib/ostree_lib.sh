@@ -218,14 +218,20 @@ ostree_lib.prepare_filesystem_hierarchy() {
 
     echo "Setting up /opt..."
     local optdir="${imagedir}/opt"
+    local varoptdir="${imagedir}/var/opt"
     if [ -d "${optdir}" ]; then
-        if [ -e "${imagedir}/var/opt" ]; then
-            rm -v "${imagedir}/var/opt"
+        if [ -e "${varoptdir}" ]; then
+            rm -v "${varoptdir}"
             ## will fail if dir, on purpose.
         fi
-        mv "${optdir}" "${imagedir}/var/opt"
+        echo "WARNING: moving ${optdir} to ${varoptdir}." >&2
+        mv -v "${optdir}" "${varoptdir}"
     elif [ -e "${optdir}" ]; then
         rm -v "${optdir}"
+    fi
+    if [ ! -d "${varoptdir}" ]; then
+        # Create /var/opt in case it's missing entirely.
+        mkdir -p "${varoptdir}"
     fi
     ln -s "var/opt" "${optdir}"
 
