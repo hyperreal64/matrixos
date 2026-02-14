@@ -478,3 +478,697 @@ func TestDeployIntegration(t *testing.T) {
 		t.Errorf("DeployedRootfs failed or deployment not found: %v", err)
 	}
 }
+
+func TestBranchContainsRemote(t *testing.T) {
+	tests := []struct {
+		branch string
+		want   bool
+	}{
+		{"origin:branch", true},
+		{"branch", false},
+		{"remote:group/branch", true},
+	}
+	for _, tt := range tests {
+		if got := BranchContainsRemote(tt.branch); got != tt.want {
+			t.Errorf("BranchContainsRemote(%q) = %v, want %v", tt.branch, got, tt.want)
+		}
+	}
+}
+
+func TestFullBranchHelpers(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.FullBranchSuffix": {"full"},
+		},
+	}
+	o, _ := New(cfg)
+
+	// IsBranchFullSuffixed
+	if isFull, _ := o.IsBranchFullSuffixed("branch-full"); !isFull {
+		t.Error("IsBranchFullSuffixed(branch-full) = false, want true")
+	}
+	if isFull, _ := o.IsBranchFullSuffixed("branch"); isFull {
+		t.Error("IsBranchFullSuffixed(branch) = true, want false")
+	}
+
+	// BranchToFull
+	if full, _ := o.BranchToFull("branch"); full != "branch-full" {
+		t.Errorf("BranchToFull(branch) = %q, want branch-full", full)
+	}
+	if full, _ := o.BranchToFull("branch-full"); full != "branch-full" {
+		t.Errorf("BranchToFull(branch-full) = %q, want branch-full", full)
+	}
+
+	// RemoveFullFromBranch
+	if clean, _ := o.RemoveFullFromBranch("branch-full"); clean != "branch" {
+		t.Errorf("RemoveFullFromBranch(branch-full) = %q, want branch", clean)
+	}
+	if clean, _ := o.RemoveFullFromBranch("branch"); clean != "branch" {
+		t.Errorf("RemoveFullFromBranch(branch) = %q, want branch", clean)
+	}
+
+	// BranchShortnameToFull
+	fullRef, err := o.BranchShortnameToFull("gnome", "dev", "matrixos", "amd64")
+	if err != nil {
+		t.Errorf("BranchShortnameToFull failed: %v", err)
+	}
+	wantFullRef := "matrixos/amd64/dev/gnome-full"
+	if fullRef != wantFullRef {
+		t.Errorf("BranchShortnameToFull = %q, want %q", fullRef, wantFullRef)
+	}
+}
+
+func TestClientSideGpgArgs(t *testing.T) {
+	// Test standalone function
+	args, _ := ClientSideGpgArgs(false, "")
+	if len(args) != 1 || args[0] != "--no-gpg-verify" {
+		t.Errorf("ClientSideGpgArgs(false) = %v, want [--no-gpg-verify]", args)
+	}
+
+	args, _ = ClientSideGpgArgs(true, "/path/to/key")
+	if len(args) != 2 || args[0] != "--set=gpg-verify=true" || args[1] != "--gpg-import=/path/to/key" {
+		t.Errorf("ClientSideGpgArgs(true) = %v", args)
+	}
+}
+
+func TestCollectionIDArgs(t *testing.T) {
+	args, _ := CollectionIDArgs("org.example.Collection")
+	if len(args) != 1 || args[0] != "--collection-id=org.example.Collection" {
+		t.Errorf("CollectionIDArgs = %v", args)
+	}
+
+	// Test empty (error expected based on implementation)
+	_, err := CollectionIDArgs("")
+	if err == nil {
+		t.Error("CollectionIDArgs(\"\") expected error, got nil")
+	}
+}
+
+func TestOstreeCommandsMocked(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var lastCmdArgs []string
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastCmdArgs = args
+		// Mock rev-parse for GenerateStaticDelta
+		if len(args) > 0 && args[0] == "rev-parse" {
+			stdout.Write([]byte("commit-hash\n"))
+		}
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir":                {"/repo"},
+			"Ostree.KeepObjectsYoungerThan": {"2023-01-01"},
+		},
+		Bools: map[string]bool{
+			"Ostree.Gpg": false,
+		},
+	}
+	o, _ := New(cfg)
+
+	// Pull
+	o.Pull("origin:ref", false)
+	if lastCmdArgs[1] != "pull" || lastCmdArgs[2] != "origin" || lastCmdArgs[3] != "ref" {
+		t.Errorf("Pull args mismatch: %v", lastCmdArgs)
+	}
+
+	// Prune
+	o.Prune("ref", false)
+	// args: --repo=/repo prune --depth=5 --refs-only --keep-younger-than=... --only-branch=ref
+	if lastCmdArgs[1] != "prune" || lastCmdArgs[5] != "--only-branch=ref" {
+		t.Errorf("Prune args mismatch: %v", lastCmdArgs)
+	}
+
+	// GenerateStaticDelta
+	o.GenerateStaticDelta("ref", false)
+	// First it calls rev-parse, then static-delta generate
+	// Since we only capture last, we check static-delta
+	if lastCmdArgs[1] != "static-delta" || lastCmdArgs[2] != "generate" {
+		t.Errorf("GenerateStaticDelta args mismatch: %v", lastCmdArgs)
+	}
+
+	// UpdateSummary
+	o.UpdateSummary(false)
+	if lastCmdArgs[1] != "summary" || lastCmdArgs[2] != "--update" {
+		t.Errorf("UpdateSummary args mismatch: %v", lastCmdArgs)
+	}
+
+	// Upgrade
+	o.Upgrade("/sysroot", []string{"--check"}, false)
+	if lastCmdArgs[1] != "upgrade" || lastCmdArgs[2] != "--check" {
+		t.Errorf("Upgrade args mismatch: %v", lastCmdArgs)
+	}
+}
+
+func TestBootedStatus(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock ostree admin status --json
+		jsonOutput := `[
+            {
+                "booted": true,
+                "checksum": "hash123",
+                "refspec": "origin:branch"
+            },
+            {
+                "booted": false,
+                "checksum": "hash456",
+                "refspec": "origin:old"
+            }
+        ]`
+		stdout.Write([]byte(jsonOutput))
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Sysroot": {"/sysroot"},
+		},
+	}
+	o, _ := New(cfg)
+
+	ref, err := o.BootedRef(false)
+	if err != nil {
+		t.Fatalf("BootedRef failed: %v", err)
+	}
+	if ref != "origin:branch" {
+		t.Errorf("BootedRef = %q, want origin:branch", ref)
+	}
+
+	hash, err := o.BootedHash(false)
+	if err != nil {
+		t.Fatalf("BootedHash failed: %v", err)
+	}
+	if hash != "hash123" {
+		t.Errorf("BootedHash = %q, want hash123", hash)
+	}
+}
+
+func TestSetupEnvironment(t *testing.T) {
+	os.Unsetenv("LC_TIME")
+	SetupEnvironment()
+	if got := os.Getenv("LC_TIME"); got != "C" {
+		t.Errorf("LC_TIME = %q, want C", got)
+	}
+}
+
+func TestGpgHelpers(t *testing.T) {
+	if got := GpgSignedFilePath("file"); got != "file.asc" {
+		t.Errorf("GpgSignedFilePath(file) = %q, want file.asc", got)
+	}
+}
+
+func TestPatchGpgHomeDir(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Skipping TestPatchGpgHomeDir: requires root privileges for chown")
+	}
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "gpg-home")
+
+	if err := PatchGpgHomeDir(homeDir); err != nil {
+		t.Fatalf("PatchGpgHomeDir failed: %v", err)
+	}
+
+	info, err := os.Stat(homeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Errorf("homeDir perm = %v, want 0700", info.Mode().Perm())
+	}
+}
+
+func TestGpgKeyID(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock gpg output
+		// Format: pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:
+		fmt.Fprintln(stdout, "pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:")
+		return nil
+	}
+
+	tmpDir := t.TempDir()
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	if err := os.WriteFile(pubKey, []byte("dummy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
+			"Ostree.GpgPublicKey":  {pubKey},
+		},
+	}
+
+	o, _ := New(cfg)
+
+	keyID, err := o.GpgKeyID()
+	if err != nil {
+		t.Fatalf("GpgKeyID failed: %v", err)
+	}
+	if keyID != "3260D9CC6D9275DD" {
+		t.Errorf("GpgKeyID = %q, want 3260D9CC6D9275DD", keyID)
+	}
+}
+
+func TestBootCommit(t *testing.T) {
+	sysroot := t.TempDir()
+	osName := "matrixos"
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"matrixOS.OsName": {osName},
+		},
+	}
+	o, _ := New(cfg)
+
+	// Setup directory structure: sysroot/ostree/boot.1/matrixos/COMMIT_HASH
+	bootDir := filepath.Join(sysroot, "ostree", "boot.1", osName)
+	if err := os.MkdirAll(bootDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	commitHash := "a1b2c3d4"
+	if err := os.Mkdir(filepath.Join(bootDir, commitHash), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := o.BootCommit(sysroot)
+	if err != nil {
+		t.Fatalf("BootCommit failed: %v", err)
+	}
+	if got != commitHash {
+		t.Errorf("BootCommit = %q, want %q", got, commitHash)
+	}
+}
+
+func TestMaybeInitializeRemote(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var cmds []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, strings.Join(args, " "))
+		return nil
+	}
+
+	repoDir := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir":   {repoDir},
+			"Ostree.Remote":    {"origin"},
+			"Ostree.RemoteUrl": {"http://url"},
+		},
+	}
+	o, _ := New(cfg)
+
+	if err := o.MaybeInitializeRemote(false); err != nil {
+		t.Fatalf("MaybeInitializeRemote failed: %v", err)
+	}
+
+	// Check for expected commands
+	// 1. init (since repoDir is empty)
+	// 2. remote add (since list returns empty in mock)
+	if len(cmds) < 2 {
+		t.Errorf("Expected at least 2 commands, got %d: %v", len(cmds), cmds)
+	}
+}
+
+func TestRemoteRefs(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock ostree remote refs output
+		fmt.Fprintln(stdout, "matrixos/dev/gnome")
+		fmt.Fprintln(stdout, "matrixos/prod/server")
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir": {"/repo"},
+			"Ostree.Remote":  {"origin"},
+		},
+	}
+	o, _ := New(cfg)
+
+	refs, err := o.RemoteRefs(false)
+	if err != nil {
+		t.Fatalf("RemoteRefs failed: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Errorf("Expected 2 refs, got %d", len(refs))
+	}
+	if refs[0] != "matrixos/dev/gnome" {
+		t.Errorf("Unexpected ref: %s", refs[0])
+	}
+}
+
+func TestAddRemoteWithSysroot(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var lastArgs []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastArgs = args
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Remote":    {"origin"},
+			"Ostree.RemoteUrl": {"http://url"},
+		},
+		Bools: map[string]bool{"Ostree.Gpg": false},
+	}
+	o, _ := New(cfg)
+
+	if err := o.AddRemoteWithSysroot("/sysroot", false); err != nil {
+		t.Fatalf("AddRemoteWithSysroot failed: %v", err)
+	}
+
+	// Expected: remote add --sysroot=/sysroot --force --no-gpg-verify origin http://url
+	foundSysroot := false
+	for _, arg := range lastArgs {
+		if arg == "--sysroot=/sysroot" {
+			foundSysroot = true
+			break
+		}
+	}
+	if !foundSysroot {
+		t.Errorf("AddRemoteWithSysroot args missing sysroot: %v", lastArgs)
+	}
+}
+
+func TestLastCommitWithSysroot(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		fmt.Fprintln(stdout, "hash123")
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Sysroot": {"/sysroot"},
+		},
+	}
+	o, _ := New(cfg)
+
+	hash, err := o.LastCommitWithSysroot("ref", false)
+	if err != nil {
+		t.Fatalf("LastCommitWithSysroot failed: %v", err)
+	}
+	if hash != "hash123" {
+		t.Errorf("LastCommitWithSysroot = %q, want hash123", hash)
+	}
+}
+
+func TestGpgSignFile(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var cmds []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, strings.Join(args, " "))
+		// Mock GpgKeyID call
+		if len(args) > 0 && args[0] == "--homedir" {
+			// Check if it's the --show-keys call
+			for _, arg := range args {
+				if arg == "--show-keys" {
+					fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
+					return nil
+				}
+			}
+		}
+		return nil
+	}
+
+	tmpDir := t.TempDir()
+	dummyFile := filepath.Join(tmpDir, "file.txt")
+	if err := os.WriteFile(dummyFile, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	if err := os.WriteFile(pubKey, []byte("key"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
+			"Ostree.GpgPublicKey":  {pubKey},
+		},
+	}
+	o, _ := New(cfg)
+
+	if err := o.GpgSignFile(dummyFile); err != nil {
+		t.Fatalf("GpgSignFile failed: %v", err)
+	}
+
+	// Verify commands: 1. gpg --show-keys (GpgKeyID), 2. gpg --detach-sign
+	if len(cmds) != 2 {
+		t.Errorf("Expected 2 commands, got %d", len(cmds))
+	}
+	if !strings.Contains(cmds[1], "--detach-sign") {
+		t.Errorf("Expected detach-sign command, got: %s", cmds[1])
+	}
+	if !strings.Contains(cmds[1], "KEYID123") {
+		t.Errorf("Expected key ID in sign command, got: %s", cmds[1])
+	}
+}
+
+func TestImportGpgKey(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var lastArgs []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastArgs = args
+		return nil
+	}
+
+	tmpDir := t.TempDir()
+	keyFile := filepath.Join(tmpDir, "key.asc")
+	if err := os.WriteFile(keyFile, []byte("key data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
+		},
+	}
+	o, _ := New(cfg)
+
+	if err := o.ImportGpgKey(keyFile); err != nil {
+		t.Fatalf("ImportGpgKey failed: %v", err)
+	}
+
+	// Expected: gpg --homedir ... --batch --yes --import keyFile
+	foundImport := false
+	for i, arg := range lastArgs {
+		if arg == "--import" && i+1 < len(lastArgs) && lastArgs[i+1] == keyFile {
+			foundImport = true
+			break
+		}
+	}
+	if !foundImport {
+		t.Errorf("ImportGpgKey args missing --import %s: %v", keyFile, lastArgs)
+	}
+}
+
+func TestGpgKeySelection(t *testing.T) {
+	tmpDir := t.TempDir()
+	privKey := filepath.Join(tmpDir, "priv.key")
+	offKey := filepath.Join(tmpDir, "off.key")
+
+	// Case 1: No keys exist
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.GpgPublicKey":         {privKey},
+			"Ostree.GpgOfficialPublicKey": {offKey},
+		},
+	}
+	o, _ := New(cfg)
+	if _, err := o.AvailableGpgPubKeyPaths(); err == nil {
+		t.Error("AvailableGpgPubKeyPaths should fail when no keys exist")
+	}
+
+	// Case 2: Only official key exists
+	if err := os.WriteFile(offKey, []byte("off"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := o.AvailableGpgPubKeyPaths()
+	if err != nil {
+		t.Errorf("AvailableGpgPubKeyPaths failed: %v", err)
+	}
+	if len(paths) != 1 || paths[0] != offKey {
+		t.Errorf("Expected [offKey], got %v", paths)
+	}
+	best, _ := o.GpgBestPubKeyPath()
+	if best != offKey {
+		t.Errorf("Best key should be offKey, got %s", best)
+	}
+
+	// Case 3: Both exist (Private should be preferred/first)
+	if err := os.WriteFile(privKey, []byte("priv"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err = o.AvailableGpgPubKeyPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 || paths[0] != privKey {
+		t.Errorf("Expected [privKey, offKey], got %v", paths)
+	}
+	best, _ = o.GpgBestPubKeyPath()
+	if best != privKey {
+		t.Errorf("Best key should be privKey, got %s", best)
+	}
+}
+
+func TestPrepareFilesystemHierarchySafety(t *testing.T) {
+	imageDir := t.TempDir()
+	// Setup initial state
+	dirs := []string{"tmp", "etc", "var/db/pkg", "opt", "srv", "home", "usr/local"}
+	for _, d := range dirs {
+		if err := os.MkdirAll(filepath.Join(imageDir, d), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(imageDir, "etc", "machine-id"), []byte("id"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Releaser.ReadOnlyVdb": {"/usr/var-db-pkg"},
+			"Imager.EfiRoot":       {"/efi"},
+		},
+	}
+	o, _ := New(cfg)
+
+	// First run
+	if err := o.PrepareFilesystemHierarchy(imageDir); err != nil {
+		t.Fatalf("First run failed: %v", err)
+	}
+
+	// Second run (Safety check)
+	err := o.PrepareFilesystemHierarchy(imageDir)
+	if err == nil {
+		t.Fatal("Second run should have failed due to marker file")
+	} else if !strings.Contains(err.Error(), "already prepared") {
+		t.Errorf("Unexpected error message: %v", err)
+	}
+}
+
+func TestMaybeInitializeGpg(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var cmds [][]string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, args)
+		return nil
+	}
+
+	tmpDir := t.TempDir()
+	privKey := filepath.Join(tmpDir, "priv.key")
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	offKey := filepath.Join(tmpDir, "off.key")
+
+	for _, f := range []string{privKey, pubKey, offKey} {
+		if err := os.WriteFile(f, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir":              {"/repo"},
+			"Ostree.Remote":               {"origin"},
+			"Ostree.GpgPrivateKey":        {privKey},
+			"Ostree.GpgPublicKey":         {pubKey},
+			"Ostree.GpgOfficialPublicKey": {offKey},
+			"Ostree.DevGpgHomedir":        {filepath.Join(tmpDir, "gpg")},
+		},
+		Bools: map[string]bool{
+			"Ostree.Gpg": true,
+		},
+	}
+	o, _ := New(cfg)
+
+	if err := o.MaybeInitializeGpg(false); err != nil {
+		t.Fatalf("MaybeInitializeGpg failed: %v", err)
+	}
+
+	// We expect calls for each key:
+	// 1. ImportGpgKey (gpg --import)
+	// 2. remote gpg-import (ostree remote gpg-import)
+	// Keys: priv, pub, off. (pub is best, off is different)
+
+	// We should see at least 3 ostree remote gpg-import calls and 3 gpg --import calls.
+	ostreeImports := 0
+	gpgImports := 0
+
+	for _, cmd := range cmds {
+		if len(cmd) > 0 {
+			if cmd[0] == "--repo=/repo" && cmd[1] == "remote" && cmd[2] == "gpg-import" {
+				ostreeImports++
+			}
+			// Check for gpg --import
+			// cmd structure: [gpg --homedir ... --batch --yes --import keyPath]
+			for _, arg := range cmd {
+				if arg == "--import" {
+					gpgImports++
+					break
+				}
+			}
+		}
+	}
+
+	if ostreeImports != 3 {
+		t.Errorf("Expected 3 ostree remote gpg-import calls, got %d", ostreeImports)
+	}
+	if gpgImports != 3 {
+		t.Errorf("Expected 3 gpg --import calls, got %d", gpgImports)
+	}
+}
+
+func TestPullWithRemoteExplicit(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var lastArgs []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastArgs = args
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.RepoDir": {"/repo"},
+		},
+	}
+	o, _ := New(cfg)
+
+	if err := o.PullWithRemote("myremote", "myref", false); err != nil {
+		t.Fatalf("PullWithRemote failed: %v", err)
+	}
+
+	// Expected: --repo=/repo pull myremote myref
+	if len(lastArgs) < 4 || lastArgs[1] != "pull" || lastArgs[2] != "myremote" || lastArgs[3] != "myref" {
+		t.Errorf("PullWithRemote args mismatch: %v", lastArgs)
+	}
+}

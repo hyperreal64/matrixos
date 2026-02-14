@@ -427,12 +427,12 @@ func PatchGpgHomeDir(homeDir string) error {
 		return err
 	}
 
-	rootUser, err := user.Lookup("root")
+	curUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("could not find root user: %w", err)
 	}
-	uid, _ := strconv.Atoi(rootUser.Uid)
-	gid, _ := strconv.Atoi(rootUser.Gid)
+	uid, _ := strconv.Atoi(curUser.Uid)
+	gid, _ := strconv.Atoi(curUser.Gid)
 
 	return filepath.Walk(homeDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -1207,7 +1207,7 @@ func (o *Ostree) PullWithRemote(remote, ref string, verbose bool) error {
 }
 
 // GpgArgs returns the gpg arguments for ostree commands.
-func (o *Ostree) GpgArgs(gpgEnabled bool) ([]string, error) {
+func (o *Ostree) GpgArgs() ([]string, error) {
 	gpgEnabled, err := o.GpgEnabled()
 	if err != nil {
 		return nil, err
@@ -1313,18 +1313,13 @@ func (o *Ostree) UpdateSummary(verbose bool) error {
 		return err
 	}
 
-	gpgEnabled, err := o.GpgEnabled()
-	if err != nil {
-		return err
-	}
-
 	args := []string{
 		"--repo=" + repoDir,
 		"summary",
 		"--update",
 	}
 
-	gpgArgs, err := o.GpgArgs(gpgEnabled)
+	gpgArgs, err := o.GpgArgs()
 	if err != nil {
 		return err
 	}
@@ -1457,6 +1452,11 @@ func (o *Ostree) BootedHash(verbose bool) (string, error) {
 // PrepareFilesystemHierarchy prepares the filesystem hierarchy for OSTree.
 // It ports the logic from ostree_lib.prepare_filesystem_hierarchy in ostree_lib.sh.
 func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
+	marker := filepath.Join(imageDir, "var", ".matrixos-prepared")
+	if fileExists(marker) {
+		return fmt.Errorf("filesystem hierarchy already prepared: %s exists", marker)
+	}
+
 	// The image dir must contain /sysroot
 	if err := os.Mkdir(filepath.Join(imageDir, "sysroot"), 0755); err != nil {
 		return fmt.Errorf("failed to create sysroot: %w", err)
@@ -1675,6 +1675,10 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 	}
 	if err := os.Symlink(filepath.Join("..", relUsrLocal), usrLocalDir); err != nil {
 		return fmt.Errorf("failed to symlink usr/local: %w", err)
+	}
+
+	if err := os.WriteFile(marker, []byte("prepared"), 0644); err != nil {
+		return fmt.Errorf("failed to create marker file: %w", err)
 	}
 
 	return nil
