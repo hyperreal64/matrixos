@@ -71,6 +71,7 @@ matrixOS is a hobby project created for homelab setups. It is **not** intended f
 ## 💻 Prerequisites
 
 **Hardware Requirements:**
+
 - **Architecture**: x86_64/amd64 with `x86-64-v3` support (AVX, AVX2, BMP1/2, FMA, etc.).
 - **Storage**: At least 32GB (64GB recommended) on USB/SSD/NVMe.
 
@@ -80,13 +81,16 @@ Images are available in `raw` (for flashing) and `qcow2` (for VM) formats, compr
 **Trusted Source**: [Cloudflare](https://images.matrixos.org)
 
 ### Public Keys
+
 Use these keys to verify the authenticity of images and commits:
+
 - **GPG (OSTree, Images)**: `DC474F4CBD1D3260D9CC6D9275DD33E282BE47CE`
 - **SecureBoot Fingerprint**: `sha256 Fingerprint=38:02:D7:FC:A7:6F:08:04:9C:7F:D5:D7:AF:9A:24:6C:9B:C2:28:F3:45:99:7B:DF:79:EE:F3:35:0A:81:87:1B`
 
 ## 💿 Installation
 
 ### Option 1: Flash to Drive
+
 Download the image (compressed with `xz`) and flash it to your target drive using `dd` or similar tools.
 
 ```shell
@@ -94,11 +98,13 @@ xz -dc matrixos_amd64_gnome-DATE.img.xz | sudo dd of=/dev/sdX bs=4M status=progr
 ```
 
 There are two default users:
+
 - **root**: password `matrix`
 - **matrix** (UID=1000): password `matrix`
 - **LUKS password** (if encrypted): `MatrixOS2026Enc`
 
 ### Option 2: Install from matrixOS
+
 Once booted into matrixOS (e.g., from a USB stick), you can install it onto another drive using the built-in installer.
 
 ```shell
@@ -107,38 +113,45 @@ Once booted into matrixOS (e.g., from a USB stick), you can install it onto anot
 
 If you are partitioning manually, **strict adherence** to the following layout is required:
 
-1.  **ESP Partition**: Type `ef00` | GUID: `C12A7328-F81F-11D2-BA4B-00A0C93EC93B`
-2.  **/boot Partition**: Type `ea00` | GUID: `BC13C2FF-59E6-4262-A352-B275FD6F7172`
-3.  **/ Partition**: Type `8304` | GUID: `4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709`
+1. **ESP Partition**: Type `ef00` | GUID: `C12A7328-F81F-11D2-BA4B-00A0C93EC93B`
+2. **/boot Partition**: Type `ea00` | GUID: `BC13C2FF-59E6-4262-A352-B275FD6F7172`
+3. **/ Partition**: Type `8304` | GUID: `4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709`
 
 ### Post-Installation Setup
+
 After your first boot, run the setup script to configure credentials and LUKS passwords. Run this from a VT or Desktop terminal.
 
 ```shell
 /matrixos/install/setupOS
 reboot
 ```
+
 To enable Docker: `systemctl enable --now docker`.
 
 ### 🔒 SecureBoot
+
 matrixOS supports SecureBoot. You can set it up in two ways:
-1.  **Certificate Enrollment**: Enroll the shipped public certificate at first boot via the Shim MOK Manager.
-2.  **Manual MOK Enrollment**: Use the provided MOK file (DER binary) to enroll directly into `shim`. The `shim` is signed with Microsoft 2011 and 2023 certificates.
+
+1. **UEFI BIOS Enrollment**: Enroll the `matrixos-secureboot-cert.pem` directly into your UEFI BIOS as an **Authorized Signature (db)**. This allows the firmware to trust the matrixOS bootloader and kernel directly.
+2. **Shim MOK Enrollment**: Use the provided `matrixos-secureboot-mok.der` file to enroll a **Machine Owner Key (MOK)** via the Shim MOK Manager at first boot. The `shim` itself is signed by Microsoft (2011 and 2023), allowing it to run on most hardware, and it then validates subsequent stages using the MOK.
 
 ## ⚙️ System Management
 
 matrixOS uses OSTree for atomic updates.
 
 ### Upgrades
+
 Update to the latest image:
 
 ```shell
 ostree admin upgrade
 reboot
 ```
+
 *Wrappers available at `/matrixos/install/upgrade` or `./vector/vector upgrade` (WIP).*
 
 ### Rollbacks
+
 If an update fails, simply boot into the previous entry (`ostree:1`). To make it permanent:
 
 ```shell
@@ -146,6 +159,7 @@ ostree admin pin 1
 ```
 
 ### Branch Switching
+
 List available branches and switch between them (e.g., from `gnome` to `kde` if available):
 
 ```shell
@@ -155,6 +169,7 @@ reboot
 ```
 
 ### Mutability & Jailbreaking
+
 - **Temporary Mutability**: `ostree admin unlock --hotfix` (resets on upgrade). So that you can run `emerge` as much as you like (important: switch to a `*-full` OSTree branch before doing this).
 - **Permanent Jailbreak**: Convert to a standard Gentoo system.
   - List available branches: `ostree remote refs origin`
@@ -177,7 +192,9 @@ You can build custom versions of matrixOS using the provided `dev/build.sh` scri
   - **`image.releases`**: Defines which releases are built into images.
 
 ### Configuration Rules
+
 All configuration is centralized in `conf/matrixos.conf`.
+
 - **Project Info**: OS name, architecture, git repositories.
 - **Paths**: Directories for logs, downloads, and output artifacts.
 - **Keys**: Paths to GPG and SecureBoot keys lead here.
@@ -186,6 +203,7 @@ All configuration is centralized in `conf/matrixos.conf`.
 **Important**: If you fork this repository to customize builds, update `GitRepo` in `conf/matrixos.conf` to point to your fork.
 
 ### Build Workflow
+
 Run the build script as root. It handles the entire pipeline.
 
 ```shell
@@ -202,13 +220,17 @@ Run the build script as root. It handles the entire pipeline.
 ## Known Issues
 
 ### GNOME aspect ratio is either 100% or 200%
+
 GNOME 48 currently lacks fine-grained scaling (not getting into details here, but it's fixed in 49). Workaround:
+
 ```shell
 gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']"
 ```
 
 ### NVIDIA drivers and nouveau fight
+
 If nouveau loads despite NVIDIA drivers being present:
+
 ```shell
 ostree admin kargs edit-in-place --append-if-missing=modprobe.blacklist=nouveau
 ostree admin kargs edit-in-place --append-if-missing=rd.driver.blacklist=nouveau
@@ -219,6 +241,7 @@ ostree admin kargs edit-in-place --append-if-missing=rd.driver.blacklist=nouveau
 The current focus is on **User Friendliness (Milestone 3)** and **New Technologies (Milestone 4)**.
 
 ### Milestone 4 (Future)
+
 - [ ] Rewrite core tooling in Go (`vector`) to replace bash scripts.
 - [ ] Implement proper CI/CD pipelines and testing.
 - [ ] Migrate to `bootc` or wrapper on top of `ostree` + UKI support, moving away from direct `ostree` usage.
@@ -226,6 +249,7 @@ The current focus is on **User Friendliness (Milestone 3)** and **New Technologi
 ## 🙏 Contributing
 
 Contributions are welcome!
+
 - **Code**: helping with the migration to `bootc` or improving CLI tools.
 - **Resources**: Mirrors for images/OSTree repo and compute power for builds.
 - **Donations**: Please donate to [Gentoo Linux](https://gentoo.org/donate).

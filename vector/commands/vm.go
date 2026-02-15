@@ -17,6 +17,7 @@ import (
 
 const (
 	qemuSystemX86_64 = "qemu-system-x86_64"
+	rootPassword     = "matrix"
 )
 
 type VMDriver struct {
@@ -126,6 +127,7 @@ type VMCommand struct {
 	memory      string
 	port        string
 	waitBoot    int
+	waitTests   int
 	nographic   bool
 	noAudio     bool
 	interactive bool
@@ -140,7 +142,8 @@ func NewVMCommand() ICommand {
 	c.fs.StringVar(&c.imagePath, "image", "", "Path to the matrixOS image")
 	c.fs.StringVar(&c.memory, "memory", "4G", "Amount of RAM for the VM")
 	c.fs.StringVar(&c.port, "port", "2222", "Local port for SSH forwarding")
-	c.fs.IntVar(&c.waitBoot, "wait_boot", 300, "Seconds to wait for boot login prompt")
+	c.fs.IntVar(&c.waitBoot, "wait_boot", 120, "Seconds to wait for boot login prompt")
+	c.fs.IntVar(&c.waitTests, "wait_tests", 300, "Seconds to wait for tests to complete")
 	c.fs.BoolVar(&c.nographic, "nographic", false, "Disable graphical output")
 	c.fs.BoolVar(&c.noAudio, "noaudio", false, "Disable audio devices")
 	c.fs.BoolVar(&c.interactive, "interactive", false, "Run VM interactively without testing")
@@ -187,6 +190,31 @@ func (c *VMCommand) Run() error {
 		return fmt.Errorf("failed to copy OVMF_VARS.fd: %w", err)
 	}
 
+	// Generate an ext4 filesystem from vector/tests/vm-suite to inject into the VM for testing.
+	// This allows us to easily add test scripts and data without modifying the image build process.
+	testImageFile, err := os.CreateTemp("", "vm-suite-*.img")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(testImageFile.Name())
+	truncCmd := exec.Command("truncate", "-s", "64M", testImageFile.Name())
+	if err := truncCmd.Run(); err != nil {
+		return fmt.Errorf("failed to truncate test image: %w", err)
+	}
+	testImageFile.Close()
+
+	mkfsTestImgArgs := []string{
+		"mkfs.ext4",
+		"-L", "TESTDATA",
+		"-F",
+		"-d", "tests/vm-suite",
+		testImageFile.Name(),
+	}
+	log.Printf("Generating test filesystem with command: %v\n", mkfsTestImgArgs)
+	if err := exec.Command(mkfsTestImgArgs[0], mkfsTestImgArgs[1:]...).Run(); err != nil {
+		return fmt.Errorf("failed to create test image filesystem: %w", err)
+	}
+
 	format := "raw"
 	if strings.HasSuffix(c.imagePath, ".qcow2") {
 		format = "qcow2"
@@ -199,6 +227,7 @@ func (c *VMCommand) Run() error {
 		"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/edk2-ovmf/OVMF_CODE.fd",
 		"-drive", "if=pflash,format=raw,file=" + varsDst,
 		"-drive", fmt.Sprintf("file=%s,format=%s,if=virtio", c.imagePath, format),
+		"-drive", fmt.Sprintf("file=%s,format=raw,if=virtio", testImageFile.Name()),
 	}
 
 	if c.nographic {
@@ -241,7 +270,7 @@ func (c *VMCommand) Run() error {
 		return nil
 	}
 
-	log.Println("Starting matrixOS VM Test...")
+	log.Println("Starting VM Test...")
 	return c.runTests(vm)
 }
 
@@ -259,49 +288,29 @@ func (c *VMCommand) runTests(vm *VMDriver) error {
 	if err := vm.Expect("Password:", 5*time.Second); err != nil {
 		return fmt.Errorf("password prompt missing: %w", err)
 	}
-	if err := vm.Send("matrix"); err != nil {
+	if err := vm.Send(rootPassword); err != nil {
 		return err
 	}
 
-	if err := vm.Expect("#", 10*time.Second); err != nil {
+	if err := vm.Expect("#", 5*time.Second); err != nil {
 		return fmt.Errorf("login failed: %w", err)
 	}
 
-	log.Println("Checking OS Release...")
-	if err := vm.Send("grep ID=matrixos /etc/os-release"); err != nil {
+	log.Println("Starting test suite ...")
+	if err := vm.Send(`
+mkdir -p /tmp/tests
+mount /dev/disk/by-label/TESTDATA /tmp/tests
+cd /tmp/tests
+./main.sh
+echo "TEST_RESULT:${?}"
+`); err != nil {
 		return err
 	}
-	if err := vm.Expect("ID=matrixos", 5*time.Second); err != nil {
-		return fmt.Errorf("OS check failed: %w", err)
+	if err := vm.Expect("TEST_RESULT:0", time.Duration(c.waitTests)*time.Second); err != nil {
+		return fmt.Errorf("Test suite failed: %w", err)
 	}
 
-	var lastErr error
-	start := time.Now()
-	end := start.Add(30 * time.Second)
-	for ; time.Now().Before(end); time.Sleep(2 * time.Second) {
-		// Ensure resolv.conf is healthy.
-		log.Println("Checking resolv.conf...")
-		if err := vm.Send("grep nameserver /etc/resolv.conf"); err != nil {
-			lastErr = err
-			log.Printf("Failed to send resolv.conf check command, retrying... : %v\n", err)
-			continue
-		}
-		if err := vm.Expect("nameserver", 5*time.Second); err != nil {
-			lastErr = err
-			log.Printf("Failed to send resolv.conf check command, retrying... : %v\n", err)
-			continue
-		}
-		lastErr = nil
-		break
-	}
-
-	if lastErr != nil {
-		log.Println("resolv.conf check failed after multiple attempts.")
-		return fmt.Errorf("resolv.conf check failed after multiple attempts: %w", lastErr)
-	}
-
-	log.Println("resolv.conf looks good.")
-	log.Println("SUCCESS: Image verified successfully.")
+	log.Println("SUCCESS: Tests passed.")
 	return nil
 }
 
