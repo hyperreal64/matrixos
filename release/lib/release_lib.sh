@@ -657,6 +657,9 @@ Build metadata:
 ${metadata:-not available}
 EOFZ
 
+    echo "Normalizing files at ${imagedir} before ostree commit to have same timestamp ..."
+    find "${imagedir}" -depth -exec touch -h -d @1 '{}' +
+
     # There is no remote here with branch on purpose. Because we do not want to commit
     # by default with a prefix that instead of being part of the "remote" part, it becomes
     # part of the branch name.
