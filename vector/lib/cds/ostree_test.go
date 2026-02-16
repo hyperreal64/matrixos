@@ -1753,3 +1753,75 @@ func TestAddRemote_Error(t *testing.T) {
 		t.Error("AddRemote should fail on error")
 	}
 }
+
+func TestValidateFilesystemHierarchy(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "matrixos-test-hierarchy")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := &MockConfig{}
+	o, _ := New(cfg)
+
+	// Sub-test for missing directory
+	t.Run("MissingDirectories", func(t *testing.T) {
+		err := o.ValidateFilesystemHierarchy(tempDir)
+		if err == nil {
+			t.Error("expected error for missing directories, got nil")
+		}
+	})
+
+	// Sub-test for correct hierarchy
+	t.Run("ValidHierarchy", func(t *testing.T) {
+		// Clean the tempDir for this subtest
+		entries, _ := os.ReadDir(tempDir)
+		for _, entry := range entries {
+			os.RemoveAll(filepath.Join(tempDir, entry.Name()))
+		}
+
+		dirs := []string{"/etc", "/home", "/opt", "/root", "/srv", "/tmp", "/usr/local"}
+		for _, d := range dirs {
+			linkPath := filepath.Join(tempDir, d)
+			if d == "/usr/local" {
+				os.MkdirAll(filepath.Join(tempDir, "usr"), 0755)
+			}
+
+			// Just create some dummy targets
+			dummyTarget := filepath.Join(tempDir, "dummy_"+strings.ReplaceAll(d, "/", "_"))
+			os.MkdirAll(dummyTarget, 0755)
+
+			if err := os.Symlink(dummyTarget, linkPath); err != nil {
+				t.Fatalf("failed to create symlink %s: %v", linkPath, err)
+			}
+		}
+
+		err := o.ValidateFilesystemHierarchy(tempDir)
+		if err != nil {
+			t.Errorf("expected nil error for valid hierarchy, got %v", err)
+		}
+	})
+
+	// Sub-test for regular directory instead of symlink
+	t.Run("DirectoryInsteadOfSymlink", func(t *testing.T) {
+		// Clean the tempDir for this subtest
+		entries, _ := os.ReadDir(tempDir)
+		for _, entry := range entries {
+			os.RemoveAll(filepath.Join(tempDir, entry.Name()))
+		}
+
+		dirs := []string{"/etc", "/home", "/opt", "/root", "/srv", "/tmp", "/usr/local"}
+		for _, d := range dirs {
+			linkPath := filepath.Join(tempDir, d)
+			if d == "/usr/local" {
+				os.MkdirAll(filepath.Join(tempDir, "usr"), 0755)
+			}
+			os.MkdirAll(linkPath, 0755)
+		}
+
+		err := o.ValidateFilesystemHierarchy(tempDir)
+		if err == nil {
+			t.Error("expected error when directories are not symlinks, got nil")
+		}
+	})
+}

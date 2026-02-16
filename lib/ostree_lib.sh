@@ -352,6 +352,38 @@ ostree_lib.prepare_filesystem_hierarchy() {
     ln -s "../${relusrlocal}" "${usrlocaldir}"
 }
 
+ostree_lib.validate_filesystem_hierarchy() {
+    local imagedir="${1}"
+    if [ -z "${imagedir}" ]; then
+        echo "ostree_lib.validate_filesystem_hierarchy: missing imagedir parameter." >&2
+        return 1
+    fi
+
+    # strip off last / if it exists.
+    imagedir="${imagedir%/}"
+    # Basic sanity checks, make sure that we have correct directory structure.
+    local expected_valid_dir_symlinks=(
+        "/etc"
+        "/home"
+        "/opt"
+        "/root"
+        "/srv"
+        "/tmp"
+        "/usr/local"
+    )
+    local d=
+    local rc=0
+    for d in "${expected_valid_dir_symlinks[@]}"; do
+        local dst="${imagedir}${d}"
+        if [[ -L "${dst}" && -d "${dst}" ]]; then
+            continue
+        fi
+        echo "Expected ${dst} to be a symlink to a directory. Please check the filesystem hierarchy." >&2
+        rc=1
+    done
+    return "${rc}"
+}
+
 ostree_lib.boot_commit() {
     local sysroot="${1}"
     if [ -z "${sysroot}" ]; then

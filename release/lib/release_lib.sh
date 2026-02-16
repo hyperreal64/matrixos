@@ -569,6 +569,7 @@ release_lib.ostree_prepare() {
     local imagedir="${1}"
     _check_imagedir "${imagedir}"
     ostree_lib.prepare_filesystem_hierarchy "${imagedir}"
+    ostree_lib.validate_filesystem_hierarchy "${imagedir}"
 }
 
 release_lib.maybe_ostree_init() {

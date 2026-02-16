@@ -1738,6 +1738,51 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 	return nil
 }
 
+// ValidateFilesystemHierarchy validates the filesystem hierarchy for OSTree.
+// It ports the logic from ostree_lib.validate_filesystem_hierarchy in
+// ostree_lib.sh.
+func (o *Ostree) ValidateFilesystemHierarchy(imageDir string) error {
+	if imageDir == "" {
+		return errors.New("missing imageDir parameter")
+	}
+
+	expected := []string{
+		"/etc",
+		"/home",
+		"/opt",
+		"/root",
+		"/srv",
+		"/tmp",
+		"/usr/local",
+	}
+
+	var issues int
+	for _, relPath := range expected {
+		fullPath := filepath.Join(imageDir, relPath)
+
+		// Check if it's a symlink and if it points to a directory.
+		// We use Lstat to check the link itself and Stat to check the target.
+		lfi, lerr := os.Lstat(fullPath)
+		if lerr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+			if fi, err := os.Stat(fullPath); err == nil && fi.IsDir() {
+				continue
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "Expected %s to be a symlink to a directory.\n",
+			fullPath)
+		fmt.Fprintln(os.Stderr, "Please check the filesystem hierarchy.")
+		issues++
+	}
+
+	if issues > 0 {
+		return fmt.Errorf("filesystem hierarchy validation failed: %d issues",
+			issues)
+	}
+
+	return nil
+}
+
 // Deploy deploys an ostree commit.
 func (o *Ostree) Deploy(ref string, bootArgs []string, verbose bool) error {
 	sysroot, err := o.Sysroot()
