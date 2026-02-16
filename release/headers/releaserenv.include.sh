@@ -13,6 +13,7 @@ MATRIXOS_RELEASE_HOOKS_DIR=$(env_lib.get_root_var "${MATRIXOS_DEV_DIR}" "Release
 MATRIXOS_RELEASER_USE_CP_REFLINK_MODE_INSTEAD_OF_RSYNC=$(env_lib.get_bool_var "Releaser" "UseCpReflinkModeInsteadOfRsync")
 MATRIXOS_RELEASE_LOCK_DIR=$(env_lib.get_root_var "${MATRIXOS_DEV_DIR}" "Releaser" "LocksDir")
 MATRIXOS_RELEASE_LOCK_WAIT_SECS=$(env_lib.get_simple_var "Releaser" "LockWaitSeconds")
+MATRIXOS_RELEASE_GENERATE_STATIC_DELTAS=$(env_lib.get_bool_var "Releaser" "GenerateStaticDeltas")
 
 __MATRIXOS_RELEASER_ENV_PARSED=1
 fi

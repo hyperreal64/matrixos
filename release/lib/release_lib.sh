@@ -675,7 +675,11 @@ EOFZ
     echo "Running: ostree commit ${ostree_commit_args[@]}"
     ostree_lib.run commit "${ostree_commit_args[@]}"
     ostree_lib.prune "${repodir}" "${branch}"
-    ostree_lib.generate_static_delta "${repodir}" "${branch}"
+    if [ -n "${MATRIXOS_RELEASE_GENERATE_STATIC_DELTAS}" ]; then
+        ostree_lib.generate_static_delta "${repodir}" "${branch}"
+    else
+        echo "Skipping static delta generation as requested by flags."
+    fi
     ostree_lib.update_summary "${repodir}" "${gpg_enabled}"
 
     rm -f "${commit_body_file}"  # leave it there if commit fails.
