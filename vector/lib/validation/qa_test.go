@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"matrixos/vector/lib/filesystems"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,7 +57,7 @@ func TestHelperProcess(t *testing.T) {
 
 	// Special mocking logic based on arguments
 	// Specifically for modinfo
-	if cmd == "chroot" && strings.Contains(args, "modinfo -F sig_key") {
+	if cmd == "unshare" && strings.Contains(args, "modinfo -F sig_key") {
 		// return a dummy signature key
 		// The key must match what we expect in the test
 		// If test sets special env var, use it
@@ -64,7 +65,7 @@ func TestHelperProcess(t *testing.T) {
 		return
 	}
 
-	if cmd == "chroot" && strings.Contains(args, "modinfo -F vermagic") {
+	if cmd == "unshare" && strings.Contains(args, "modinfo -F vermagic") {
 		// Mock vermagic
 		fmt.Print("5.15.0 SMP mod_unload")
 		return
@@ -166,6 +167,8 @@ func TestCheckSecureBoot(t *testing.T) {
 	// Setup overrides
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	filesystems.ExecCommand = fakeExecCommand
+	defer func() { filesystems.ExecCommand = exec.Command }()
 
 	tmp := t.TempDir()
 	// Create dummy usb-storage.ko
@@ -196,7 +199,11 @@ func TestCheckSecureBoot(t *testing.T) {
 	os.Setenv("MOCK_SIG_KEY", "01:e2:40")
 	defer os.Unsetenv("MOCK_SIG_KEY")
 
-	q, _ := New(&MockConfig{})
+	q, err := New(&MockConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if err := q.CheckSecureBoot(tmp, certPath); err != nil {
 		t.Fatalf("expected nil for matching serial, got %v", err)
 	}
@@ -212,6 +219,8 @@ func TestCheckKernelAndExternalModule(t *testing.T) {
 	// Setup overrides
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
+	filesystems.ExecCommand = fakeExecCommand
+	defer func() { filesystems.ExecCommand = exec.Command }()
 
 	tmp := t.TempDir()
 	modVer := "5.15.0"

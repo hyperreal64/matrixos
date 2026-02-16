@@ -170,7 +170,7 @@ transfer_matrixos_private() {
     fi
 
     local source_repo="${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
-    local dest_repo="${imagedir}${source_repo}"
+    local dest_repo="${imagedir}${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
 
     echo "Copying ${source_repo} to ${dest_repo} ... (will be removed before commit)"
     rsync -avP -HAX --delete-during --numeric-ids --exclude=".git" \

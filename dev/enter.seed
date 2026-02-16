@@ -163,7 +163,7 @@ main() {
 
         local priv_repo_mounted=
         local priv_repo_chroot_dir_created=
-        local chroot_priv_repo_path="${chroot_dir%/}${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+        local chroot_priv_repo_path="${chroot_dir%/}${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
         if [ -d "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" ]; then
             if [ ! -d "${chroot_priv_repo_path}" ]; then
                 mkdir -p "${chroot_priv_repo_path}"
@@ -178,7 +178,7 @@ main() {
         if [ -n "${priv_repo_mounted}" ]; then
             fs_lib.bind_umount "${chroot_priv_repo_path}"
             if [ -n "${priv_repo_chroot_dir_created}" ]; then
-                rmdir "${chroot_priv_repo_path}"
+                rmdir "${chroot_priv_repo_path}" || true
             fi
         fi
 

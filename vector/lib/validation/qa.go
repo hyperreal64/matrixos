@@ -281,7 +281,7 @@ func (q *QA) VerifyReleaserEnvironmentSetup(imageDir string) error {
 		"unshare",
 	}
 
-	path, err := q.cfg.GetItem("matrixOS.PrivateGitRepoPath")
+	path, err := q.cfg.GetItem("matrixOS.DefaultPrivateGitRepoPath")
 	if err != nil {
 		return err
 	}
@@ -303,7 +303,7 @@ func (q *QA) VerifySeederEnvironmentSetup(imageDir string) error {
 		"wget",
 	}
 
-	path, err := q.cfg.GetItem("matrixOS.PrivateGitRepoPath")
+	path, err := q.cfg.GetItem("matrixOS.DefaultPrivateGitRepoPath")
 	if err != nil {
 		return err
 	}

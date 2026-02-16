@@ -227,7 +227,8 @@ release_lib.clean_rootfs() {
     local imagedir="${1}"
     _check_imagedir "${imagedir}"
 
-    # Just copy the certs, from MOS private dir.
+    # Just copy the certs, from MOS private dir, so that they can be
+    # shipped with the image and used to boot on SecureBoot-enabled machines.
     cp "${MATRIXOS_PRIVATE_GIT_REPO_PATH}/secureboot/keys/db/db.pem" \
         "${imagedir}/etc/portage/secureboot.pem"
     cp "${MATRIXOS_PRIVATE_GIT_REPO_PATH}/secureboot/keys/KEK/KEK.pem" \
@@ -242,7 +243,7 @@ release_lib.clean_rootfs() {
         /var/lib/gdm/.cache
         /var/lib/gdm/.local
         /var/lib/gdm/.config
-        "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+        "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
         /var/lib/sbctl/keys
         /var/tmp/ostree-gpg-private
     )

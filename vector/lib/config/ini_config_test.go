@@ -16,11 +16,13 @@ func TestIniConfig_Load_Expansion(t *testing.T) {
 	// Define absolute paths for roots to ensure deterministic testsd
 	rootPath := "/tmp/matrixos-root"
 	privateRepoPath := "/tmp/matrixos-private"
+	defaultPrivateRepoPath := "/tmp/matrixos-default-private"
 
 	configContent := `
 [matrixOS]
 Root=` + rootPath + `
 PrivateGitRepoPath=` + privateRepoPath + `
+DefaultPrivateGitRepoPath=` + defaultPrivateRepoPath + `
 LogsDir=/var/log/matrixos
 LocksDir=locks
 
@@ -79,6 +81,7 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 
 	// Relative to matrixOS.Root
 	check("matrixOS.PrivateGitRepoPath", privateRepoPath)
+	check("matrixOS.DefaultPrivateGitRepoPath", defaultPrivateRepoPath)
 	check("matrixOS.LocksDir", filepath.Join(rootPath, "locks"))
 	check("matrixOS.LogsDir", "/var/log/matrixos")
 
@@ -101,8 +104,8 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	check("Ostree.RepoDir", filepath.Join(rootPath, "ostree/repo"))
 
 	// Relative to PrivateGitRepoPath
-	check("Seeder.SecureBootPrivateKey", filepath.Join(privateRepoPath, "sb-keys/db.key"))
-	check("Seeder.SecureBootPublicKey", filepath.Join(privateRepoPath, "sb-keys/db.pem"))
+	check("Seeder.SecureBootPrivateKey", filepath.Join(defaultPrivateRepoPath, "sb-keys/db.key"))
+	check("Seeder.SecureBootPublicKey", filepath.Join(defaultPrivateRepoPath, "sb-keys/db.pem"))
 	check("Ostree.GpgPrivateKey", filepath.Join(privateRepoPath, "keys/priv.key"))
 	check("Ostree.GpgPublicKey", filepath.Join(privateRepoPath, "keys/pub.key"))
 }

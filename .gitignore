@@ -5,5 +5,7 @@ logs/
 **/*.img*
 
 # Local image testing with qemu
-my_vars.fd
 dev/my_vars.fd
+
+# matrixos-private.git repo location
+private/

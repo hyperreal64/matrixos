@@ -79,7 +79,7 @@ main() {
     else
         (
             cd "${private_repo_path}"
-            if [ ! -e .built ] && [ ! -e "${MATRIXOS_SECUREBOOT_KEY_PATH}" ]; then
+            if [ ! -e .built ]; then
                 echo "Updating ${private_repo_path} ..."
                 ./make.sh
             fi

@@ -381,6 +381,25 @@ find_chroot_dir_override() {
     done
 }
 
+_mount_special_ro() {
+    local src="${1}"
+    local dst="${2}"
+    if [ -z "${src}" ] || [ -z "${dst}" ]; then
+        echo "_mount_special_ro: missing parameters" >&2
+        return 1
+    fi
+    if [ ! -d "${src}" ]; then
+        echo "_mount_special_ro: ${src} does not exist ..." >&2
+        return 1
+    fi
+
+    mkdir -p "${dst}"
+    mount -v --bind "${src}" "${dst}"
+    MOUNTS+=( "${dst}" )
+    mount -v --make-slave "${dst}"
+    mount -o remount,ro,bind "${dst}"
+}
+
 setup_special_ro_mounts() {
     local mnt="${1}"
     if [ -z "${mnt}" ]; then
@@ -392,21 +411,12 @@ setup_special_ro_mounts() {
         return 1
     fi
 
-    local ro_mounts=(
-        "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
-    )
-    if [ -d /root/.ssh ]; then
-        ro_mounts+=( /root/.ssh )
-    fi
+    _mount_special_ro "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" \
+        "${mnt%/}${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
 
-    for d in "${ro_mounts[@]}"; do
-        local dst="${mnt}${d}"
-        mkdir -p "${dst}"
-        mount -v --bind "${d}" "${dst}"
-        MOUNTS+=( "${dst}" )
-        mount -v --make-slave "${dst}"
-        mount -o remount,ro,bind "${dst}"
-    done
+    if [ -d /root/.ssh ]; then
+        _mount_special_ro /root/.ssh "${mnt%/}/root/.ssh"
+    fi
 }
 
 setup_chroot_mounts() {

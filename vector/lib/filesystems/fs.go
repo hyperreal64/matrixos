@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	execCommand     = exec.Command
+	ExecCommand     = exec.Command
 	devMapperPrefix = "/dev/mapper"
 	sysMount        = unix.Mount
 	sysUnmount      = unix.Unmount
@@ -28,7 +28,7 @@ const BLKFLSBUF = 0x1261
 
 // DevicesSettle waits for udev events to settle.
 func DevicesSettle() {
-	execCommand("udevadm", "settle").Run()
+	ExecCommand("udevadm", "settle").Run()
 }
 
 // FlushBlockDeviceBuffers flushes the buffers of a block device.
@@ -62,7 +62,7 @@ func DeviceUUID(devPath string) (string, error) {
 	if devPath == "" {
 		return "", fmt.Errorf("missing argument devpath")
 	}
-	cmd := execCommand("blkid", "-s", "UUID", "-o", "value", devPath)
+	cmd := ExecCommand("blkid", "-s", "UUID", "-o", "value", devPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -79,7 +79,7 @@ func DevicePartUUID(devPath string) (string, error) {
 	if devPath == "" {
 		return "", fmt.Errorf("missing argument devpath")
 	}
-	cmd := execCommand("blkid", "-s", "PARTUUID", "-o", "value", devPath)
+	cmd := ExecCommand("blkid", "-s", "PARTUUID", "-o", "value", devPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -97,7 +97,7 @@ func MountpointToDevice(mnt string) (string, error) {
 		return "", fmt.Errorf("missing mnt parameter")
 	}
 
-	cmd := execCommand("findmnt", "-no", "SOURCES", mnt)
+	cmd := ExecCommand("findmnt", "-no", "SOURCES", mnt)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -115,7 +115,7 @@ func CleanupMounts(mounts []string) {
 	DevicesSettle()
 	for i := len(mounts) - 1; i >= 0; i-- {
 		mnt := mounts[i]
-		out, _ := execCommand("findmnt", "-n", mnt).Output()
+		out, _ := ExecCommand("findmnt", "-n", mnt).Output()
 		if len(out) == 0 {
 			continue
 		}
@@ -123,7 +123,7 @@ func CleanupMounts(mounts []string) {
 		if err := sysUnmount(mnt, 0); err != nil {
 			FlushBlockDeviceBuffers(mnt)
 			log.Printf("Unable to umount %s: %v", mnt, err)
-			out, _ := execCommand("findmnt", mnt).CombinedOutput()
+			out, _ := ExecCommand("findmnt", mnt).CombinedOutput()
 			log.Println(string(out))
 			log.Printf("For safety, calling umount -l %s", mnt)
 			sysUnmount(mnt, unix.MNT_DETACH)
@@ -148,9 +148,9 @@ func CleanupCryptsetupDevices(devices []string) {
 
 		log.Printf("Closing LUKS device: %s ...", cd)
 		FlushBlockDeviceBuffers(cdpath)
-		if err := execCommand("cryptsetup", "close", cd).Run(); err != nil {
+		if err := ExecCommand("cryptsetup", "close", cd).Run(); err != nil {
 			log.Printf("Unable to cryptsetup close %s", cdpath)
-			out, _ := execCommand("findmnt", cdpath).CombinedOutput()
+			out, _ := ExecCommand("findmnt", cdpath).CombinedOutput()
 			log.Println(string(out))
 			continue
 		}
@@ -165,17 +165,17 @@ func CleanupLoopDevices(devices []string) {
 		if _, err := os.Stat(ld); os.IsNotExist(err) {
 			continue
 		}
-		out, _ := execCommand("losetup", "--raw", "-l", "-O", "BACK-FILE", ld).Output()
+		out, _ := ExecCommand("losetup", "--raw", "-l", "-O", "BACK-FILE", ld).Output()
 		if len(strings.TrimSpace(string(out))) == 0 {
 			continue
 		}
 
 		log.Printf("Cleaning loop device %s ...", ld)
 
-		if err := execCommand("losetup", "-d", ld).Run(); err != nil {
+		if err := ExecCommand("losetup", "-d", ld).Run(); err != nil {
 			FlushBlockDeviceBuffers(ld)
 			log.Printf("Unable to close loop device %s", ld)
-			out, _ := execCommand("findmnt", ld).CombinedOutput()
+			out, _ := ExecCommand("findmnt", ld).CombinedOutput()
 			log.Println(string(out))
 			continue
 		}
@@ -188,7 +188,7 @@ func ListSubmounts(mnt string) ([]string, error) {
 	if mnt == "" {
 		return nil, fmt.Errorf("missing argument")
 	}
-	cmd := execCommand("findmnt", "-rn", "-o", "TARGET", "--submounts", "--target", mnt)
+	cmd := ExecCommand("findmnt", "-rn", "-o", "TARGET", "--submounts", "--target", mnt)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -447,7 +447,7 @@ func checkFsCapabilitySupport(testDir string) (bool, error) {
 	tmpBin.Close()
 	defer os.Remove(tmpBin.Name())
 
-	if err := execCommand("setcap", "cap_net_raw+ep", tmpBin.Name()).Run(); err != nil {
+	if err := ExecCommand("setcap", "cap_net_raw+ep", tmpBin.Name()).Run(); err != nil {
 		log.Println("WARNING: System/FS does not allow setting capabilities.")
 		return false, nil
 	}
@@ -455,11 +455,11 @@ func checkFsCapabilitySupport(testDir string) (bool, error) {
 	tmpCopy := tmpBin.Name() + ".copy"
 	defer os.Remove(tmpCopy)
 
-	if err := execCommand("cp", "-a", tmpBin.Name(), tmpCopy).Run(); err != nil {
+	if err := ExecCommand("cp", "-a", tmpBin.Name(), tmpCopy).Run(); err != nil {
 		return false, err
 	}
 
-	out, err := execCommand("getcap", tmpCopy).Output()
+	out, err := ExecCommand("getcap", tmpCopy).Output()
 	if err != nil {
 		// getcap might fail if no caps? No, it just prints nothing usually.
 		return false, err
@@ -611,7 +611,7 @@ func CheckActiveMounts(chrootDir string) error {
 	if chrootDir == "" {
 		return fmt.Errorf("missing chrootDir parameter")
 	}
-	out, _ /* ignore any errors */ := execCommand(
+	out, _ /* ignore any errors */ := ExecCommand(
 		"findmnt", "-rn", "-o", "TARGET", "--submounts",
 		"--target", chrootDir,
 	).Output()
@@ -790,7 +790,7 @@ func ChrootCmd(chrootDir, chrootExec string, args ...string) (*exec.Cmd, error) 
 	}
 	cmdArgs = append(cmdArgs, args...)
 
-	return execCommand("unshare", cmdArgs...), nil
+	return ExecCommand("unshare", cmdArgs...), nil
 }
 
 // Chroot runs a command in a chroot environment using unshare.

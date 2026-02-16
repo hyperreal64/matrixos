@@ -137,8 +137,8 @@ func TestHelperProcess(t *testing.T) {
 }
 
 func TestDeviceUUID(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		expectedUUID := "1234-5678"
@@ -183,8 +183,8 @@ func TestDeviceUUID(t *testing.T) {
 }
 
 func TestDevicePartUUID(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		expectedPartUUID := "abcdef-01"
@@ -229,8 +229,8 @@ func TestDevicePartUUID(t *testing.T) {
 }
 
 func TestMountpointToDevice(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		expectedDevice := "/dev/sda1"
@@ -275,8 +275,8 @@ func TestMountpointToDevice(t *testing.T) {
 }
 
 func TestListSubmounts(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		mounts := "/mnt/test\n/mnt/test/sub"
@@ -484,8 +484,8 @@ func TestCheckHardlinkPreservation(t *testing.T) {
 }
 
 func TestCleanupMounts(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("SuccessfulUnmount", func(t *testing.T) {
@@ -510,8 +510,8 @@ func TestCleanupMounts(t *testing.T) {
 }
 
 func TestSetupCommonRootfsMounts(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	tmpDir := t.TempDir()
@@ -529,8 +529,8 @@ func TestSetupCommonRootfsMounts(t *testing.T) {
 }
 
 func TestBindMount(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	src := t.TempDir()
@@ -542,8 +542,8 @@ func TestBindMount(t *testing.T) {
 }
 
 func TestCleanupLoopDevices(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	f, err := os.CreateTemp("", "loop")
 	if err != nil {
@@ -559,8 +559,8 @@ func TestCleanupLoopDevices(t *testing.T) {
 }
 
 func TestCheckFsCapabilitySupport(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	tmpDir := t.TempDir()
 	supported, err := CheckFsCapabilitySupport(tmpDir)
@@ -573,8 +573,8 @@ func TestCheckFsCapabilitySupport(t *testing.T) {
 }
 
 func TestCheckActiveMounts(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("NoActiveMounts", func(t *testing.T) {
 		os.Unsetenv("MOCK_FINDMNT_OUTPUT")
@@ -593,15 +593,15 @@ func TestCheckActiveMounts(t *testing.T) {
 }
 
 func TestDevicesSettle(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	// Simple execution test to ensure it runs without error
 	DevicesSettle()
 }
 
 func TestFlushBlockDeviceBuffers(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -623,8 +623,8 @@ func TestFlushBlockDeviceBuffers(t *testing.T) {
 }
 
 func TestUnsetupCommonRootfsMounts(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -651,8 +651,8 @@ func TestUnsetupCommonRootfsMounts(t *testing.T) {
 }
 
 func TestBindUmount(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -678,8 +678,8 @@ func TestBindUmount(t *testing.T) {
 }
 
 func TestBindMountDistdir(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -692,8 +692,8 @@ func TestBindMountDistdir(t *testing.T) {
 }
 
 func TestBindUmountDistdir(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -712,8 +712,8 @@ func TestBindUmountDistdir(t *testing.T) {
 }
 
 func TestBindMountBinpkgs(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -726,8 +726,8 @@ func TestBindMountBinpkgs(t *testing.T) {
 }
 
 func TestBindUmountBinpkgs(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -746,8 +746,8 @@ func TestBindUmountBinpkgs(t *testing.T) {
 }
 
 func TestCleanupCryptsetupDevices(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -785,8 +785,8 @@ func TestCleanupCryptsetupDevices(t *testing.T) {
 }
 
 func TestCpReflinkCopyAllowed(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	src := t.TempDir()
 	dst := t.TempDir()
@@ -831,8 +831,8 @@ func TestCpReflinkCopyAllowed(t *testing.T) {
 }
 
 func TestChrootCmd(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		cmd, err := ChrootCmd("/target", "/bin/sh", "-c", "echo hello")
@@ -868,8 +868,8 @@ func TestChrootCmd(t *testing.T) {
 }
 
 func TestChroot(t *testing.T) {
-	execCommand = fakeExecCommand
-	defer func() { execCommand = exec.Command }()
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
 
 	t.Run("Success", func(t *testing.T) {
 		if err := Chroot("/target", "/bin/true"); err != nil {

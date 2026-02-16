@@ -26,6 +26,7 @@ MATRIXOS_ARCH=$(env_lib.get_simple_var "matrixOS" "Arch")
 MATRIXOS_OVERLAY_GIT_REPO=$(env_lib.get_simple_var "matrixOS" "OverlayGitRepo")
 MATRIXOS_PRIVATE_EXAMPLE_GIT_REPO=$(env_lib.get_simple_var "matrixOS" "PrivateExampleGitRepo")
 MATRIXOS_PRIVATE_GIT_REPO_PATH=$(env_lib.get_root_var "${MATRIXOS_DEV_DIR}" "matrixOS" "PrivateGitRepoPath")
+MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH=$(env_lib.get_root_var "${MATRIXOS_DEV_DIR}" "matrixOS" "DefaultPrivateGitRepoPath")
 MATRIXOS_GIT_REPO=$(env_lib.get_simple_var "matrixOS" "GitRepo")
 MATRIXOS_DEFAULT_USERNAME=$(env_lib.get_simple_var "matrixOS" "DefaultUsername")
 
@@ -52,8 +53,10 @@ MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH=$(env_lib.get_root_var "${MATRIXOS_DEV_DIR
 # /etc/matrixos-private derived configs.
 MATRIXOS_OSTREE_GPG_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Ostree" "GpgPrivateKey")
 MATRIXOS_OSTREE_GPG_PUB_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Ostree" "GpgPublicKey")
-MATRIXOS_SECUREBOOT_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPrivateKey")
-MATRIXOS_SECUREBOOT_CERT_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPublicKey")
+
+# These MUST be derived from the default path, because they are used inside chroots.
+MATRIXOS_SECUREBOOT_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPrivateKey")
+MATRIXOS_SECUREBOOT_CERT_PATH=$(env_lib.get_root_var "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPublicKey")
 MATRIXOS_JAILBROKEN_BOOT_LOADER_ENTRY=$(env_lib.get_simple_var "Jailbreak" "BootLoaderEntry")
 
 MATRIXOS_RO_VDB=$(env_lib.get_simple_var "Releaser" "ReadOnlyVdb")

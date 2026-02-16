@@ -201,7 +201,7 @@ qa_lib.verify_releaser_environment_setup() {
         unshare
     )
     local dirs=(
-        "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+        "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
     )
     qa_lib._verify_environment_setup "${imagedir}" "${executables[@]}" "--" "${dirs[@]}"
 }
@@ -221,7 +221,7 @@ qa_lib.verify_seeder_environment_setup() {
         wget
     )
     local dirs=(
-        "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
+        "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
     )
     qa_lib._verify_environment_setup "${imagedir}" "${executables[@]}" "--" "${dirs[@]}"
 }
