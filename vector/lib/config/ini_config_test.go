@@ -155,3 +155,93 @@ func TestIniConfig_GetItem_LastValue(t *testing.T) {
 		t.Errorf("GetItem returned %q, expected %q (last value)", val, expected)
 	}
 }
+
+func TestIniConfig_GenerateSubConfigs(t *testing.T) {
+	// Create a temporary directory for the test
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-subconfig-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create the main config file
+	configPath := filepath.Join(tmpDir, "matrixos.conf")
+	configContent := `
+[Section1]
+Key1=Value1
+Key2=Value2
+
+[Section2]
+Key3=Value3
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write main config: %v", err)
+	}
+
+	// Create the subconfig directory
+	subConfigDir := configPath + ".d"
+	if err := os.Mkdir(subConfigDir, 0755); err != nil {
+		t.Fatalf("Failed to create subconfig dir: %v", err)
+	}
+
+	// Create an override config file
+	overridePath := filepath.Join(subConfigDir, "00-override.conf")
+	overrideContent := `
+[Section1]
+Key1=OverrideValue1
+KeyNew=ValueNew
+`
+	if err := os.WriteFile(overridePath, []byte(overrideContent), 0644); err != nil {
+		t.Fatalf("Failed to write override config: %v", err)
+	}
+
+	// Create another override config file
+	override2Path := filepath.Join(subConfigDir, "10-override.conf")
+	override2Content := `
+[Section2]
+Key3=OverrideValue3
+`
+	if err := os.WriteFile(override2Path, []byte(override2Content), 0644); err != nil {
+		t.Fatalf("Failed to write override config 2: %v", err)
+	}
+
+	// Create a non-conf file to ensure it's ignored
+	ignoredPath := filepath.Join(subConfigDir, "README.md")
+	if err := os.WriteFile(ignoredPath, []byte("Ignore me"), 0644); err != nil {
+		t.Fatalf("Failed to write ignored file: %v", err)
+	}
+
+	// Create and load the config
+	cfg, err := NewIniConfigFromFile(configPath, tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Helper to check values
+	check := func(key, expected string) {
+		val, err := cfg.GetItem(key)
+		if err != nil {
+			t.Errorf("GetItem(%q) returned error: %v", key, err)
+			return
+		}
+		if val != expected {
+			t.Errorf("Key %q: expected %q, got %q", key, expected, val)
+		}
+	}
+
+	// Check main config values
+	check("Section1.Key2", "Value2")
+
+	// Check overridden values
+	// Since the implementation uses a map[string][]string and appends,
+	// GetItem returns the last one, which should be the override.
+	check("Section1.Key1", "OverrideValue1")
+	check("Section2.Key3", "OverrideValue3")
+
+	// Check new value from subconfig
+	check("Section1.KeyNew", "ValueNew")
+}

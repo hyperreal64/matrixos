@@ -114,6 +114,63 @@ func NewIniConfigFromFile(path string, defaultRoot string) (IConfig, error) {
 	}, nil
 }
 
+func (c *IniConfig) generateSubConfigs(configPath string) error {
+	// configPath is a valid path to a config file.
+	// Use this path to build a list of subconfigs to load, starting
+	// with configPath + ".d/*.conf".
+	subconfigDir := configPath + ".d"
+	subconfigs, err := os.ReadDir(subconfigDir)
+	if err != nil {
+		// If the directory doesn't exist, that's fine.
+		// it just means there are no subconfigs.
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf(
+			"failed to read subconfig directory %s: %w",
+			subconfigDir,
+			err,
+		)
+	}
+
+	for _, entry := range subconfigs {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".conf" {
+			continue
+		}
+		subconfigPath := filepath.Join(subconfigDir, entry.Name())
+		subIni, err := LoadConfig(subconfigPath)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to load subconfig %s: %w",
+				subconfigPath,
+				err,
+			)
+		}
+		c.generateConfig(subIni)
+	}
+
+	return nil
+}
+
+func (c *IniConfig) generateConfig(ini IniFile) {
+	if c.cfg == nil {
+		c.cfg = make(map[string][]string)
+	}
+
+	for section, items := range ini {
+		for key, value := range items {
+			// Flatten the key: [Section] Key -> Section.Key
+			var fullKey string
+			if section == "" {
+				fullKey = key
+			} else {
+				fullKey = fmt.Sprintf("%s.%s", section, key)
+			}
+			c.cfg[fullKey] = []string{value}
+		}
+	}
+}
+
 func (c *IniConfig) Load() error {
 	if c == nil {
 		return fmt.Errorf("config is nil")
@@ -131,18 +188,9 @@ func (c *IniConfig) Load() error {
 		return err
 	}
 
-	c.cfg = make(map[string][]string)
-	for section, items := range ini {
-		for key, value := range items {
-			// Flatten the key: [Section] Key -> Section.Key
-			var fullKey string
-			if section == "" {
-				fullKey = key
-			} else {
-				fullKey = fmt.Sprintf("%s.%s", section, key)
-			}
-			c.cfg[fullKey] = []string{value}
-		}
+	c.generateConfig(ini)
+	if err := c.generateSubConfigs(fullPath); err != nil {
+		return err
 	}
 
 	// Set defaults for base paths if missing, to allow expansion

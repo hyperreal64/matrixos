@@ -25,14 +25,45 @@ _is_absolute_path() {
     fi
 }
 
+_env_lib_get_config_value() {
+    local section="${1}"
+    local key="${2}"
+    local default_value="${3:-}"
+
+    local value=""
+
+    # Check main config file
+    if [ -f "${__cfg}" ]; then
+        value=$(ini_lib.get "${__cfg}" "${section}" "${key}")
+    fi
+
+    # Check override files in matrixos.conf.d/*.conf
+    local conf_d="${__cfg}.d"
+    if [ -d "${conf_d}" ]; then
+        # Iterate over .conf files in alphabetical order
+        local f=
+        for f in "${conf_d}"/*.conf; do
+            [ -f "${f}" ] || continue
+            local val
+            val=$(ini_lib.get "${f}" "${section}" "${key}")
+            if [ -n "${val}" ]; then
+                value="${val}"
+            fi
+        done
+    fi
+
+    if [ -z "${value}" ]; then
+        echo "${default_value}"
+    else
+        echo "${value}"
+    fi
+}
+
 env_lib.get_root() {
     local default_value="${1:-}"
 
-    local value=
-    value=$(ini_lib.get "${__cfg}" "matrixOS" "Root")
-    if [ -z "${value}" ]; then
-        value="${default_value}"
-    fi
+    local value
+    value=$(_env_lib_get_config_value "matrixOS" "Root" "${default_value}")
     if [ -z "${value}" ]; then
         echo "matrixOS.Root is not set in the configuration file and no default value provided." >&2
         return 1
@@ -68,10 +99,7 @@ env_lib.get_root_var() {
     local default_value="${4:-}"
 
     local value
-    value=$(ini_lib.get "${__cfg}" "${section}" "${var_name}")
-    if [ -z "${value}" ]; then
-        value="${default_value}"
-    fi
+    value=$(_env_lib_get_config_value "${section}" "${var_name}" "${default_value}")
 
     # Support for relative paths.
     if ! _is_absolute_path "${value}"; then
@@ -94,13 +122,7 @@ env_lib.get_simple_var() {
     fi
     local default_value="${3:-}"
 
-    local value
-    value=$(ini_lib.get "${__cfg}" "${section}" "${var_name}")
-    if [ -z "${value}" ]; then
-        value="${default_value}"
-    fi
-
-    echo "${value}"
+    _env_lib_get_config_value "${section}" "${var_name}" "${default_value}"
 }
 
 env_lib.get_bool_var() {
@@ -117,10 +139,7 @@ env_lib.get_bool_var() {
     local default_value="${3:-}"
 
     local value
-    value=$(ini_lib.get "${__cfg}" "${section}" "${var_name}")
-    if [ -z "${value}" ]; then
-        value="${default_value}"
-    fi
+    value=$(_env_lib_get_config_value "${section}" "${var_name}" "${default_value}")
 
     if [[ "${value}" =~ ^[Yy][Ee][Ss]$ || "${value}" =~ ^[Tt][Rr][Uu][Ee]$ || "${value}" == "1" ]]; then
         echo "1"
