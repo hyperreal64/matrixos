@@ -246,6 +246,9 @@ ostree_lib._prepare_var_home() {
     elif [ -e "${homedir}" ]; then
         rm -v "${homedir}"
     fi
+    if [ ! -d "${varhomedir}" ]; then
+        mkdir -p "${varhomedir}"
+    fi
     ln -s "var/${varhomename}" "${homedir}"
 }
 
@@ -336,7 +339,7 @@ ostree_lib.prepare_filesystem_hierarchy() {
     echo "Setting up /home ..."
     ostree_lib._prepare_var_home "${imagedir}" "home" "home"
     echo "Setting up /root ..."
-    ostree_lib._prepare_var_home "${imagedir}" "home" "roothome"
+    ostree_lib._prepare_var_home "${imagedir}" "root" "roothome"
 
     echo "Setting up ${MATRIXOS_EFI_ROOT}..."
     local efiroot="${imagedir}/${MATRIXOS_EFI_ROOT}"

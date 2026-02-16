@@ -1524,9 +1524,14 @@ func (o *Ostree) prepareVarHome(imageDir, homeName, varHomeName string) error {
 			return fmt.Errorf("failed to remove home: %w", err)
 		}
 	}
+	if _, err := os.Stat(varHomeDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(varHomeDir, 0755); err != nil {
+			return fmt.Errorf("failed to create %v: %w", varHomeDir, err)
+		}
+	}
 	// && !os.IsExist(err) done because of the complexity of the conditions above.
 	if err := os.Symlink("var/"+varHomeName, homeDir); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("failed to symlink home: %w", err)
+		return fmt.Errorf("failed to symlink %v: %w", homeDir, err)
 	}
 	return nil
 }
