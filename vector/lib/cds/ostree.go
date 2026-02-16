@@ -1489,6 +1489,48 @@ func (o *Ostree) BootedHash(verbose bool) (string, error) {
 	return BootedHashWithSysroot(sysroot, verbose)
 }
 
+func (o *Ostree) prepareVarHome(imageDir, homeName, varHomeName string) error {
+	homeDir := filepath.Join(imageDir, homeName)
+	varHomeDir := filepath.Join(imageDir, "var", varHomeName)
+
+	homeInfo, err := os.Lstat(homeDir)
+	homeExists := err == nil
+
+	if homeExists && (homeInfo.Mode()&os.ModeSymlink != 0) {
+		if info, err := os.Stat(varHomeDir); err == nil && info.IsDir() {
+			link, _ := os.Readlink(homeDir)
+			if strings.HasSuffix(link, "var/"+varHomeName) {
+				fmt.Printf("%s is a symlink and %s is a directory. All good.\n", homeDir, varHomeDir)
+			} else {
+				fmt.Fprintf(
+					os.Stderr,
+					"%s symlink points to an unexpected path: %s\n",
+					homeDir,
+					link,
+				)
+				return fmt.Errorf("home symlink invalid")
+			}
+		}
+	} else if homeExists && homeInfo.IsDir() {
+		if pathExists(varHomeDir) { // path exists is correct.
+			fmt.Println("WARNING: removing " + varHomeDir)
+			os.RemoveAll(varHomeDir)
+		}
+		if err := os.Rename(homeDir, varHomeDir); err != nil {
+			return fmt.Errorf("failed to move home: %w", err)
+		}
+	} else if homeExists {
+		if err := os.Remove(homeDir); err != nil {
+			return fmt.Errorf("failed to remove home: %w", err)
+		}
+	}
+	// && !os.IsExist(err) done because of the complexity of the conditions above.
+	if err := os.Symlink("var/"+varHomeName, homeDir); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("failed to symlink home: %w", err)
+	}
+	return nil
+}
+
 // PrepareFilesystemHierarchy prepares the filesystem hierarchy for OSTree.
 // It ports the logic from ostree_lib.prepare_filesystem_hierarchy in ostree_lib.sh.
 func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
@@ -1648,43 +1690,12 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 	}
 
 	fmt.Println("Setting up /home ...")
-	homeDir := filepath.Join(imageDir, "home")
-	varHomeDir := filepath.Join(imageDir, "var", "home")
-
-	homeInfo, err := os.Lstat(homeDir)
-	homeExists := err == nil
-
-	if homeExists && (homeInfo.Mode()&os.ModeSymlink != 0) {
-		if info, err := os.Stat(varHomeDir); err == nil && info.IsDir() {
-			link, _ := os.Readlink(homeDir)
-			if strings.HasSuffix(link, "var/home") {
-				fmt.Printf("%s is a symlink and %s is a directory. All good.\n", homeDir, varHomeDir)
-			} else {
-				fmt.Fprintf(
-					os.Stderr,
-					"%s symlink points to an unexpected path: %s\n",
-					homeDir,
-					link,
-				)
-				return fmt.Errorf("home symlink invalid")
-			}
-		}
-	} else if homeExists && homeInfo.IsDir() {
-		if pathExists(varHomeDir) { // path exists is correct.
-			fmt.Println("WARNING: removing " + varHomeDir)
-			os.RemoveAll(varHomeDir)
-		}
-		if err := os.Rename(homeDir, varHomeDir); err != nil {
-			return fmt.Errorf("failed to move home: %w", err)
-		}
-	} else if homeExists {
-		if err := os.Remove(homeDir); err != nil {
-			return fmt.Errorf("failed to remove home: %w", err)
-		}
+	if err := o.prepareVarHome(imageDir, "home", "home"); err != nil {
+		return err
 	}
-	// && !os.IsExist(err) done because of the complexity of the conditions above.
-	if err := os.Symlink("var/home", homeDir); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("failed to symlink home: %w", err)
+	fmt.Println("Setting up /root ...")
+	if err := o.prepareVarHome(imageDir, "root", "roothome"); err != nil {
+		return err
 	}
 
 	efiRoot, err := o.cfg.GetItem("Imager.EfiRoot")

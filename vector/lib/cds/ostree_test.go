@@ -236,6 +236,7 @@ func TestPrepareFilesystemHierarchy(t *testing.T) {
 		"srv",
 		"home",
 		"usr/local",
+		"root",
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(filepath.Join(imageDir, d), 0755); err != nil {
@@ -287,6 +288,9 @@ func TestPrepareFilesystemHierarchy(t *testing.T) {
 	// Check home
 	assertDir(t, filepath.Join(imageDir, "var", "home"))
 	assertSymlink(t, filepath.Join(imageDir, "home"), "var/home")
+	// Check root
+	assertDir(t, filepath.Join(imageDir, "var", "roothome"))
+	assertSymlink(t, filepath.Join(imageDir, "root"), "var/roothome")
 
 	// Check usr/local
 	assertDir(t, filepath.Join(imageDir, "var", "usrlocal"))

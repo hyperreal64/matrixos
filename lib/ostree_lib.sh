@@ -209,10 +209,50 @@ ostree_lib.setup_etc() {
     mv "${etcdir}" "${usretcdir}"
 }
 
+ostree_lib._prepare_var_home() {
+    local imagedir="${1}"
+    if [ -z "${imagedir}" ]; then
+        echo "ostree_lib._prepare_var_home: missing imagedir parameter." >&2
+        return 1
+    fi
+    local homename="${2}"
+    if [ -z "${homename}" ]; then
+        echo "ostree_lib._prepare_var_home: missing homename parameter." >&2
+        return 1
+    fi
+    local varhomename="${3}"
+    if [ -z "${varhomename}" ]; then
+        echo "ostree_lib._prepare_var_home: missing varhomename parameter." >&2
+        return 1
+    fi
+
+    local homedir="${imagedir}/${homename}"
+    local varhomedir="${imagedir}/var/${varhomename}"
+    if [[ -L "${homedir}" ]] && [[ -d "${varhomedir}" ]]; then
+        local homelink=
+        homelink=$(readlink -f "${homedir}")
+        if [ "${homelink}" = "var/${varhomename}" ]; then
+            echo "${homedir} is a symlink and ${varhomedir} is a directory. All good."
+        else
+            echo "${homedir} symlink points to an unexpected path: ${homelink}" >&2
+            return 1
+        fi
+    elif [[ -d "${homedir}" ]] && [[ ! -L "${homedir}" ]]; then
+        if [ -e "${varhomedir}" ]; then
+            echo "WARNING: removing ${varhomedir}"
+            rm -rf "${varhomedir}"
+        fi
+        mv "${homedir}" "${varhomedir}"
+    elif [ -e "${homedir}" ]; then
+        rm -v "${homedir}"
+    fi
+    ln -s "var/${varhomename}" "${homedir}"
+}
+
 ostree_lib.prepare_filesystem_hierarchy() {
     local imagedir="${1}"
     if [ -z "${imagedir}" ]; then
-        echo "${0}: missing imagedir parameter." >&2
+        echo "ostree_lib.prepare_filesystem_hierarchy: missing imagedir parameter." >&2
         return 1
     fi
 
@@ -294,27 +334,9 @@ ostree_lib.prepare_filesystem_hierarchy() {
     mkdir -p "${usrsrcdir}"
 
     echo "Setting up /home ..."
-    local homedir="${imagedir}/home"
-    local varhomedir="${imagedir}/var/home"
-    if [[ -L "${homedir}" ]] && [[ -d "${varhomedir}" ]]; then
-        local homelink=
-        homelink=$(readlink -f "${homedir}")
-        if [ "${homelink}" = "var/home" ]; then
-            echo "${homedir} is a symlink and ${varhomedir} is a directory. All good."
-        else
-            echo "${homedir} symlink points to an unexpected path: ${homelink}" >&2
-            return 1
-        fi
-    elif [[ -d "${homedir}" ]] && [[ ! -L "${homedir}" ]]; then
-        if [ -e "${varhomedir}" ]; then
-            echo "WARNING: removing ${varhomedir}"
-            rm -rf "${varhomedir}"
-        fi
-        mv "${homedir}" "${varhomedir}"
-    elif [ -e "${homedir}" ]; then
-        rm -v "${homedir}"
-    fi
-    ln -s "var/home" "${homedir}"
+    ostree_lib._prepare_var_home "${imagedir}" "home" "home"
+    echo "Setting up /root ..."
+    ostree_lib._prepare_var_home "${imagedir}" "home" "roothome"
 
     echo "Setting up ${MATRIXOS_EFI_ROOT}..."
     local efiroot="${imagedir}/${MATRIXOS_EFI_ROOT}"
