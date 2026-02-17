@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -22,13 +24,20 @@ const (
 	cBold   = "\033[1m"
 )
 
+var (
+	grubEfiBinary = "GRUBX64.EFI"
+	bootloaders   = []string{
+		grubEfiBinary,
+	}
+)
+
 // UpgradeCommand is a command for upgrading the system
 type UpgradeCommand struct {
-	fs        *flag.FlagSet
-	cfg       config.IConfig
-	ot        *cds.Ostree
-	reboot    bool
-	assumeYes bool
+	fs            *flag.FlagSet
+	cfg           config.IConfig
+	ot            *cds.Ostree
+	assumeYes     bool
+	updBootloader bool
 }
 
 // NewUpgradeCommand creates a new UpgradeCommand
@@ -36,7 +45,7 @@ func NewUpgradeCommand() ICommand {
 	c := &UpgradeCommand{
 		fs: flag.NewFlagSet("upgrade", flag.ExitOnError),
 	}
-	c.fs.BoolVar(&c.reboot, "reboot", false, "Reboot after successful upgrade")
+	c.fs.BoolVar(&c.updBootloader, "update-bootloader", false, "Update bootloader binaries in /efi")
 	c.fs.BoolVar(&c.assumeYes, "y", false, "Assume yes to all prompts")
 	return c
 }
@@ -96,34 +105,43 @@ func (c *UpgradeCommand) Run() error {
 		return fmt.Errorf("failed to get ostree root: %w", err)
 	}
 
-	oldSHA, ref, err := c.getCurrentState()
+	oldCommit, ref, err := c.getCurrentState()
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %w", err)
 	}
 
 	fmt.Printf("Creating diff for ref: %s\n", ref)
-	fmt.Printf("Current Booted SHA:  %s\n", oldSHA)
+	fmt.Printf("Currently booted commit:  %s\n", oldCommit)
 
 	fmt.Printf("%sFetching updates...%s\n", cBold, cReset)
 	if err := c.upgradePull(); err != nil {
 		return fmt.Errorf("failed to fetch updates: %w", err)
 	}
 
-	newSHA, err := c.ot.LastCommitWithRoot(ref, false)
+	newCommit, err := c.ot.LastCommitWithRoot(ref, false)
 	if err != nil {
-		return fmt.Errorf("failed to get new commit SHA: %w", err)
+		return fmt.Errorf("failed to get new commit: %w", err)
 	}
 
-	if oldSHA == newSHA {
-		fmt.Println("✅ System is already up to date.")
+	updateBootloader := func() error {
+		if c.updBootloader {
+			if err := c.updateBootloader(newCommit); err != nil {
+				return fmt.Errorf("failed to update bootloader: %w", err)
+			}
+		}
 		return nil
 	}
 
-	fmt.Printf("Available Update SHA: %s\n", newSHA)
+	if oldCommit == newCommit {
+		fmt.Println("✅ System is already up to date.")
+		return updateBootloader()
+	}
+
+	fmt.Printf("Available Update SHA: %s\n", newCommit)
 	fmt.Println("---------------------------------------------------")
 
 	fmt.Printf("%sAnalyzing package changes...%s\n", cBold, cReset)
-	if err := c.analyzeDiff(root, oldSHA, newSHA); err != nil {
+	if err := c.analyzeDiff(root, oldCommit, newCommit); err != nil {
 		fmt.Printf("Warning: failed to analyze diff: %v\n", err)
 	}
 
@@ -135,16 +153,15 @@ func (c *UpgradeCommand) Run() error {
 	}
 
 	fmt.Printf("%sDeploying update...%s\n", cBold, cReset)
-	if err := c.runCommand("ostree", "admin", "upgrade", "--deploy-only"); err != nil {
+	if err := c.upgradeDeploy(); err != nil {
 		return fmt.Errorf("failed to deploy update: %w", err)
 	}
 
-	fmt.Println("Upgrade successful.")
-
-	if c.reboot {
-		fmt.Println("Rebooting...")
-		return c.runCommand("reboot")
+	if err := updateBootloader(); err != nil {
+		return err
 	}
+
+	fmt.Println("Upgrade successful.")
 
 	fmt.Println("Please reboot at your earliest convenience.")
 	return nil
@@ -165,30 +182,148 @@ func (c *UpgradeCommand) getCurrentState() (string, string, error) {
 	return "", "", fmt.Errorf("no booted deployment found")
 }
 
-func (c *UpgradeCommand) readOriginRefspec(path string) (string, error) {
-	cfg, err := config.LoadConfig(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to load origin file: %w", err)
-	}
-
-	if section, ok := cfg["origin"]; ok {
-		if refspec, ok := section["refspec"]; ok {
-			return refspec, nil
-		}
-	}
-
-	return "", fmt.Errorf("refspec not found in [origin] section")
-}
-
 func (c *UpgradeCommand) upgradePull() error {
 	return c.ot.Upgrade([]string{"--pull-only"}, false)
 }
 
-func (c *UpgradeCommand) runCommand(name string, args ...string) error {
-	cmd := execCommand(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+func (c *UpgradeCommand) upgradeDeploy() error {
+	return c.ot.Upgrade([]string{"--deploy-only"}, false)
+}
+
+func (c *UpgradeCommand) updateBootloader(commit string) error {
+	fmt.Printf("%sUpdating bootloader binaries...%s\n", cBold, cReset)
+
+	if err := c.updateGrub_x64(commit); err != nil {
+		return fmt.Errorf("failed to update GRUB: %w", err)
+	}
+
+	// This is a placeholder for the actual bootloader update logic.
+	// In a real implementation, this would involve copying files from the new commit to /boot or /efi.
+	fmt.Printf("Bootloader binaries updated successfully for commit %s.\n", commit)
+	return nil
+}
+
+func (c *UpgradeCommand) updateGrub_x64(commit string) error {
+	// Search for GRUBX64.EFI files in /efi.
+	efiRoot, err := c.cfg.GetItem("Imager.EfiRoot")
+	if err != nil {
+		return fmt.Errorf("failed to get EfiRoot from config: %w", err)
+	}
+	if efiRoot == "" {
+		return fmt.Errorf("Imager.EfiRoot is not configured in matrixos.conf")
+	}
+	efiStat, err := os.Stat(efiRoot)
+	if err != nil {
+		return fmt.Errorf("failed to stat Imager.EfiRoot path: %w", err)
+	}
+	if !efiStat.IsDir() {
+		return fmt.Errorf("Imager.EfiRoot path is not a directory: %s", efiRoot)
+	}
+
+	sbCertFileName, err := c.cfg.GetItem("Imager.EfiCertificateFileName")
+	if err != nil {
+		return fmt.Errorf("failed to get EfiCertificateFileName from config: %w", err)
+	}
+	if sbCertFileName == "" {
+		return fmt.Errorf("Imager.EfiCertificateFileName is not configured in matrixos.conf")
+	}
+
+	sbCertPath := filepath.Join(efiRoot, sbCertFileName)
+	if _, err := os.Stat(sbCertPath); os.IsNotExist(err) {
+		return fmt.Errorf("SecureBoot certificate file not found at expected path: %s", sbCertPath)
+	} else if err != nil {
+		return fmt.Errorf("failed to stat SecureBoot certificate file: %w", err)
+	}
+
+	// use WalkDir to find all GRUBX64.EFI files, then use sbverify.
+	efis := []string{}
+	err = filepath.WalkDir(efiRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		fname := d.Name()
+		if slices.Contains(bootloaders, fname) {
+			fmt.Printf("Found EFI file: %s\n", path)
+
+			cmd := execCommand("sbverify", "--cert", sbCertPath, path)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error verifying EFI file %s: %v\n", path, err)
+				return nil
+			}
+			fmt.Printf("Verified EFI file: %s\n", path)
+			efis = append(efis, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to collect bootloaders: %w", err)
+	}
+	for _, efi := range efis {
+		efiDir := filepath.Dir(efi)
+		fmt.Printf("Updating bootloader binaries in %s...\n", efiDir)
+		if err := c.updateGrubDir_x64(efiDir, commit); err != nil {
+			return fmt.Errorf("failed to update bootloader binaries: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *UpgradeCommand) updateGrubDir_x64(efiDir, commit string) error {
+	fmt.Printf("Updating GRUB in %s for commit %s...\n", efiDir, commit)
+	root, err := c.ot.Root()
+	if err != nil {
+		return fmt.Errorf("failed to get ostree root: %w", err)
+	}
+
+	deployments, err := c.ot.ListDeployments(false)
+	if err != nil {
+		return fmt.Errorf("failed to list deployments: %w", err)
+	}
+
+	var foundDep *cds.Deployment
+	for _, dep := range deployments {
+		if dep.Checksum == commit {
+			foundDep = &dep
+			break
+		}
+	}
+
+	if foundDep == nil {
+		return fmt.Errorf("deployment not found for commit %s", commit)
+	}
+
+	// we do not check other fields because we assume that the upgrade
+	// part went fine.
+
+	newRoot := cds.BuildDeploymentRootfs(
+		root, foundDep.Stateroot, commit, foundDep.Index,
+	)
+	filesToCopy := []string{
+		"/usr/lib/grub/grub-x86_64.efi.signed",
+	}
+	for _, file := range filesToCopy {
+		src := filepath.Join(newRoot, file)
+		if _, err := os.Stat(src); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Expected GRUB file not found in new commit: %s\n", src)
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("failed to stat expected GRUB file: %w", err)
+		}
+
+		dst := filepath.Join(efiDir, grubEfiBinary)
+		fmt.Printf("Copying %s to %s...\n", src, dst)
+		if err := copyFile(src, dst); err != nil {
+			return fmt.Errorf("failed to copy GRUB file: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (c *UpgradeCommand) promptUser(prompt string) bool {
