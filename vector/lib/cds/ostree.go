@@ -290,6 +290,19 @@ func LastCommitWithSysroot(sysroot, ref string, verbose bool) (string, error) {
 	return LastCommit(repoDir, ref, verbose)
 }
 
+// BuildDeploymentRootfs builds the path to the deployed rootfs given a sysroot, osName,
+// commit and index.
+func BuildDeploymentRootfs(sysroot, osName, commit string, index int) string {
+	return filepath.Join(
+		sysroot,
+		"ostree",
+		"deploy",
+		osName,
+		"deploy",
+		commit+"."+strconv.Itoa(index),
+	)
+}
+
 // DeployedRootfsWithSysroot returns the path to the deployed rootfs given a sysroot and repoDir.
 func DeployedRootfsWithSysroot(sysroot, repoDir, osName, ref string, verbose bool) (string, error) {
 	if sysroot == "" {
@@ -310,7 +323,7 @@ func DeployedRootfsWithSysroot(sysroot, repoDir, osName, ref string, verbose boo
 		return "", fmt.Errorf("cannot get last ostree commit: %w", err)
 	}
 
-	rootfs := filepath.Join(sysroot, "ostree", "deploy", osName, "deploy", ostreeCommit+".0")
+	rootfs := BuildDeploymentRootfs(sysroot, osName, ostreeCommit, 0)
 	return rootfs, nil
 }
 
@@ -1510,7 +1523,7 @@ func (o *Ostree) DeployedRootfs(ref string, verbose bool) (string, error) {
 		return "", fmt.Errorf("cannot get last ostree commit: %w", err)
 	}
 
-	rootfs := filepath.Join(sysroot, "ostree", "deploy", osName, "deploy", ostreeCommit+".0")
+	rootfs := BuildDeploymentRootfs(sysroot, osName, ostreeCommit, 0)
 	return rootfs, nil
 }
 
