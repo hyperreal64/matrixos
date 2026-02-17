@@ -1453,6 +1453,15 @@ func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
 	return ListRemoteRefs(repoDir, remote, verbose)
 }
 
+// ListDeployments lists the deployments in the sysroot.
+func (o *Ostree) ListDeployments(verbose bool) ([]Deployment, error) {
+	sysroot, err := o.Sysroot()
+	if err != nil {
+		return nil, err
+	}
+	return ListDeploymentsWithSysroot(sysroot, verbose)
+}
+
 // DeployedRootfs returns the path to the deployed rootfs.
 func (o *Ostree) DeployedRootfs(ref string, verbose bool) (string, error) {
 	sysroot, err := o.Sysroot()
