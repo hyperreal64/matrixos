@@ -31,6 +31,8 @@ type UpgradeCommand struct {
 	ot            *cds.Ostree
 	assumeYes     bool
 	updBootloader bool
+	pretend       bool
+	force         bool
 }
 
 // NewUpgradeCommand creates a new UpgradeCommand
@@ -41,6 +43,8 @@ func NewUpgradeCommand() ICommand {
 	c.fs.BoolVar(&c.updBootloader, "update-bootloader", false,
 		"Update bootloader binaries in /efi")
 	c.fs.BoolVar(&c.assumeYes, "y", false, "Assume yes to all prompts")
+	c.fs.BoolVar(&c.pretend, "pretend", false, "Only fetch updates and show diff without applying them")
+	c.fs.BoolVar(&c.force, "force", false, "Force upgrade even if up to date")
 	return c
 }
 
@@ -132,17 +136,26 @@ func (c *UpgradeCommand) Run() error {
 	if oldCommit == newCommit {
 		fmt.Printf("\n%s%sSystem is already up to date.%s\n",
 			c.cGreen, c.iconCheck, c.cReset)
-		return updateBootloader()
+		if !c.force {
+			return updateBootloader()
+		}
+		fmt.Printf("\n%s%sForcing update despite no changes...%s\n",
+			c.cYellow, c.iconWarn, c.cReset)
+	} else {
+		fmt.Printf("\n%s%sUpdate Available: %s%s\n",
+			c.cGreen, c.iconNew, newCommit, c.cReset)
 	}
-
-	fmt.Printf("\n%s%sUpdate Available: %s%s\n",
-		c.cGreen, c.iconNew, newCommit, c.cReset)
 	fmt.Println(c.separator)
 
 	fmt.Printf("\n%s%sAnalyzing package changes...%s\n",
 		c.cBold, c.iconPackage, c.cReset)
 	if err := c.analyzeDiff(root, oldCommit, newCommit); err != nil {
 		fmt.Printf("Warning: failed to analyze diff: %v\n", err)
+	}
+
+	if c.pretend {
+		fmt.Printf("\n%sRunning in pretend mode. Exiting.%s\n", c.cYellow, c.cReset)
+		return nil
 	}
 
 	if !c.assumeYes {

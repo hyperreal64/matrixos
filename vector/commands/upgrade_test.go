@@ -13,7 +13,6 @@ import (
 	"testing"
 )
 
-// Constants for mock data
 const (
 	mockCurrentSHA = "old-sha"
 	mockNewSHA     = "new-sha"
@@ -32,10 +31,8 @@ const ostreeStatusTmpl = `{
 	]
 }`
 
-// Helper type for command matching logic
 type commandHandler func(args []string) bool
 
-// Registry of mocked commands
 var mockCommandHandlers = []commandHandler{
 	handleOstreeStatus,
 	handleOstreeRevParse,
@@ -43,32 +40,36 @@ var mockCommandHandlers = []commandHandler{
 	handleOstreeUpgradeDeploy,
 	handleOstreeListPackages,
 	handleReboot,
+	handleSbverify,
 }
 
-// mockExecUpgradeCommand intercepts exec.Command calls
 func mockExecUpgradeCommand(command string, args ...string) *exec.Cmd {
 	cs := []string{"-test.run=TestUpgradeHelperProcess", "--", command}
 	cs = append(cs, args...)
 	cmd := exec.Command(os.Args[0], cs...)
 
-	// Pass through special environment variables for test configuration
 	env := []string{"GO_WANT_UPGRADE_HELPER_PROCESS=1"}
-	if val := os.Getenv("TEST_UPGRADE_CURRENT_SHA"); val != "" {
-		env = append(env, "TEST_UPGRADE_CURRENT_SHA="+val)
+	vars := []string{
+		"TEST_UPGRADE_CURRENT_SHA",
+		"TEST_UPGRADE_NEW_SHA",
+		"TEST_UPGRADE_SHOW_NEW_DEPLOYMENT",
+		"DEBUG_TEST",
+	}
+	for _, v := range vars {
+		if val := os.Getenv(v); val != "" {
+			env = append(env, v+"="+val)
+		}
 	}
 	cmd.Env = env
 	return cmd
 }
 
-// TestUpgradeHelperProcess is the entry point for mocked subprocesses
 func TestUpgradeHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_UPGRADE_HELPER_PROCESS") != "1" {
 		return
 	}
-	// Helper process must exit
 	defer os.Exit(0)
 
-	// Strip test runner flags to get the actual command
 	args := os.Args
 	for len(args) > 0 {
 		if args[0] == "--" {
@@ -83,7 +84,6 @@ func TestUpgradeHelperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 
-	// Try to handle the command with registered handlers
 	for _, handler := range mockCommandHandlers {
 		if handler(args) {
 			return
@@ -94,7 +94,6 @@ func TestUpgradeHelperProcess(t *testing.T) {
 	os.Exit(1)
 }
 
-// Mock package data
 var mockPackages = map[string][]string{
 	mockCurrentSHA: {
 		"d00755 0 0 0 /var/db/pkg/app-misc/foo-1.0/",
@@ -106,8 +105,6 @@ var mockPackages = map[string][]string{
 	},
 }
 
-// Helper to parse arguments into a more queryable structure
-// This allows tests to be resilient to flag reordering
 type parsedArgs struct {
 	cmd     string
 	subCmds []string
@@ -126,9 +123,6 @@ func parseArgs(args []string) *parsedArgs {
 		p.cmd = args[0]
 	}
 
-	// Simple parser: strings starting with - are flags
-	// everything else (until --) is a subcommand or positional arg.
-	// After --, everything is a positional arg.
 	inDashDash := false
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
@@ -143,7 +137,6 @@ func parseArgs(args []string) *parsedArgs {
 		}
 
 		if strings.HasPrefix(arg, "-") {
-			// Handle both --long and -s flags
 			trimmed := strings.TrimLeft(arg, "-")
 			parts := strings.SplitN(trimmed, "=", 2)
 			key := parts[0]
@@ -173,20 +166,43 @@ func (p *parsedArgs) hasFlag(name string) bool {
 	return ok
 }
 
-// --- Command Handlers ---
-
 func handleOstreeStatus(args []string) bool {
 	p := parseArgs(args)
 	if p.cmd != "ostree" || !p.hasSubCmd("admin") || !p.hasSubCmd("status") {
 		return false
 	}
 
-	sha := mockCurrentSHA
+	currentSHA := mockCurrentSHA
 	if val := os.Getenv("TEST_UPGRADE_CURRENT_SHA"); val != "" {
-		sha = val
+		currentSHA = val
 	}
-	// We always return the mockRefSpec as the origin refspec
-	fmt.Printf(ostreeStatusTmpl, sha, stateroot, mockRefSpec)
+
+	newSHA := mockNewSHA
+	if val := os.Getenv("TEST_UPGRADE_NEW_SHA"); val != "" {
+		newSHA = val
+	}
+
+	deployments := fmt.Sprintf(`{
+			"booted": true,
+			"checksum": "%s",
+			"stateroot": "%s",
+			"refspec": "%s"
+		}`, currentSHA, stateroot, mockRefSpec)
+
+	if os.Getenv("TEST_UPGRADE_SHOW_NEW_DEPLOYMENT") == "1" {
+		deployments += fmt.Sprintf(`,{
+			"booted": false,
+			"checksum": "%s",
+			"stateroot": "%s",
+			"refspec": "%s"
+		}`, newSHA, stateroot, mockRefSpec)
+	}
+
+	fmt.Printf(`{ "deployments": [ %s ] }`, deployments)
+
+	if os.Getenv("DEBUG_TEST") == "1" {
+		fmt.Fprintf(os.Stderr, "DEBUG: deployments json: { \"deployments\": [ %s ] }\n", deployments)
+	}
 	return true
 }
 
@@ -201,7 +217,6 @@ func handleOstreeRevParse(args []string) bool {
 
 func handleOstreeUpgradePull(args []string) bool {
 	p := parseArgs(args)
-	// match: ostree admin upgrade ... --pull-only
 	if p.cmd != "ostree" || !p.hasSubCmd("admin") || !p.hasSubCmd("upgrade") {
 		return false
 	}
@@ -210,7 +225,6 @@ func handleOstreeUpgradePull(args []string) bool {
 
 func handleOstreeUpgradeDeploy(args []string) bool {
 	p := parseArgs(args)
-	// match: ostree admin upgrade ... --deploy-only
 	if p.cmd != "ostree" || !p.hasSubCmd("admin") || !p.hasSubCmd("upgrade") {
 		return false
 	}
@@ -223,7 +237,6 @@ func handleOstreeListPackages(args []string) bool {
 		return false
 	}
 
-	// Simulate failure for /usr/var-db-pkg to force fallback
 	for _, arg := range p.raw {
 		if strings.Contains(arg, "/usr/var-db-pkg") {
 			os.Exit(1)
@@ -231,7 +244,6 @@ func handleOstreeListPackages(args []string) bool {
 		}
 	}
 
-	// Commit finding logic:
 	var commit string
 	for _, arg := range p.raw {
 		if arg == mockCurrentSHA || arg == mockNewSHA {
@@ -241,7 +253,6 @@ func handleOstreeListPackages(args []string) bool {
 	}
 
 	if commit == "" {
-		// fallback to looking relative to known flags
 		return false
 	}
 
@@ -266,7 +277,12 @@ func handleReboot(args []string) bool {
 	return false
 }
 
-// --- Test Setup Helper ---
+func handleSbverify(args []string) bool {
+	if len(args) > 0 && args[0] == "sbverify" {
+		return true
+	}
+	return false
+}
 
 type testEnv struct {
 	tmpDir     string
@@ -275,11 +291,9 @@ type testEnv struct {
 }
 
 func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
-	// Redirect internal execCommand
 	origExec := execCommand
 	execCommand = mockExecUpgradeCommand
 
-	// Mock cds.RunWithStdoutCapture
 	origRunWithCapture := cds.RunWithStdoutCapture
 	cds.RunWithStdoutCapture = func(verbose bool, args ...string) (io.Reader, error) {
 		cmd := mockExecUpgradeCommand("ostree", args...)
@@ -294,7 +308,6 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 		return &stdout, nil
 	}
 
-	// Mock cds.Run
 	origRun := cds.Run
 	cds.Run = func(verbose bool, args ...string) error {
 		cmd := mockExecUpgradeCommand("ostree", args...)
@@ -308,17 +321,14 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 		return nil
 	}
 
-	// Mock root user
 	origEuid := getEuid
 	getEuid = func() int { return 0 }
 
-	// Create temp fs
 	tmpDir, err := os.MkdirTemp("", "upgrade-test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Setup config in temp dir
 	confDir := filepath.Join(tmpDir, "conf")
 	if err := os.Mkdir(confDir, 0755); err != nil {
 		t.Fatal(err)
@@ -336,7 +346,6 @@ Root=%s
 		t.Fatal(err)
 	}
 
-	// MatrixOS marker
 	if err := os.WriteFile(filepath.Join(tmpDir, ".matrixos"), []byte(""), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -344,13 +353,11 @@ Root=%s
 	origWd, _ := os.Getwd()
 	os.Chdir(tmpDir)
 
-	// Create origin file structure
 	originDir := filepath.Join(tmpDir, "ostree/deploy", stateroot, "deploy")
 	if err := os.MkdirAll(originDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create the .origin file
 	originPath := filepath.Join(originDir, currentSHA+".0.origin")
 	content := fmt.Sprintf("[origin]\nrefspec=%s\n", mockRefSpec)
 	if err := os.WriteFile(originPath, []byte(content), 0644); err != nil {
@@ -371,7 +378,13 @@ Root=%s
 	}
 }
 
-// --- Tests ---
+func createMockDeployment(t *testing.T, env *testEnv, commit string) string {
+	depDir := filepath.Join(env.tmpDir, "ostree/deploy", stateroot, "deploy", commit+".0")
+	if err := os.MkdirAll(depDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	return depDir
+}
 
 func TestUpgradeRun(t *testing.T) {
 	env := setupUpgradeTest(t, mockCurrentSHA)
@@ -389,7 +402,6 @@ func TestUpgradeRun(t *testing.T) {
 		t.Fatalf("Command failed: %v", err)
 	}
 
-	// Validate output content
 	expected := []string{
 		"Checking for updates on branch: " + mockRefSpec,
 		"Current version: " + mockCurrentSHA,
@@ -410,8 +422,6 @@ func TestUpgradeRun(t *testing.T) {
 }
 
 func TestUpgradeNoUpdate(t *testing.T) {
-	// Configure mock to return "new-sha" as current system state
-	// This simulates that we are ALREADY on the latest commit
 	os.Setenv("TEST_UPGRADE_CURRENT_SHA", mockNewSHA)
 	defer os.Unsetenv("TEST_UPGRADE_CURRENT_SHA")
 
@@ -430,14 +440,12 @@ func TestUpgradeNoUpdate(t *testing.T) {
 		t.Fatalf("Command failed: %v", err)
 	}
 
-	// Validate "no update" message
 	msg := "System is already up to date"
 	if !strings.Contains(output, msg) {
 		t.Errorf("Expected %q, got output:\n%s", msg, output)
 	}
 }
 
-// runCaptureStdout runs the given function and captures its stdout output.
 func runCaptureStdout(f func() error) (string, error) {
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -457,4 +465,274 @@ func stripAnsi(str string) string {
 	const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
 	var re = regexp.MustCompile(ansi)
 	return re.ReplaceAllString(str, "")
+}
+
+func TestUpgradePretend(t *testing.T) {
+	env := setupUpgradeTest(t, mockCurrentSHA)
+	defer env.cleanup()
+
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{"--pretend"}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
+
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
+
+	expected := []string{
+		"Fetching updates...",
+		"Analyzing package changes...",
+		"Running in pretend mode. Exiting.",
+	}
+
+	for _, s := range expected {
+		if !strings.Contains(output, s) {
+			t.Errorf("Missing expected output: %q\nGot:\n%s", s, output)
+		}
+	}
+
+	forbidden := "Deploying update..."
+	if strings.Contains(output, forbidden) {
+		t.Errorf("Unexpected output: %q (should handle pretend mode)", forbidden)
+	}
+}
+
+func TestUpgradeForce(t *testing.T) {
+	os.Setenv("TEST_UPGRADE_CURRENT_SHA", mockNewSHA)
+	defer os.Unsetenv("TEST_UPGRADE_CURRENT_SHA")
+
+	env := setupUpgradeTest(t, mockNewSHA)
+	defer env.cleanup()
+
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{"--force", "-y"}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
+
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
+
+	expected := []string{
+		"System is already up to date.",
+		"Forcing update despite no changes...",
+		"Deploying update...",
+		"Upgrade successful!",
+	}
+
+	for _, s := range expected {
+		if !strings.Contains(output, s) {
+			t.Errorf("Missing expected output: %q\nGot:\n%s", s, output)
+		}
+	}
+}
+
+func TestUpgradeAbort(t *testing.T) {
+	env := setupUpgradeTest(t, mockCurrentSHA)
+	defer env.cleanup()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = r
+	defer func() {
+		os.Stdin = oldStdin
+		r.Close()
+	}()
+
+	go func() {
+		w.Write([]byte("n\n"))
+		w.Close()
+	}()
+
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
+
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
+
+	expected := "Aborted."
+	if !strings.Contains(output, expected) {
+		t.Errorf("Expected output to contain %q, got:\n%s", expected, output)
+	}
+
+	forbidden := "Deploying update..."
+	if strings.Contains(output, forbidden) {
+		t.Errorf("Unexpected output: %q (should have aborted)", forbidden)
+	}
+}
+
+func TestUpgradeBootloaderSuccess(t *testing.T) {
+	env := setupUpgradeTest(t, mockCurrentSHA)
+	defer env.cleanup()
+
+	newRoot := createMockDeployment(t, env, mockNewSHA)
+
+	grubSrc := filepath.Join(newRoot, "usr/lib/grub/grub-x86_64.efi.signed")
+	if err := os.MkdirAll(filepath.Dir(grubSrc), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(grubSrc, []byte("new grub"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	shimDir := filepath.Join(newRoot, "usr/share/shim")
+	if err := os.MkdirAll(shimDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	shimSrc := filepath.Join(shimDir, "shimx64.efi")
+	if err := os.WriteFile(shimSrc, []byte("new shim"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	efiRoot := filepath.Join(env.tmpDir, "efi")
+	grubDir := filepath.Join(efiRoot, "EFI/BOOT")
+	if err := os.MkdirAll(grubDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	existingGrub := filepath.Join(grubDir, "GRUBX64.EFI")
+	if err := os.WriteFile(existingGrub, []byte("old grub"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	certFile := filepath.Join(efiRoot, "secureboot.crt")
+	if err := os.WriteFile(certFile, []byte("dummy cert"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := fmt.Sprintf(`
+[matrixOS]
+Root=%s
+
+[Ostree]
+Root=%s
+
+[Imager]
+EfiRoot=%s
+EfiCertificateFileName=secureboot.crt
+`, env.tmpDir, env.tmpDir, efiRoot)
+
+	confPath := filepath.Join(env.tmpDir, "conf/matrixos.conf")
+	if err := os.WriteFile(confPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	os.Setenv("TEST_UPGRADE_SHOW_NEW_DEPLOYMENT", "1")
+	defer os.Unsetenv("TEST_UPGRADE_SHOW_NEW_DEPLOYMENT")
+	os.Setenv("DEBUG_TEST", "1")
+	defer os.Unsetenv("DEBUG_TEST")
+
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{"-y", "--update-bootloader"}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
+
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
+
+	expected := []string{
+		"Updating bootloader binaries...",
+		"Found EFI file: " + existingGrub,
+		"Verified EFI file: " + existingGrub,
+		"Updating GRUB/Shim in " + grubDir,
+		"Copying grub-x86_64.efi.signed to " + existingGrub,
+		"Copying shimx64.efi to " + filepath.Join(grubDir, "shimx64.efi"),
+		"Upgrade successful!",
+	}
+
+	for _, s := range expected {
+		if !strings.Contains(output, s) {
+			t.Errorf("Missing expected output: %q\nGot:\n%s", s, output)
+		}
+	}
+
+	content, err := os.ReadFile(existingGrub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "new grub" {
+		t.Errorf("Expected 'new grub', got %q", content)
+	}
+}
+
+func TestUpgradeBootloaderMissingConfig(t *testing.T) {
+	env := setupUpgradeTest(t, mockCurrentSHA)
+	defer env.cleanup()
+
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{"-y", "--update-bootloader"}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
+
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid key") {
+		t.Errorf("Unexpected error message: %v", err)
+	}
+
+	_ = output
+}
+
+func TestUpgradeBootloaderMissingCert(t *testing.T) {
+	env := setupUpgradeTest(t, mockCurrentSHA)
+	defer env.cleanup()
+
+	efiRoot := filepath.Join(env.tmpDir, "efi")
+	if err := os.MkdirAll(efiRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := fmt.Sprintf(`
+[matrixOS]
+Root=%s
+
+[Ostree]
+Root=%s
+
+[Imager]
+EfiRoot=%s
+`, env.tmpDir, env.tmpDir, efiRoot)
+	confPath := filepath.Join(env.tmpDir, "conf/matrixos.conf")
+	if err := os.WriteFile(confPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{"-y", "--update-bootloader"}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
+
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid key") {
+		t.Errorf("Unexpected error message: %v", err)
+	}
 }
