@@ -391,14 +391,14 @@ func TestUpgradeRun(t *testing.T) {
 
 	// Validate output content
 	expected := []string{
-		"Creating diff for ref: " + mockRefSpec,
-		"Currently booted commit:  " + mockCurrentSHA,
+		"Checking for updates on branch: " + mockRefSpec,
+		"Current version: " + mockCurrentSHA,
 		"Fetching updates...",
-		"Available Update SHA: " + mockNewSHA,
+		"Update Available: " + mockNewSHA,
 		"Analyzing package changes...",
 		"app-misc/foo-1.0 -> app-misc/foo-1.1",
 		"Deploying update...",
-		"Upgrade successful.",
+		"Upgrade successful!",
 		"Please reboot at your earliest convenience.",
 	}
 

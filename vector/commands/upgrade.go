@@ -16,14 +16,6 @@ import (
 	"matrixos/vector/lib/config"
 )
 
-const (
-	cReset  = "\033[0m"
-	cRed    = "\033[31m"
-	cGreen  = "\033[32m"
-	cYellow = "\033[33m"
-	cBold   = "\033[1m"
-)
-
 var (
 	grubEfiBinary = "GRUBX64.EFI"
 	bootloaders   = []string{
@@ -33,6 +25,7 @@ var (
 
 // UpgradeCommand is a command for upgrading the system
 type UpgradeCommand struct {
+	UI
 	fs            *flag.FlagSet
 	cfg           config.IConfig
 	ot            *cds.Ostree
@@ -45,7 +38,8 @@ func NewUpgradeCommand() ICommand {
 	c := &UpgradeCommand{
 		fs: flag.NewFlagSet("upgrade", flag.ExitOnError),
 	}
-	c.fs.BoolVar(&c.updBootloader, "update-bootloader", false, "Update bootloader binaries in /efi")
+	c.fs.BoolVar(&c.updBootloader, "update-bootloader", false,
+		"Update bootloader binaries in /efi")
 	c.fs.BoolVar(&c.assumeYes, "y", false, "Assume yes to all prompts")
 	return c
 }
@@ -84,6 +78,7 @@ func (c *UpgradeCommand) Init(args []string) error {
 	if err := c.initOstree(); err != nil {
 		return err
 	}
+	c.StartUI()
 
 	c.fs.Usage = func() {
 		fmt.Printf("Usage: vector %s [options]\n", c.Name())
@@ -110,10 +105,12 @@ func (c *UpgradeCommand) Run() error {
 		return fmt.Errorf("failed to get current state: %w", err)
 	}
 
-	fmt.Printf("Creating diff for ref: %s\n", ref)
-	fmt.Printf("Currently booted commit:  %s\n", oldCommit)
+	fmt.Printf("%s%sChecking for updates on branch: %s%s\n",
+		c.cBlue, c.iconSearch, ref, c.cReset)
+	fmt.Printf("   %sCurrent version: %s%s\n", c.cBold, oldCommit, c.cReset)
 
-	fmt.Printf("%sFetching updates...%s\n", cBold, cReset)
+	fmt.Printf("\n%s%sFetching updates...%s\n",
+		c.cBold, c.iconDownload, c.cReset)
 	if err := c.upgradePull(); err != nil {
 		return fmt.Errorf("failed to fetch updates: %w", err)
 	}
@@ -133,26 +130,34 @@ func (c *UpgradeCommand) Run() error {
 	}
 
 	if oldCommit == newCommit {
-		fmt.Println("✔ System is already up to date.")
+		fmt.Printf("\n%s%sSystem is already up to date.%s\n",
+			c.cGreen, c.iconCheck, c.cReset)
 		return updateBootloader()
 	}
 
-	fmt.Printf("Available Update: %s\n", newCommit)
-	fmt.Println("---------------------------------------------------")
+	fmt.Printf("\n%s%sUpdate Available: %s%s\n",
+		c.cGreen, c.iconNew, newCommit, c.cReset)
+	fmt.Println(c.separator)
 
-	fmt.Printf("%sAnalyzing package changes...%s\n", cBold, cReset)
+	fmt.Printf("\n%s%sAnalyzing package changes...%s\n",
+		c.cBold, c.iconPackage, c.cReset)
 	if err := c.analyzeDiff(root, oldCommit, newCommit); err != nil {
 		fmt.Printf("Warning: failed to analyze diff: %v\n", err)
 	}
 
 	if !c.assumeYes {
-		if !c.promptUser("Do you want to apply this upgrade? [y/N] ") {
-			fmt.Println("Aborted.")
+		fmt.Println("")
+		promptMsg := fmt.Sprintf(
+			"%s%sDo you want to apply this upgrade? [y/N] %s",
+			c.cYellow, c.iconQuestion, c.cReset,
+		)
+		if !c.promptUser(promptMsg) {
+			fmt.Printf("%sAborted.%s\n", c.iconError, c.cReset)
 			return nil
 		}
 	}
 
-	fmt.Printf("%sDeploying update...%s\n", cBold, cReset)
+	fmt.Printf("\n%s%sDeploying update...%s\n", c.cBold, c.iconRocket, c.cReset)
 	if err := c.upgradeDeploy(); err != nil {
 		return fmt.Errorf("failed to deploy update: %w", err)
 	}
@@ -161,9 +166,10 @@ func (c *UpgradeCommand) Run() error {
 		return err
 	}
 
-	fmt.Println("Upgrade successful.")
+	fmt.Printf("\n%s%sUpgrade successful!%s\n", c.cGreen, c.iconCheck, c.cReset)
 
-	fmt.Println("Please reboot at your earliest convenience.")
+	fmt.Printf("%s%sPlease reboot at your earliest convenience.%s\n",
+		c.cYellow, c.iconWarn, c.cReset)
 	return nil
 }
 
@@ -191,15 +197,18 @@ func (c *UpgradeCommand) upgradeDeploy() error {
 }
 
 func (c *UpgradeCommand) updateBootloader(commit string) error {
-	fmt.Printf("%sUpdating bootloader binaries...%s\n", cBold, cReset)
+	fmt.Printf("\n%s%sUpdating bootloader binaries...%s\n",
+		c.cBold, c.iconGear, c.cReset)
 
 	if err := c.updateGrub_x64(commit); err != nil {
 		return fmt.Errorf("failed to update GRUB: %w", err)
 	}
 
 	// This is a placeholder for the actual bootloader update logic.
-	// In a real implementation, this would involve copying files from the new commit to /boot or /efi.
-	fmt.Printf("Bootloader binaries updated successfully for commit %s.\n", commit)
+	// In a real implementation, this would involve copying files from the new
+	// commit to /boot or /efi.
+	fmt.Printf("%s%sBootloader updated successfully for commit %s.%s\n",
+		c.cGreen, c.iconCheck, commit, c.cReset)
 	return nil
 }
 
@@ -230,14 +239,16 @@ func (c *UpgradeCommand) updateGrub_x64(commit string) error {
 
 	sbCertPath := filepath.Join(efiRoot, sbCertFileName)
 	if _, err := os.Stat(sbCertPath); os.IsNotExist(err) {
-		return fmt.Errorf("SecureBoot certificate file not found at expected path: %s", sbCertPath)
+		return fmt.Errorf("certificate file not found at: %s", sbCertPath)
 	} else if err != nil {
 		return fmt.Errorf("failed to stat SecureBoot certificate file: %w", err)
 	}
 
 	// use WalkDir to find all GRUBX64.EFI files, then use sbverify.
 	efis := []string{}
-	err = filepath.WalkDir(efiRoot, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(efiRoot, func(
+		path string, d os.DirEntry, err error,
+	) error {
 		if err != nil {
 			return err
 		}
@@ -246,17 +257,20 @@ func (c *UpgradeCommand) updateGrub_x64(commit string) error {
 		}
 		fname := d.Name()
 		if slices.Contains(bootloaders, fname) {
-			fmt.Printf("Found EFI file: %s\n", path)
+			fmt.Printf("   Found EFI file: %s%s%s\n", c.cBlue, path, c.cReset)
 
 			cmd := execCommand("sbverify", "--cert", sbCertPath, path)
-			cmd.Stdout = os.Stdout
+			// cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 
 			if err := cmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error verifying EFI file %s: %v\n", path, err)
+				fmt.Fprintf(os.Stderr,
+					"   %s%sError verifying EFI file %s: %v%s\n",
+					c.cRed, c.iconError, path, err, c.cReset)
 				return nil
 			}
-			fmt.Printf("Verified EFI file: %s\n", path)
+			fmt.Printf("   %sVerified EFI file: %s%s%s\n",
+				c.iconCheck, c.cGreen, path, c.cReset)
 			efis = append(efis, path)
 		}
 		return nil
@@ -266,17 +280,22 @@ func (c *UpgradeCommand) updateGrub_x64(commit string) error {
 	}
 	for _, efi := range efis {
 		efiDir := filepath.Dir(efi)
-		fmt.Printf("Updating bootloader binaries in %s...\n", efiDir)
+		fmt.Printf("   %sUpdating bootloader binaries in %s...\n",
+			c.iconPackage, efiDir)
 		if err := c.updateGrubDir_x64(efiDir, commit); err != nil {
 			return fmt.Errorf("failed to update bootloader binaries: %w", err)
 		}
-		fmt.Printf("✔ Bootloader binaries updated successfully in %s.\n", efiDir)
+		fmt.Printf("   %sBootloader binaries updated successfully in %s.\n",
+			c.iconCheck, efiDir)
 	}
 	return nil
 }
 
 func (c *UpgradeCommand) updateGrubDir_x64(efiDir, commit string) error {
-	fmt.Printf("Updating GRUB/Shim in %s for commit %s...\n", efiDir, commit)
+	fmt.Printf(
+		"   %sUpdating GRUB/Shim in %s%s%s for commit %s%s%s...\n",
+		c.iconUpdate, c.cBlue, efiDir, c.cReset, c.cBold, commit, c.cReset,
+	)
 	root, err := c.ot.Root()
 	if err != nil {
 		return fmt.Errorf("failed to get ostree root: %w", err)
@@ -328,19 +347,24 @@ func (c *UpgradeCommand) updateGrubDir_x64(efiDir, commit string) error {
 			filesToCopy = append(filesToCopy, [2]string{srcPath, dstPath})
 		}
 	} else {
-		fmt.Fprintf(os.Stderr, "Warning: failed to read %s directory for new commit: %v\n", shimDir, err)
+		fmt.Fprintf(os.Stderr,
+			"%s%sWarning: failed to read %s directory for new commit: %v%s\n",
+			c.cYellow, c.iconWarn, shimDir, err, c.cReset)
 	}
 
 	for _, pair := range filesToCopy {
 		src, dst := pair[0], pair[1]
 		if _, err := os.Stat(src); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Expected file was not found in new commit: %s\n", src)
+			fmt.Fprintf(os.Stderr,
+				"%s%sExpected file was not found in new commit: %s%s\n",
+				c.cYellow, c.iconWarn, src, c.cReset)
 			return nil
 		} else if err != nil {
 			return fmt.Errorf("failed to stat expected file: %w", err)
 		}
 
-		fmt.Printf("Copying %s to %s...\n", src, dst)
+		fmt.Printf("   %sCopying %s to %s%s%s...\n",
+			c.iconDoc, filepath.Base(src), c.cBold, dst, c.cReset)
 		if err := copyFile(src, dst); err != nil {
 			return fmt.Errorf("failed to copy file: %w", err)
 		}
@@ -382,11 +406,12 @@ func (c *UpgradeCommand) analyzeDiff(root, oldSHA, newSHA string) error {
 	}
 
 	if len(removed) == 0 && len(added) == 0 {
-		fmt.Println("No package changes detected (Config/Binary only update).")
+		fmt.Printf(
+			"   %s%sNo package changes detected (Config/Binary only update).%s\n",
+			c.cBlue, c.iconPackage, c.cReset,
+		)
 		return nil
 	}
-
-	fmt.Printf("%sPackage Changes:%s\n", cBold, cReset)
 
 	var removedList []string
 	for pkg := range removed {
@@ -405,10 +430,13 @@ func (c *UpgradeCommand) analyzeDiff(root, oldSHA, newSHA string) error {
 		}
 
 		if newVer != "" {
-			fmt.Printf("  ✔ %s%s%s -> %s%s%s\n", cYellow, pkg, cReset, cGreen, newVer, cReset)
+			fmt.Printf("   %s %s%s%s -> %s%s%s\n",
+				c.iconUpdate, c.cYellow, pkg, c.cReset,
+				c.cGreen, newVer, c.cReset)
 			delete(added, newVer)
 		} else {
-			fmt.Printf("  ❌ %s%s%s (Removed)\n", cRed, pkg, cReset)
+			fmt.Printf("   %s %s%s%s (Removed)\n",
+				c.iconError, c.cRed, pkg, c.cReset)
 		}
 	}
 
@@ -419,10 +447,11 @@ func (c *UpgradeCommand) analyzeDiff(root, oldSHA, newSHA string) error {
 	sort.Strings(addedList)
 
 	for _, pkg := range addedList {
-		fmt.Printf("  ✨ %s%s%s (New)\n", cGreen, pkg, cReset)
+		fmt.Printf("   %s %s%s%s (New)\n",
+			c.iconNew, c.cGreen, pkg, c.cReset)
 	}
 
-	fmt.Println("---------------------------------------------------")
+	fmt.Println(c.separator)
 	return nil
 }
 
@@ -434,7 +463,9 @@ func (c *UpgradeCommand) listPackages(root, commit string) (map[string]bool, err
 	return c.listPackagesFromPath(root, commit, "/var/db/pkg")
 }
 
-func (c *UpgradeCommand) listPackagesFromPath(root, commit, path string) (map[string]bool, error) {
+func (c *UpgradeCommand) listPackagesFromPath(
+	root, commit, path string,
+) (map[string]bool, error) {
 	cmd := execCommand("ostree", getRepoFlag(root), "ls", "-R", commit, "--", path)
 	out, err := cmd.Output()
 	if err != nil {
