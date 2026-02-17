@@ -538,6 +538,9 @@ _productionize_image() {
     image_path="${versioned_image_path}"
     chmod 644 "${image_path}"
 
+    # Run the productionization tests. If failed, abort.
+    image_lib.test_image "${image_path}" "${ref}"
+
     local qcow2_image_path=
     local qcow2_image_name=
     local qcow2_image_dir=

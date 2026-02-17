@@ -860,6 +860,66 @@ image_lib.setup_hooks() {
     )
 }
 
+image_lib.test_image() {
+    local image_path="${1}"
+    if [ -z "${image_path}" ]; then
+        echo "image_lib.test_image: missing image_path parameter" >&2
+        return 1
+    fi
+    local ref="${2}"
+    if [ -z "${ref}" ]; then
+        echo "image_lib.test_image: missing ref parameter" >&2
+        return 1
+    fi
+    ref=$(ostree_lib.clean_remote_from_ref "${ref}")
+    ref=$(ostree_lib.remove_full_from_branch "${ref}")
+
+    local test_dir="${MATRIXOS_DEV_DIR}/image/tests/${ref}"
+    if [ ! -d "${test_dir}" ]; then
+        echo "image_lib.test_image: test dir ${test_dir} does not exist, skipping test" >&2
+        return 0
+    fi
+
+    # copy the image to a temp location for testing.
+    local image_temp_dir=
+    image_temp_dir=$(fs_lib.create_temp_dir "${MATRIXOS_IMAGES_MOUNT_DIR}" "${ref//\//_}")
+    if [ -z "${image_temp_dir}" ]; then
+        echo "image_lib.test_image: failed to create temp dir for testing" >&2
+        return 1
+    fi
+
+    local image_name=
+    image_name=$(basename "${image_path}")
+    local test_image_path="${image_temp_dir}/${image_name}"
+    echo "Copying image to ${test_image_path} for testing ..."
+    cp --reflink=auto -v "${image_path}" "${test_image_path}" || {
+        echo "Failed to copy image for testing" >&2
+        rm -rf "${image_temp_dir}"
+        return 1
+    }
+
+    local ts=
+    for ts in "${test_dir}"/*; do
+        if [ -f "${ts}" ] && [ -x "${ts}" ]; then
+            echo "Running test script ${ts} ..."
+            (
+                export MATRIXOS_DEV_DIR
+                export MATRIXOS_LOGS_DIR
+                export IMAGE_PATH="${test_image_path}"
+                export REF="${ref}"
+                "${ts}" || {
+                    echo "Test script ${ts} failed!" >&2
+                    rm -rf "${image_temp_dir}"
+                    return 1
+                }
+            )
+        else
+            echo "Skipping non-executable test script ${ts}" >&2
+        fi
+    done
+    rm -rf "${image_temp_dir}"
+}
+
 image_lib.finalize_filesystems() {
     local mount_rootfs="${1}"
     if [ -z "${mount_rootfs}" ]; then
