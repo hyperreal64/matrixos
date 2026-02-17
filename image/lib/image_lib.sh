@@ -429,11 +429,11 @@ image_lib.install_secureboot_certs() {
     local sbcert="${ostree_deploy_rootfs}/etc/portage/secureboot.pem"
     if [ -f "${sbcert}" ]; then
     echo "Copying SecureBoot cert to EFI partition ..."
-        cp "${sbcert}" "${mount_efifs}/matrixos-secureboot-cert.pem"
+        cp "${sbcert}" "${mount_efifs}/${MATRIXOS_EFI_CERT_FILE_NAME}"
 
         echo "Generating SecureBoot MOK ..."
         openssl x509 -in "${sbcert}" \
-            -outform DER -out "${mount_efifs}/matrixos-secureboot-mok.der"
+            -outform DER -out "${mount_efifs}/${MATRIXOS_EFI_CERT_DER_FILE_NAME}"
     else
         echo "NO SECUREBOOT CERT AT: ${sbcert} -- ignoring." >&2
     fi
@@ -441,11 +441,11 @@ image_lib.install_secureboot_certs() {
     local sbkek="${ostree_deploy_rootfs}/etc/portage/secureboot-kek.pem"
     if [ -f "${sbkek}" ]; then
     echo "Copying SecureBoot KEK cert to EFI partition ..."
-        cp "${sbkek}" "${mount_efifs}/matrixos-secureboot-kek.pem"
+        cp "${sbkek}" "${mount_efifs}/${MATRIXOS_EFI_CERT_KEK_FILE_NAME}"
 
         echo "Generating SecureBoot KEK DER for convenience ..."
         openssl x509 -in "${sbkek}" \
-            -outform DER -out "${mount_efifs}/matrixos-secureboot-kek.der"
+            -outform DER -out "${mount_efifs}/${MATRIXOS_EFI_CERT_KEK_DER_FILE_NAME}"
     else
         echo "NO SECUREBOOT CERT AT: ${sbkek} -- ignoring." >&2
     fi

@@ -65,6 +65,10 @@ MATRIXOS_BOOT_ROOT=$(env_lib.get_simple_var "Imager" "BootRoot")
 MATRIXOS_EFI_ROOT=$(env_lib.get_simple_var "Imager" "EfiRoot")
 MATRIXOS_RELATIVE_EFI_BOOT_PATH=$(env_lib.get_simple_var "Imager" "RelativeEfiBootPath")
 MATRIXOS_BOOT_EFI_EXECUTABLE=$(env_lib.get_simple_var "Imager" "EfiExecutable")
+MATRIXOS_EFI_CERT_FILE_NAME=$(env_lib.get_simple_var "Imager" "EfiCertificateFileName")
+MATRIXOS_EFI_CERT_DER_FILE_NAME=$(env_lib.get_simple_var "Imager" "EfiCertificateFileNameDer")
+MATRIXOS_EFI_CERT_KEK_FILE_NAME=$(env_lib.get_simple_var "Imager" "EfiCertificateFileNameKek")
+MATRIXOS_EFI_CERT_KEK_DER_FILE_NAME=$(env_lib.get_simple_var "Imager" "EfiCertificateFileNameKekDer")
 
 MATRIXOS_EFI_STANDARD_BOOT_EXECUTABLE_PATH=$(env_lib.get_simple_var "Imager" "EfiStandardBootExecutablePath")
 
