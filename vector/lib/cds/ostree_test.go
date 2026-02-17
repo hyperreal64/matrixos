@@ -131,7 +131,10 @@ func TestRepoOperations(t *testing.T) {
 			"Ostree.Gpg": false,
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	err = o.AddRemote(false)
 	if err != nil {
@@ -195,7 +198,10 @@ func TestCommitAndListPackages(t *testing.T) {
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// Create a fake sysroot structure because ListPackages expects sysroot/ostree/repo
 	sysroot := t.TempDir()
@@ -254,7 +260,10 @@ func TestPrepareFilesystemHierarchy(t *testing.T) {
 			"Imager.EfiRoot":       {"/efi"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.PrepareFilesystemHierarchy(imageDir); err != nil {
 		t.Fatalf("PrepareFilesystemHierarchy failed: %v", err)
@@ -369,10 +378,13 @@ func TestDeploy(t *testing.T) {
 			"matrixOS.OsName": {"matrixos"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// Call Deploy
-	err := o.Deploy(ref, bootArgs, false)
+	err = o.Deploy(ref, bootArgs, false)
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -468,7 +480,10 @@ func TestDeployIntegration(t *testing.T) {
 			"matrixOS.OsName": {"matrixos"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// Perform Deployment
 	// This will pull from repoDir into sysroot/ostree/repo and then deploy
@@ -505,7 +520,10 @@ func TestFullBranchHelpers(t *testing.T) {
 			"Ostree.FullBranchSuffix": {"full"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// IsBranchFullSuffixed
 	if isFull, _ := o.IsBranchFullSuffixed("branch-full"); !isFull {
@@ -592,7 +610,10 @@ func TestOstreeCommandsMocked(t *testing.T) {
 			"Ostree.Gpg": false,
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// Pull
 	o.Pull("origin:ref", false)
@@ -655,7 +676,10 @@ func TestBootedStatus(t *testing.T) {
 			"Ostree.Sysroot": {"/sysroot"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	ref, err := o.BootedRef(false)
 	if err != nil {
@@ -732,7 +756,10 @@ func TestGpgKeyID(t *testing.T) {
 		},
 	}
 
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	keyID, err := o.GpgKeyID()
 	if err != nil {
@@ -752,7 +779,10 @@ func TestBootCommit(t *testing.T) {
 			"matrixOS.OsName": {osName},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// Setup directory structure: sysroot/ostree/boot.1/matrixos/COMMIT_HASH
 	bootDir := filepath.Join(sysroot, "ostree", "boot.1", osName)
@@ -792,7 +822,10 @@ func TestMaybeInitializeRemote(t *testing.T) {
 			"Ostree.RemoteUrl": {"http://url"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.MaybeInitializeRemote(false); err != nil {
 		t.Fatalf("MaybeInitializeRemote failed: %v", err)
@@ -823,7 +856,10 @@ func TestRemoteRefs(t *testing.T) {
 			"Ostree.Remote":  {"origin"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	refs, err := o.RemoteRefs(false)
 	if err != nil {
@@ -854,7 +890,10 @@ func TestAddRemoteWithSysroot(t *testing.T) {
 		},
 		Bools: map[string]bool{"Ostree.Gpg": false},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.AddRemoteWithSysroot("/sysroot", false); err != nil {
 		t.Fatalf("AddRemoteWithSysroot failed: %v", err)
@@ -887,7 +926,10 @@ func TestLastCommitWithSysroot(t *testing.T) {
 			"Ostree.Sysroot": {"/sysroot"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	hash, err := o.LastCommitWithSysroot("ref", false)
 	if err != nil {
@@ -934,7 +976,10 @@ func TestGpgSignFile(t *testing.T) {
 			"Ostree.GpgPublicKey":  {pubKey},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.GpgSignFile(dummyFile); err != nil {
 		t.Fatalf("GpgSignFile failed: %v", err)
@@ -973,7 +1018,10 @@ func TestImportGpgKey(t *testing.T) {
 			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.ImportGpgKey(keyFile); err != nil {
 		t.Fatalf("ImportGpgKey failed: %v", err)
@@ -1004,7 +1052,10 @@ func TestGpgKeySelection(t *testing.T) {
 			"Ostree.GpgOfficialPublicKey": {offKey},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 	if _, err := o.AvailableGpgPubKeyPaths(); err == nil {
 		t.Error("AvailableGpgPubKeyPaths should fail when no keys exist")
 	}
@@ -1061,7 +1112,10 @@ func TestPrepareFilesystemHierarchySafety(t *testing.T) {
 			"Imager.EfiRoot":       {"/efi"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// First run
 	if err := o.PrepareFilesystemHierarchy(imageDir); err != nil {
@@ -1069,7 +1123,7 @@ func TestPrepareFilesystemHierarchySafety(t *testing.T) {
 	}
 
 	// Second run (Safety check)
-	err := o.PrepareFilesystemHierarchy(imageDir)
+	err = o.PrepareFilesystemHierarchy(imageDir)
 	if err == nil {
 		t.Fatal("Second run should have failed due to marker file")
 	} else if !strings.Contains(err.Error(), "already prepared") {
@@ -1111,7 +1165,10 @@ func TestMaybeInitializeGpg(t *testing.T) {
 			"Ostree.Gpg": true,
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.MaybeInitializeGpg(false); err != nil {
 		t.Fatalf("MaybeInitializeGpg failed: %v", err)
@@ -1165,7 +1222,10 @@ func TestPullWithRemoteExplicit(t *testing.T) {
 			"Ostree.RepoDir": {"/repo"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.PullWithRemote("myremote", "myref", false); err != nil {
 		t.Fatalf("PullWithRemote failed: %v", err)
@@ -1182,7 +1242,10 @@ func TestConfigGettersErrors(t *testing.T) {
 		Items: map[string][]string{},
 		Bools: map[string]bool{},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if _, err := o.OsName(); err == nil {
 		t.Error("OsName should fail with empty config")
@@ -1245,7 +1308,10 @@ func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
 			"Ostree.RemoteUrl": {"http://url"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.MaybeInitializeRemote(false); err != nil {
 		t.Fatalf("MaybeInitializeRemote failed: %v", err)
@@ -1283,7 +1349,10 @@ func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
 				"Imager.EfiRoot":       {"/efi"},
 			},
 		}
-		o, _ := New(cfg)
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
 		if err := o.PrepareFilesystemHierarchy(imageDir); err != nil {
 			t.Fatalf("PrepareFilesystemHierarchy failed: %v", err)
 		}
@@ -1306,7 +1375,10 @@ func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
 				"Imager.EfiRoot":       {"/efi"},
 			},
 		}
-		o, _ := New(cfg)
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
 		if err := o.PrepareFilesystemHierarchy(imageDir); err == nil {
 			t.Error("Expected error for invalid home symlink")
 		}
@@ -1317,7 +1389,10 @@ func TestListPackagesErrors(t *testing.T) {
 	cfg := &MockConfig{
 		Items: map[string][]string{}, // Missing ReadOnlyVdb
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 	if _, err := o.ListPackages("commit", "/sysroot", false); err == nil {
 		t.Error("ListPackages should fail if ReadOnlyVdb is missing")
 	}
@@ -1327,7 +1402,7 @@ func TestListPackagesErrors(t *testing.T) {
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 		},
 	}
-	o, _ = New(cfg)
+	o, _ = NewOstree(cfg)
 	// Sysroot does not exist
 	if _, err := o.ListPackages("commit", "/sysroot", false); err == nil {
 		t.Error("ListPackages should fail if sysroot/var/db/pkg does not exist")
@@ -1340,7 +1415,10 @@ func TestPullInvalidRef(t *testing.T) {
 			"Ostree.RepoDir": {"/repo"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 	if err := o.Pull("invalid-ref", false); err == nil {
 		t.Error("Pull should fail for ref without remote prefix")
 	}
@@ -1370,7 +1448,10 @@ func TestGpgArgsEnabled(t *testing.T) {
 			"Ostree.Gpg": true,
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	args, err := o.GpgArgs()
 	if err != nil {
@@ -1498,7 +1579,10 @@ func TestOstreeWrappers(t *testing.T) {
 			"Ostree.RepoDir": {"/repo"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if _, err := o.ListRemotes(false); err != nil {
 		t.Error(err)
@@ -1528,7 +1612,10 @@ d00755 0 0 0 /var/db/pkg/cat/other
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// We need directoryExists to return true for sysroot/var/db/pkg
 	sysroot := t.TempDir()
@@ -1567,7 +1654,10 @@ func TestOstreeBranchMethodsErrors(t *testing.T) {
 			"Ostree.FullBranchSuffix": {"full"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if _, err := o.IsBranchFullSuffixed(""); err == nil {
 		t.Error("IsBranchFullSuffixed should fail empty ref")
@@ -1624,8 +1714,12 @@ func TestDeploy_Errors(t *testing.T) {
 					"matrixOS.OsName": {"matrixos"},
 				},
 			}
-			o, _ := New(cfg)
-			err := o.Deploy("ref", nil, false)
+			o, err := NewOstree(cfg)
+			if err != nil {
+				t.Fatalf("NewOstree failed: %v", err)
+			}
+
+			err = o.Deploy("ref", nil, false)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Deploy() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -1661,7 +1755,10 @@ func TestBootedStatus_Errors(t *testing.T) {
 	}
 
 	cfg := &MockConfig{Items: map[string][]string{"Ostree.Sysroot": {"/sysroot"}}}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1690,7 +1787,10 @@ func TestMiscWrappers_Errors(t *testing.T) {
 	}
 
 	cfg := &MockConfig{Items: map[string][]string{"Ostree.RepoDir": {"/repo"}}}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	if err := o.Pull("ref", false); err == nil {
 		t.Error("Pull should fail on cmd error")
@@ -1748,7 +1848,10 @@ func TestAddRemote_Error(t *testing.T) {
 			"Ostree.Remote":  {"origin"},
 		},
 	}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 	if err := o.AddRemote(false); err == nil {
 		t.Error("AddRemote should fail on error")
 	}
@@ -1762,7 +1865,10 @@ func TestValidateFilesystemHierarchy(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	cfg := &MockConfig{}
-	o, _ := New(cfg)
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
 	// Sub-test for missing directory
 	t.Run("MissingDirectories", func(t *testing.T) {

@@ -514,8 +514,8 @@ type Ostree struct {
 	cfg config.IConfig
 }
 
-// New creates a new Ostree instance.
-func New(cfg config.IConfig) (*Ostree, error) {
+// NewOstree creates a new Ostree instance.
+func NewOstree(cfg config.IConfig) (*Ostree, error) {
 	if cfg == nil {
 		return nil, errors.New("missing config parameter")
 	}
