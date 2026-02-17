@@ -29,7 +29,7 @@ type VMDriver struct {
 
 func NewVMDriver(args []string) (*VMDriver, error) {
 	cmd := exec.Command(qemuSystemX86_64, args...)
-	// cmd.Stderr = os.Stderr
+	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
