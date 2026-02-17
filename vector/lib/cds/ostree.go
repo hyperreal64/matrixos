@@ -315,10 +315,32 @@ func DeployedRootfsWithSysroot(sysroot, repoDir, osName, ref string, verbose boo
 }
 
 type Deployment struct {
-	Booted   bool   `json:"booted"`
-	Checksum string `json:"checksum"`
+	Checksum  string `json:"checksum"`
+	Stateroot string `json:"stateroot"`
 	// Requires matrixOS ostree-2025.7-r1
-	Refspec string `json:"refspec"`
+	Refspec  string `json:"refspec"`
+	Booted   bool   `json:"booted"`
+	Pending  bool   `json:"pending"`
+	Rollback bool   `json:"rollback"`
+	Staged   bool   `json:"staged"`
+	Index    int    `json:"index"`
+	Serial   int    `json:"serial"`
+}
+
+func ListDeploymentsWithSysroot(sysroot string, verbose bool) ([]Deployment, error) {
+	data, error := ostreeAdminStatusJson(sysroot, verbose)
+	if error != nil {
+		return nil, error
+	}
+	if data == nil {
+		return nil, errors.New("failed to get ostree status")
+	}
+
+	var deployments []Deployment
+	if err := json.Unmarshal(*data, &deployments); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ostree status: %w", err)
+	}
+	return deployments, nil
 }
 
 func ostreeAdminStatusJson(sysroot string, verbose bool) (*[]byte, error) {
@@ -349,17 +371,9 @@ func BootedRefWithSysroot(sysroot string, verbose bool) (string, error) {
 		return "", errors.New("invalid ostree sysroot parameter")
 	}
 
-	data, err := ostreeAdminStatusJson(sysroot, verbose)
+	deployments, err := ListDeploymentsWithSysroot(sysroot, verbose)
 	if err != nil {
 		return "", err
-	}
-	if data == nil {
-		return "", errors.New("failed to get ostree status")
-	}
-
-	var deployments []Deployment
-	if err := json.Unmarshal(*data, &deployments); err != nil {
-		return "", fmt.Errorf("failed to unmarshal ostree status: %w", err)
 	}
 
 	for _, d := range deployments {
@@ -377,17 +391,9 @@ func BootedHashWithSysroot(sysroot string, verbose bool) (string, error) {
 		return "", errors.New("invalid ostree sysroot parameter")
 	}
 
-	data, err := ostreeAdminStatusJson(sysroot, verbose)
+	deployments, err := ListDeploymentsWithSysroot(sysroot, verbose)
 	if err != nil {
 		return "", err
-	}
-	if data == nil {
-		return "", errors.New("failed to get ostree status")
-	}
-
-	var deployments []Deployment
-	if err := json.Unmarshal(*data, &deployments); err != nil {
-		return "", fmt.Errorf("failed to unmarshal ostree status: %w", err)
 	}
 
 	for _, d := range deployments {
