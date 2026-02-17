@@ -144,11 +144,8 @@ matrixOS uses OSTree for atomic updates.
 Update to the latest image:
 
 ```shell
-ostree admin upgrade
-reboot
+./vector/vector upgrade
 ```
-
-*Wrappers available at `/matrixos/install/upgrade` or `./vector/vector upgrade` (WIP).*
 
 ### Rollbacks
 
