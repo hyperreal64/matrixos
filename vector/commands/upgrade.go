@@ -96,7 +96,7 @@ func (c *UpgradeCommand) Run() error {
 		return fmt.Errorf("failed to get ostree root: %w", err)
 	}
 
-	oldSHA, ref, err := c.getCurrentState(root)
+	oldSHA, ref, err := c.getCurrentState()
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %w", err)
 	}
@@ -105,11 +105,11 @@ func (c *UpgradeCommand) Run() error {
 	fmt.Printf("Current Booted SHA:  %s\n", oldSHA)
 
 	fmt.Printf("%sFetching updates...%s\n", cBold, cReset)
-	if err := c.upgradePull(root); err != nil {
+	if err := c.upgradePull(); err != nil {
 		return fmt.Errorf("failed to fetch updates: %w", err)
 	}
 
-	newSHA, err := c.getCommitSHA(root, ref)
+	newSHA, err := c.ot.LastCommitWithRoot(ref, false)
 	if err != nil {
 		return fmt.Errorf("failed to get new commit SHA: %w", err)
 	}
@@ -150,7 +150,7 @@ func (c *UpgradeCommand) Run() error {
 	return nil
 }
 
-func (c *UpgradeCommand) getCurrentState(root string) (string, string, error) {
+func (c *UpgradeCommand) getCurrentState() (string, string, error) {
 	deployments, err := c.ot.ListDeployments(false)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to list deployments: %w", err)
@@ -158,12 +158,7 @@ func (c *UpgradeCommand) getCurrentState(root string) (string, string, error) {
 
 	for _, dep := range deployments {
 		if dep.Booted {
-			path := fmt.Sprintf("%s/ostree/deploy/%s/deploy/%s.0.origin", root, dep.Stateroot, dep.Checksum)
-			ref, err := c.readOriginRefspec(path)
-			if err != nil {
-				return "", "", fmt.Errorf("failed to read refspec from %s: %w", path, err)
-			}
-			return dep.Checksum, ref, nil
+			return dep.Checksum, dep.Refspec, nil
 		}
 	}
 
@@ -185,16 +180,8 @@ func (c *UpgradeCommand) readOriginRefspec(path string) (string, error) {
 	return "", fmt.Errorf("refspec not found in [origin] section")
 }
 
-func (c *UpgradeCommand) upgradePull(root string) error {
-	return c.runCommand("ostree", getSysrootFlag(root), "admin", "upgrade", "--pull-only")
-}
-
-func (c *UpgradeCommand) getCommitSHA(root, ref string) (string, error) {
-	out, err := execCommand("ostree", getRepoFlag(root), "rev-parse", ref).Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+func (c *UpgradeCommand) upgradePull() error {
+	return c.ot.Upgrade([]string{"--pull-only"}, false)
 }
 
 func (c *UpgradeCommand) runCommand(name string, args ...string) error {

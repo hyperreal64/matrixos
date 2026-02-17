@@ -26,7 +26,8 @@ const ostreeStatusTmpl = `{
 		{
 			"booted": true,
 			"checksum": "%s",
-			"stateroot": "%s"
+			"stateroot": "%s",
+			"refspec": "%s"
 		}
 	]
 }`
@@ -93,12 +94,90 @@ func TestUpgradeHelperProcess(t *testing.T) {
 	os.Exit(1)
 }
 
+// Mock package data
+var mockPackages = map[string][]string{
+	mockCurrentSHA: {
+		"d00755 0 0 0 /var/db/pkg/app-misc/foo-1.0/",
+		"-00644 0 0 0 /var/db/pkg/app-misc/foo-1.0/CONTENTS",
+	},
+	mockNewSHA: {
+		"d00755 0 0 0 /var/db/pkg/app-misc/foo-1.1/",
+		"-00644 0 0 0 /var/db/pkg/app-misc/foo-1.1/CONTENTS",
+	},
+}
+
+// Helper to parse arguments into a more queryable structure
+// This allows tests to be resilient to flag reordering
+type parsedArgs struct {
+	cmd     string
+	subCmds []string
+	flags   map[string]string
+	posArgs []string
+	raw     []string
+}
+
+func parseArgs(args []string) *parsedArgs {
+	p := &parsedArgs{
+		flags: make(map[string]string),
+		raw:   args,
+	}
+
+	if len(args) > 0 {
+		p.cmd = args[0]
+	}
+
+	// Simple parser: strings starting with - are flags
+	// everything else (until --) is a subcommand or positional arg.
+	// After --, everything is a positional arg.
+	inDashDash := false
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			inDashDash = true
+			continue
+		}
+
+		if inDashDash {
+			p.posArgs = append(p.posArgs, arg)
+			continue
+		}
+
+		if strings.HasPrefix(arg, "-") {
+			// Handle both --long and -s flags
+			trimmed := strings.TrimLeft(arg, "-")
+			parts := strings.SplitN(trimmed, "=", 2)
+			key := parts[0]
+			val := "true"
+			if len(parts) > 1 {
+				val = parts[1]
+			}
+			p.flags[key] = val
+		} else {
+			p.subCmds = append(p.subCmds, arg)
+		}
+	}
+	return p
+}
+
+func (p *parsedArgs) hasSubCmd(name string) bool {
+	for _, s := range p.subCmds {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *parsedArgs) hasFlag(name string) bool {
+	_, ok := p.flags[name]
+	return ok
+}
+
 // --- Command Handlers ---
 
 func handleOstreeStatus(args []string) bool {
-	fmt.Fprintf(os.Stderr, "handleOstreeStatus called with args: %v\n", args)
-	// match: ostree --sysroot=... admin status --json
-	if len(args) < 4 || args[0] != "ostree" || args[2] != "admin" || args[3] != "status" {
+	p := parseArgs(args)
+	if p.cmd != "ostree" || !p.hasSubCmd("admin") || !p.hasSubCmd("status") {
 		return false
 	}
 
@@ -106,80 +185,75 @@ func handleOstreeStatus(args []string) bool {
 	if val := os.Getenv("TEST_UPGRADE_CURRENT_SHA"); val != "" {
 		sha = val
 	}
-	fmt.Printf(ostreeStatusTmpl, sha, stateroot)
+	// We always return the mockRefSpec as the origin refspec
+	fmt.Printf(ostreeStatusTmpl, sha, stateroot, mockRefSpec)
 	return true
 }
 
 func handleOstreeRevParse(args []string) bool {
-	// match: ostree --repo=... rev-parse <ref>
-	if len(args) < 3 || args[0] != "ostree" || args[2] != "rev-parse" {
+	p := parseArgs(args)
+	if p.cmd != "ostree" || !p.hasSubCmd("rev-parse") {
 		return false
 	}
-	// The mocked command returns the NEW available SHA
 	fmt.Print(mockNewSHA)
 	return true
 }
 
 func handleOstreeUpgradePull(args []string) bool {
-	// match: ostree --sysroot=... admin upgrade --pull-only
-	if len(args) < 5 || args[0] != "ostree" || args[2] != "admin" || args[3] != "upgrade" {
+	p := parseArgs(args)
+	// match: ostree admin upgrade ... --pull-only
+	if p.cmd != "ostree" || !p.hasSubCmd("admin") || !p.hasSubCmd("upgrade") {
 		return false
 	}
-	return args[4] == "--pull-only"
+	return p.hasFlag("pull-only")
 }
 
 func handleOstreeUpgradeDeploy(args []string) bool {
-	// match: ostree --sysroot=... admin upgrade --deploy-only
-	// or:    ostree admin upgrade --deploy-only (no sysroot arg)
-
-	if args[0] != "ostree" {
+	p := parseArgs(args)
+	// match: ostree admin upgrade ... --deploy-only
+	if p.cmd != "ostree" || !p.hasSubCmd("admin") || !p.hasSubCmd("upgrade") {
 		return false
 	}
-
-	// Helper to find index of a string in slice
-	idx := func(s string) int {
-		for i, a := range args {
-			if a == s {
-				return i
-			}
-		}
-		return -1
-	}
-
-	adminIdx := idx("admin")
-	if adminIdx == -1 {
-		return false
-	}
-
-	// Ensure we have enough args after "admin"
-	if len(args) <= adminIdx+2 {
-		return false
-	}
-
-	return args[adminIdx+1] == "upgrade" && args[adminIdx+2] == "--deploy-only"
+	return p.hasFlag("deploy-only")
 }
 
 func handleOstreeListPackages(args []string) bool {
-	// match: ostree --repo=... ls -R <commit> -- <path>
-	if len(args) < 6 || args[0] != "ostree" || args[2] != "ls" || args[3] != "-R" {
+	p := parseArgs(args)
+	if p.cmd != "ostree" || !p.hasSubCmd("ls") || !p.hasFlag("R") {
 		return false
 	}
 
-	path := args[6]
-	// Simulate failure for /usr/var-db-pkg to force fallback to /var/db/pkg
-	if strings.Contains(path, "/usr/var-db-pkg") {
-		os.Exit(1)
-		return true
+	// Simulate failure for /usr/var-db-pkg to force fallback
+	for _, arg := range p.raw {
+		if strings.Contains(arg, "/usr/var-db-pkg") {
+			os.Exit(1)
+			return true
+		}
 	}
 
-	commit := args[4]
+	// Commit finding logic:
+	var commit string
+	for _, arg := range p.raw {
+		if arg == mockCurrentSHA || arg == mockNewSHA {
+			commit = arg
+			break
+		}
+	}
+
+	if commit == "" {
+		// fallback to looking relative to known flags
+		return false
+	}
+
 	switch commit {
 	case mockCurrentSHA:
-		fmt.Println("d00755 0 0 0 /var/db/pkg/app-misc/foo-1.0/")
-		fmt.Println("-00644 0 0 0 /var/db/pkg/app-misc/foo-1.0/CONTENTS")
+		for _, line := range mockPackages[mockCurrentSHA] {
+			fmt.Println(line)
+		}
 	case mockNewSHA:
-		fmt.Println("d00755 0 0 0 /var/db/pkg/app-misc/foo-1.1/")
-		fmt.Println("-00644 0 0 0 /var/db/pkg/app-misc/foo-1.1/CONTENTS")
+		for _, line := range mockPackages[mockNewSHA] {
+			fmt.Println(line)
+		}
 	}
 	return true
 }
@@ -206,7 +280,7 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 	execCommand = mockExecUpgradeCommand
 
 	// Mock cds.RunWithStdoutCapture
-	origRun := cds.RunWithStdoutCapture
+	origRunWithCapture := cds.RunWithStdoutCapture
 	cds.RunWithStdoutCapture = func(verbose bool, args ...string) (io.Reader, error) {
 		cmd := mockExecUpgradeCommand("ostree", args...)
 		var stdout, stderr bytes.Buffer
@@ -214,9 +288,24 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 		cmd.Stderr = &stderr
 
 		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("mock run failed: %v, stderr: %s", err, stderr.String())
+			return nil, fmt.Errorf("mock run failed: %v, stderr: %s",
+				err, stderr.String())
 		}
 		return &stdout, nil
+	}
+
+	// Mock cds.Run
+	origRun := cds.Run
+	cds.Run = func(verbose bool, args ...string) error {
+		cmd := mockExecUpgradeCommand("ostree", args...)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("mock run failed: %v, stderr: %s",
+				err, stderr.String())
+		}
+		return nil
 	}
 
 	// Mock root user
@@ -276,7 +365,8 @@ Root=%s
 			os.RemoveAll(tmpDir)
 			execCommand = origExec
 			getEuid = origEuid
-			cds.RunWithStdoutCapture = origRun
+			cds.RunWithStdoutCapture = origRunWithCapture
+			cds.Run = origRun
 		},
 	}
 }
@@ -287,30 +377,17 @@ func TestUpgradeRun(t *testing.T) {
 	env := setupUpgradeTest(t, mockCurrentSHA)
 	defer env.cleanup()
 
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{"-y", "--reboot"}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
 
-	cmd := NewUpgradeCommand()
-	if err := cmd.Init([]string{"-y", "--reboot"}); err != nil {
-		w.Close()
-		os.Stdout = oldStdout
-		t.Fatalf("Init failed: %v", err)
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
 	}
-
-	if err := cmd.Run(); err != nil {
-		w.Close()
-		os.Stdout = oldStdout
-		t.Fatalf("Run failed: %v", err)
-	}
-
-	w.Close()
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := stripAnsi(buf.String())
 
 	// Validate output content
 	expected := []string{
@@ -335,43 +412,45 @@ func TestUpgradeRun(t *testing.T) {
 func TestUpgradeNoUpdate(t *testing.T) {
 	// Configure mock to return "new-sha" as current system state
 	// This simulates that we are ALREADY on the latest commit
-	// returned by rev-parse (mockNewSHA)
 	os.Setenv("TEST_UPGRADE_CURRENT_SHA", mockNewSHA)
 	defer os.Unsetenv("TEST_UPGRADE_CURRENT_SHA")
 
 	env := setupUpgradeTest(t, mockNewSHA)
 	defer env.cleanup()
 
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output, err := runCaptureStdout(func() error {
+		cmd := NewUpgradeCommand()
+		if err := cmd.Init([]string{}); err != nil {
+			return fmt.Errorf("Init failed: %v", err)
+		}
+		return cmd.Run()
+	})
 
-	cmd := NewUpgradeCommand()
-	if err := cmd.Init([]string{}); err != nil {
-		w.Close()
-		os.Stdout = oldStdout
-		t.Fatalf("Init failed: %v", err)
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
 	}
-
-	if err := cmd.Run(); err != nil {
-		w.Close()
-		os.Stdout = oldStdout
-		t.Fatalf("Run failed: %v", err)
-	}
-
-	w.Close()
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := stripAnsi(buf.String())
 
 	// Validate "no update" message
 	msg := "System is already up to date"
 	if !strings.Contains(output, msg) {
 		t.Errorf("Expected %q, got output:\n%s", msg, output)
 	}
+}
+
+// runCaptureStdout runs the given function and captures its stdout output.
+func runCaptureStdout(f func() error) (string, error) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := f()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return stripAnsi(buf.String()), err
 }
 
 func stripAnsi(str string) string {

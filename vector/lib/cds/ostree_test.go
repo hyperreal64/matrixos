@@ -604,6 +604,7 @@ func TestOstreeCommandsMocked(t *testing.T) {
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":                {"/repo"},
+			"Ostree.Root":                   {"/"},
 			"Ostree.KeepObjectsYoungerThan": {"2023-01-01"},
 		},
 		Bools: map[string]bool{
@@ -643,8 +644,9 @@ func TestOstreeCommandsMocked(t *testing.T) {
 	}
 
 	// Upgrade
-	o.Upgrade("/sysroot", []string{"--check"}, false)
-	if lastCmdArgs[1] != "upgrade" || lastCmdArgs[2] != "--check" {
+	o.Upgrade([]string{"--check"}, false)
+	fmt.Fprintf(os.Stderr, "lastCmdArgs: %v\n", lastCmdArgs)
+	if lastCmdArgs[1] != "upgrade" || lastCmdArgs[3] != "--check" {
 		t.Errorf("Upgrade args mismatch: %v", lastCmdArgs)
 	}
 }
@@ -1806,7 +1808,7 @@ func TestMiscWrappers_Errors(t *testing.T) {
 	if err := o.GenerateStaticDelta("ref", false); err == nil {
 		t.Error("GenerateStaticDelta should fail on cmd error")
 	}
-	if err := o.Upgrade("/sys", nil, false); err == nil {
+	if err := o.Upgrade(nil, false); err == nil {
 		t.Error("Upgrade should fail on cmd error")
 	}
 }

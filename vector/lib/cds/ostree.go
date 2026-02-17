@@ -635,7 +635,7 @@ func run(stdout, stderr io.Writer, verbose bool, args ...string) error {
 }
 
 // Run runs an ostree command with --verbose if requested.
-func Run(verbose bool, args ...string) error {
+var Run = func(verbose bool, args ...string) error {
 	return run(os.Stdout, os.Stderr, verbose, args...)
 }
 
@@ -921,7 +921,17 @@ func (o *Ostree) LastCommitWithSysroot(ref string, verbose bool) (string, error)
 	if err != nil {
 		return "", err
 	}
-	repoDir := filepath.Join(strings.TrimRight(sysroot, "/"), "ostree", "repo")
+	repoDir := filepath.Join(sysroot, "ostree", "repo")
+	return LastCommit(repoDir, ref, verbose)
+}
+
+// LastCommitWithRoot returns the last commit for a given ref in the root filesystem.
+func (o *Ostree) LastCommitWithRoot(ref string, verbose bool) (string, error) {
+	root, err := o.Root()
+	if err != nil {
+		return "", err
+	}
+	repoDir := filepath.Join(root, "ostree", "repo")
 	return LastCommit(repoDir, ref, verbose)
 }
 
@@ -1895,12 +1905,13 @@ func (o *Ostree) Deploy(ref string, bootArgs []string, verbose bool) error {
 }
 
 // Upgrade runs `ostree admin upgrade`.
-func (o *Ostree) Upgrade(sysroot string, args []string, verbose bool) error {
-	if sysroot == "" {
-		return errors.New("missing ostree sysroot parameter")
+func (o *Ostree) Upgrade(args []string, verbose bool) error {
+	root, err := o.Root()
+	if err != nil {
+		return err
 	}
 
-	cmdArgs := []string{"admin", "upgrade"}
+	cmdArgs := []string{"admin", "upgrade", "--sysroot=" + root}
 	cmdArgs = append(cmdArgs, args...)
 
 	return Run(verbose, cmdArgs...)
