@@ -379,7 +379,7 @@ func TestUpgradeRun(t *testing.T) {
 
 	output, err := runCaptureStdout(func() error {
 		cmd := NewUpgradeCommand()
-		if err := cmd.Init([]string{"-y", "--reboot"}); err != nil {
+		if err := cmd.Init([]string{"-y"}); err != nil {
 			return fmt.Errorf("Init failed: %v", err)
 		}
 		return cmd.Run()
@@ -392,14 +392,14 @@ func TestUpgradeRun(t *testing.T) {
 	// Validate output content
 	expected := []string{
 		"Creating diff for ref: " + mockRefSpec,
-		"Current Booted SHA:  " + mockCurrentSHA,
+		"Currently booted commit:  " + mockCurrentSHA,
 		"Fetching updates...",
 		"Available Update SHA: " + mockNewSHA,
 		"Analyzing package changes...",
 		"app-misc/foo-1.0 -> app-misc/foo-1.1",
 		"Deploying update...",
 		"Upgrade successful.",
-		"Rebooting...",
+		"Please reboot at your earliest convenience.",
 	}
 
 	for _, s := range expected {
