@@ -16,8 +16,10 @@ const (
 	configFileName = "matrixos.conf"
 )
 
-var (
-	searchPaths = []searchPath{
+func searchPaths() []searchPath {
+	// Navigate CWD up until we find a .matrixos file.
+	var sps []searchPath
+	sps = append(sps, []searchPath{
 		// Setup for when vector runs from the git repo.
 		{
 			fileName:    configFileName,
@@ -37,8 +39,49 @@ var (
 			dirPath:     "/etc/matrixos/conf",
 			defaultRoot: "/var/lib/matrixos",
 		},
+	}...)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return sps
 	}
-)
+
+	goUp := func() bool {
+		parent := filepath.Dir(cwd)
+		if parent == cwd {
+			return false
+		}
+		cwd = parent
+		return true
+	}
+
+	for {
+		dotMatrixosPath := filepath.Join(cwd, ".matrixos")
+		if _, err := os.Stat(dotMatrixosPath); err != nil {
+			if os.IsNotExist(err) {
+				if !goUp() {
+					break
+				}
+				continue
+			}
+			// Error found, and is not "not exist".
+			break
+		}
+
+		sps = append(sps, searchPath{
+			fileName:    configFileName,
+			dirPath:     filepath.Join(cwd, "conf"),
+			defaultRoot: cwd,
+		})
+		parent := filepath.Dir(cwd)
+		if parent == cwd {
+			break
+		}
+		cwd = parent
+	}
+
+	return sps
+}
 
 // IniConfig is a config reader that loads values from an INI file.
 type IniConfig struct {
@@ -47,7 +90,7 @@ type IniConfig struct {
 }
 
 func cfgPathToSearchPath(fullPath string) *searchPath {
-	for _, sp := range searchPaths {
+	for _, sp := range searchPaths() {
 		searchFullPath := filepath.Join(sp.dirPath, sp.fileName)
 		if fullPath != searchFullPath && fullPath != "" {
 			continue
@@ -95,11 +138,11 @@ func smartRootify(path string) (string, error) {
 func NewIniConfig() (IConfig, error) {
 	sp := cfgPathToSearchPath("")
 	if sp == nil {
-		return nil, fmt.Errorf("config file not found in search paths: %v", searchPaths)
+		return nil, fmt.Errorf("config file not found in search paths: %v", searchPaths())
 	}
-
-	fullPath := filepath.Join(sp.dirPath, sp.fileName)
-	return NewIniConfigFromFile(fullPath, sp.defaultRoot)
+	return &IniConfig{
+		sp: sp,
+	}, nil
 }
 
 // NewIniConfig creates a new IniConfig instance with the specified file path.
@@ -179,7 +222,7 @@ func (c *IniConfig) Load() error {
 		return fmt.Errorf(
 			"Unable to find %v config file in search paths: %v",
 			configFileName,
-			searchPaths,
+			searchPaths(),
 		)
 	}
 	fullPath := filepath.Join(c.sp.dirPath, c.sp.fileName)

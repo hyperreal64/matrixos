@@ -245,3 +245,79 @@ Key3=OverrideValue3
 	// Check new value from subconfig
 	check("Section1.KeyNew", "ValueNew")
 }
+
+func TestSearchPaths(t *testing.T) {
+	// Create a temporary directory structure to test search path discovery
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-searchpaths-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create .matrixos marker file in the root of temp dir
+	if err := os.WriteFile(filepath.Join(tmpDir, ".matrixos"), []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create .matrixos file: %v", err)
+	}
+
+	// Create conf directory
+	confDir := filepath.Join(tmpDir, "conf")
+	if err := os.Mkdir(confDir, 0755); err != nil {
+		t.Fatalf("Failed to create conf dir: %v", err)
+	}
+
+	// Create a subdirectory to run the test from
+	subDir := filepath.Join(tmpDir, "subdir")
+	if err := os.Mkdir(subDir, 0755); err != nil {
+		t.Fatalf("Failed to create subdir: %v", err)
+	}
+
+	// Save current WD and deferred restore
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+	// We need to change back
+	defer func() {
+		_ = os.Chdir(originalWd)
+	}()
+
+	// Change to subdir
+	if err := os.Chdir(subDir); err != nil {
+		t.Fatalf("Failed to change working directory: %v", err)
+	}
+
+	// helper to verify if we found our expected path
+	found := false
+	expectedPath, _ := filepath.EvalSymlinks(confDir)
+
+	paths := searchPaths()
+	for _, sp := range paths {
+		// Resolve symlinks just in case tmp dir has them
+		evalDirPath, err := filepath.EvalSymlinks(sp.dirPath)
+		if err != nil {
+			evalDirPath = sp.dirPath
+		}
+
+		if evalDirPath == expectedPath {
+			found = true
+			if sp.fileName != configFileName {
+				t.Errorf("Expected fileName %q, got %q", configFileName, sp.fileName)
+			}
+
+			// Evaluated comparison for root as well
+			evalRoot, _ := filepath.EvalSymlinks(sp.defaultRoot)
+			evalTmp, _ := filepath.EvalSymlinks(tmpDir)
+			if evalRoot != evalTmp {
+				t.Errorf("Expected defaultRoot %q, got %q", evalTmp, evalRoot)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("searchPaths did not find expected configuration directory: %s", expectedPath)
+		for i, p := range paths {
+			t.Logf("Search path %d: %+v", i, p)
+		}
+	}
+}
