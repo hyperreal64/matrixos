@@ -76,13 +76,85 @@ test.os_release() {
     fi
 }
 
+test.wait_boot_complete() {
+    echo "Waiting for boot to complete..."
+    systemctl is-system-running --wait || {
+        local status
+        status=$(systemctl is-system-running || echo "unknown")
+        echo "System did not reach 'running' state, current state: ${status}"
+        return 1
+    }
+    echo "Boot complete, system is running."
+}
+
+test.systemctl_status() {
+    if ! systemctl is-active --quiet systemd-resolved; then
+        echo "systemd-resolved service is not active"
+        return 1
+    fi
+
+    local target
+    target=$(systemctl get-default || true)
+    if _is_bedrock || _is_server; then
+        if ! systemctl is-active --quiet systemd-networkd; then
+            echo "systemd-networkd service is not active"
+            return 1
+        fi
+        if [[ "${target}" != "multi-user.target" ]]; then
+            echo "Expected default target to be multi-user.target, but got ${target}"
+            return 1
+        fi
+    fi
+    if _is_gnome || _is_cosmic; then
+        if ! systemctl is-active --quiet NetworkManager; then
+            echo "NetworkManager service is not active"
+            return 1
+        fi
+        if [[ "${target}" != "graphical.target" ]]; then
+            echo "Expected default target to be graphical.target, but got ${target}"
+            return 1
+        fi
+    fi
+    if _is_gnome; then
+        if ! systemctl is-active --quiet gdm; then
+            echo "gdm service is not active"
+            return 1
+        fi
+    fi
+}
+
+test.ostree_status() {
+    if ! ostree admin status > /dev/null 2>&1; then
+        echo "ostree admin status command failed"
+        return 1
+    fi
+
+    local remotes=
+    remotes=$(ostree remote list --show-urls || echo "")
+    if [[ -z "${remotes}" ]]; then
+        echo "No ostree remotes found"
+        return 1
+    fi
+    if ! echo "${remotes}" | grep -q "origin"; then
+        echo "Expected ostree remote 'origin' not found"
+        return 1
+    fi
+    if ! echo "${remotes}" | grep -q "matrixos"; then
+        echo "Expected ostree remote 'matrixos' not found"
+        return 1
+    fi
+}
+
 
 main() {
 
     local tests=(
+        test.wait_boot_complete
         test.etc_resolv_conf
         test.build_file
         test.os_release
+        test.systemctl_status
+        test.ostree_status
     )
 
     local exit_st=0
