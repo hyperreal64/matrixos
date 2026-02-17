@@ -133,11 +133,11 @@ func (c *UpgradeCommand) Run() error {
 	}
 
 	if oldCommit == newCommit {
-		fmt.Println("✅ System is already up to date.")
+		fmt.Println("✔ System is already up to date.")
 		return updateBootloader()
 	}
 
-	fmt.Printf("Available Update SHA: %s\n", newCommit)
+	fmt.Printf("Available Update: %s\n", newCommit)
 	fmt.Println("---------------------------------------------------")
 
 	fmt.Printf("%sAnalyzing package changes...%s\n", cBold, cReset)
@@ -270,12 +270,13 @@ func (c *UpgradeCommand) updateGrub_x64(commit string) error {
 		if err := c.updateGrubDir_x64(efiDir, commit); err != nil {
 			return fmt.Errorf("failed to update bootloader binaries: %w", err)
 		}
+		fmt.Printf("✔ Bootloader binaries updated successfully in %s.\n", efiDir)
 	}
 	return nil
 }
 
 func (c *UpgradeCommand) updateGrubDir_x64(efiDir, commit string) error {
-	fmt.Printf("Updating GRUB in %s for commit %s...\n", efiDir, commit)
+	fmt.Printf("Updating GRUB/Shim in %s for commit %s...\n", efiDir, commit)
 	root, err := c.ot.Root()
 	if err != nil {
 		return fmt.Errorf("failed to get ostree root: %w", err)
@@ -304,22 +305,44 @@ func (c *UpgradeCommand) updateGrubDir_x64(efiDir, commit string) error {
 	newRoot := cds.BuildDeploymentRootfs(
 		root, foundDep.Stateroot, commit, foundDep.Index,
 	)
-	filesToCopy := []string{
-		"/usr/lib/grub/grub-x86_64.efi.signed",
+
+	filesToCopy := [][2]string{
+		{
+			filepath.Join(newRoot, "/usr/lib/grub/grub-x86_64.efi.signed"),
+			filepath.Join(efiDir, grubEfiBinary),
+		},
 	}
-	for _, file := range filesToCopy {
-		src := filepath.Join(newRoot, file)
+	// generate /usr/share/shim copy entries.
+	shimDir := filepath.Join(newRoot, "/usr/share/shim")
+	shimFiles, err := os.ReadDir(shimDir)
+	if err == nil {
+		for _, entry := range shimFiles {
+			if entry.IsDir() {
+				continue
+			}
+			if !entry.Type().IsRegular() {
+				continue
+			}
+			srcPath := filepath.Join(shimDir, entry.Name())
+			dstPath := filepath.Join(efiDir, entry.Name())
+			filesToCopy = append(filesToCopy, [2]string{srcPath, dstPath})
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: failed to read %s directory for new commit: %v\n", shimDir, err)
+	}
+
+	for _, pair := range filesToCopy {
+		src, dst := pair[0], pair[1]
 		if _, err := os.Stat(src); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Expected GRUB file not found in new commit: %s\n", src)
+			fmt.Fprintf(os.Stderr, "Expected file was not found in new commit: %s\n", src)
 			return nil
 		} else if err != nil {
-			return fmt.Errorf("failed to stat expected GRUB file: %w", err)
+			return fmt.Errorf("failed to stat expected file: %w", err)
 		}
 
-		dst := filepath.Join(efiDir, grubEfiBinary)
 		fmt.Printf("Copying %s to %s...\n", src, dst)
 		if err := copyFile(src, dst); err != nil {
-			return fmt.Errorf("failed to copy GRUB file: %w", err)
+			return fmt.Errorf("failed to copy file: %w", err)
 		}
 	}
 
