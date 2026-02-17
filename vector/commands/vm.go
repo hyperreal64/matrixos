@@ -131,6 +131,7 @@ type VMCommand struct {
 	nographic   bool
 	noAudio     bool
 	interactive bool
+	audioDev    string
 	cpus        string
 }
 
@@ -141,6 +142,7 @@ func NewVMCommand() ICommand {
 	}
 	c.fs.StringVar(&c.imagePath, "image", "", "Path to the matrixOS image")
 	c.fs.StringVar(&c.memory, "memory", "4G", "Amount of RAM for the VM")
+	c.fs.StringVar(&c.audioDev, "audio_dev", "pipewire", "Audio device for the VM (default 'pipewire' for PipeWire)")
 	c.fs.StringVar(&c.port, "port", "2222", "Local port for SSH forwarding")
 	c.fs.IntVar(&c.waitBoot, "wait_boot", 120, "Seconds to wait for boot login prompt")
 	c.fs.IntVar(&c.waitTests, "wait_tests", 300, "Seconds to wait for tests to complete")
@@ -248,7 +250,7 @@ func (c *VMCommand) Run() error {
 
 	if !c.noAudio {
 		qemuArgs = append(qemuArgs,
-			"-audiodev", "pa,id=snd0",
+			"-audiodev", fmt.Sprintf("%s,id=snd0", c.audioDev),
 			"-device", "intel-hda",
 			"-device", "hda-duplex,audiodev=snd0",
 		)
