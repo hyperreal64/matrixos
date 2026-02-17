@@ -27,9 +27,16 @@ type VMDriver struct {
 	reader *bufio.Reader
 }
 
-func NewVMDriver(args []string) (*VMDriver, error) {
-	cmd := exec.Command(qemuSystemX86_64, args...)
+func NewVMDriver(ctx context.Context, args []string) (*VMDriver, error) {
+	cmd := exec.CommandContext(ctx, qemuSystemX86_64, args...)
 	cmd.Stderr = os.Stderr
+
+	cmd.Cancel = func() error {
+		// Do not send SIGKILL immediately when canceling ctx.
+		return cmd.Process.Signal(os.Interrupt)
+	}
+	// Wait 30s before sending SIGKILL.
+	cmd.WaitDelay = 30 * time.Second
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -41,16 +48,17 @@ func NewVMDriver(args []string) (*VMDriver, error) {
 		return nil, err
 	}
 
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start qemu: %v", err)
-	}
-
 	return &VMDriver{
 		cmd:    cmd,
 		stdin:  stdin,
 		stdout: stdout,
 		reader: bufio.NewReader(stdout),
 	}, nil
+}
+
+// Start starts the VM process
+func (vm *VMDriver) Start() error {
+	return vm.cmd.Start()
 }
 
 // Expect waits for a specific string in the output within a timeout
@@ -109,10 +117,8 @@ func (vm *VMDriver) Send(cmd string) error {
 	return err
 }
 
-func (vm *VMDriver) Close() {
-	if vm.cmd.Process != nil {
-		vm.cmd.Process.Kill()
-	}
+func (vm *VMDriver) Close() error {
+	return vm.Wait()
 }
 
 // Wait waits for the VM process to exit
@@ -126,8 +132,9 @@ type VMCommand struct {
 	imagePath   string
 	memory      string
 	port        string
-	waitBoot    int
-	waitTests   int
+	waitBoot    time.Duration
+	waitTests   time.Duration
+	maxRunTime  time.Duration
 	nographic   bool
 	noAudio     bool
 	interactive bool
@@ -144,8 +151,9 @@ func NewVMCommand() ICommand {
 	c.fs.StringVar(&c.memory, "memory", "4G", "Amount of RAM for the VM")
 	c.fs.StringVar(&c.audioDev, "audio_dev", "pipewire", "Audio device for the VM (default 'pipewire' for PipeWire)")
 	c.fs.StringVar(&c.port, "port", "2222", "Local port for SSH forwarding")
-	c.fs.IntVar(&c.waitBoot, "wait_boot", 120, "Seconds to wait for boot login prompt")
-	c.fs.IntVar(&c.waitTests, "wait_tests", 300, "Seconds to wait for tests to complete")
+	c.fs.DurationVar(&c.waitBoot, "wait_boot", 120*time.Second, "Seconds to wait for boot login prompt")
+	c.fs.DurationVar(&c.waitTests, "wait_tests", 300*time.Second, "Seconds to wait for tests to complete")
+	c.fs.DurationVar(&c.maxRunTime, "max_run_time", 600*time.Second, "Maximum seconds to allow the entire VM run (including boot and tests), when running in non-interactive mode")
 	c.fs.BoolVar(&c.nographic, "nographic", false, "Disable graphical output")
 	c.fs.BoolVar(&c.noAudio, "noaudio", false, "Disable audio devices")
 	c.fs.BoolVar(&c.interactive, "interactive", false, "Run VM interactively without testing")
@@ -257,29 +265,48 @@ func (c *VMCommand) Run() error {
 	}
 
 	log.Printf("QEMU args: %v", qemuArgs)
+	if c.interactive {
+		return c.runInteractive(qemuArgs)
+	} else {
+		return c.runTests(qemuArgs)
+	}
+}
 
-	vm, err := NewVMDriver(qemuArgs)
+func (c *VMCommand) runInteractive(qemuArgs []string) error {
+	log.Println("Starting VM in interactive mode...")
+	vm, err := NewVMDriver(context.Background(), qemuArgs)
 	if err != nil {
 		return fmt.Errorf("failed to init VM: %w", err)
 	}
 	defer vm.Close()
 
-	if c.interactive {
-		log.Println("Starting VM in interactive mode...")
-		if err := vm.Wait(); err != nil {
-			return fmt.Errorf("VM exited with error: %w", err)
-		}
-		return nil
+	if err := vm.Start(); err != nil {
+		return fmt.Errorf("failed to start VM: %w", err)
 	}
-
-	log.Println("Starting VM Test...")
-	return c.runTests(vm)
+	if err := vm.Wait(); err != nil {
+		return fmt.Errorf("VM exited with error: %w", err)
+	}
+	return nil
 }
 
-func (c *VMCommand) runTests(vm *VMDriver) error {
+func (c *VMCommand) runTests(qemuArgs []string) error {
+	log.Println("Starting VM Test...")
+	// How long do we allow the whole test suite to run?
+	ctx, cancel := context.WithTimeout(context.Background(), c.maxRunTime)
+	defer cancel()
+
+	vm, err := NewVMDriver(ctx, qemuArgs)
+	if err != nil {
+		return fmt.Errorf("failed to init VM: %w", err)
+	}
+	defer vm.Close()
+
+	if err := vm.Start(); err != nil {
+		return fmt.Errorf("failed to start VM: %w", err)
+	}
+
 	log.Println("Waiting for login prompt...")
-	waitBoot := time.Duration(c.waitBoot) * time.Second
-	if err := vm.Expect("matrixos login:", waitBoot); err != nil {
+	if err := vm.Expect("matrixos login:", c.waitBoot); err != nil {
 		return fmt.Errorf("boot failed: %w", err)
 	}
 
@@ -308,8 +335,61 @@ echo "TEST_RESULT:${?}"
 `); err != nil {
 		return err
 	}
-	if err := vm.Expect("TEST_RESULT:0", time.Duration(c.waitTests)*time.Second); err != nil {
+
+	startTestsTime := time.Now()
+
+	waitLeft := c.waitTests - time.Since(startTestsTime)
+	if waitLeft <= 0 {
+		return fmt.Errorf("invalid wait time for tests: %v", waitLeft)
+	}
+	if err := vm.Expect("TEST_RESULT:0", waitLeft); err != nil {
 		return fmt.Errorf("Test suite failed: %w", err)
+	}
+
+	waitLeft = c.waitTests - time.Since(startTestsTime)
+	if waitLeft <= 0 {
+		return fmt.Errorf("no time left to wait for VM shutdown: %v", waitLeft)
+	}
+
+	log.Println("Test suite passed, shutting down VM...")
+	if err := vm.Send("poweroff"); err != nil {
+		return err
+	}
+
+	waitLeft = c.waitTests - time.Since(startTestsTime)
+	if waitLeft <= 0 {
+		return fmt.Errorf("no time left to wait for VM shutdown: %v", waitLeft)
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), waitLeft)
+	defer shutdownCancel()
+	log.Println("Waiting for VM to shutdown...")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- vm.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		// VM exited voluntarily, check if it was a clean shutdown
+		if err != nil {
+			return fmt.Errorf("VM shutdown failed: %w", err)
+		}
+		// fall through to success.
+	case <-shutdownCtx.Done():
+		log.Println("VM did not shutdown in time, killing process...")
+		cancel()
+
+		err = <-done // wait for the kill to complete.
+		if err != nil {
+			return fmt.Errorf(
+				"VM shutdown failed, ctx err: %v: %w",
+				ctx.Err(),
+				err,
+			)
+		}
+		return fmt.Errorf("VM shutdown timed out and was killed")
 	}
 
 	log.Println("SUCCESS: Tests passed.")
