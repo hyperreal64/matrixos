@@ -3,7 +3,6 @@ package commands
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"matrixos/vector/lib/cds"
 	"matrixos/vector/lib/config"
 )
 
@@ -25,6 +25,8 @@ const (
 // UpgradeCommand is a command for upgrading the system
 type UpgradeCommand struct {
 	fs        *flag.FlagSet
+	cfg       config.IConfig
+	ot        *cds.Ostree
 	reboot    bool
 	assumeYes bool
 }
@@ -44,8 +46,36 @@ func (c *UpgradeCommand) Name() string {
 	return c.fs.Name()
 }
 
+func (c *UpgradeCommand) initConfig() error {
+	cfg, err := config.NewIniConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	if err := cfg.Load(); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	c.cfg = cfg
+	return nil
+}
+
+func (c *UpgradeCommand) initOstree() error {
+	ot, err := cds.NewOstree(c.cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize ostree: %w", err)
+	}
+	c.ot = ot
+	return nil
+}
+
 // Init initializes the command
 func (c *UpgradeCommand) Init(args []string) error {
+	if err := c.initConfig(); err != nil {
+		return err
+	}
+	if err := c.initOstree(); err != nil {
+		return err
+	}
+
 	c.fs.Usage = func() {
 		fmt.Printf("Usage: vector %s [options]\n", c.Name())
 		c.fs.PrintDefaults()
@@ -61,13 +91,12 @@ func (c *UpgradeCommand) Run() error {
 		return fmt.Errorf("this command must be run as root")
 	}
 
-	// Secretly supporting different roots.
-	sysroot := os.Getenv("ROOT")
-	if sysroot == "" {
-		sysroot = "/"
+	root, err := c.ot.Root()
+	if err != nil {
+		return fmt.Errorf("failed to get ostree root: %w", err)
 	}
 
-	oldSHA, ref, err := c.getCurrentState(sysroot)
+	oldSHA, ref, err := c.getCurrentState(root)
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %w", err)
 	}
@@ -76,11 +105,11 @@ func (c *UpgradeCommand) Run() error {
 	fmt.Printf("Current Booted SHA:  %s\n", oldSHA)
 
 	fmt.Printf("%sFetching updates...%s\n", cBold, cReset)
-	if err := c.upgradePull(sysroot); err != nil {
+	if err := c.upgradePull(root); err != nil {
 		return fmt.Errorf("failed to fetch updates: %w", err)
 	}
 
-	newSHA, err := c.getCommitSHA(sysroot, ref)
+	newSHA, err := c.getCommitSHA(root, ref)
 	if err != nil {
 		return fmt.Errorf("failed to get new commit SHA: %w", err)
 	}
@@ -94,7 +123,7 @@ func (c *UpgradeCommand) Run() error {
 	fmt.Println("---------------------------------------------------")
 
 	fmt.Printf("%sAnalyzing package changes...%s\n", cBold, cReset)
-	if err := c.analyzeDiff(sysroot, oldSHA, newSHA); err != nil {
+	if err := c.analyzeDiff(root, oldSHA, newSHA); err != nil {
 		fmt.Printf("Warning: failed to analyze diff: %v\n", err)
 	}
 
@@ -121,29 +150,15 @@ func (c *UpgradeCommand) Run() error {
 	return nil
 }
 
-func (c *UpgradeCommand) getCurrentState(sysroot string) (string, string, error) {
-	cmd := execCommand("ostree", getSysrootFlag(sysroot), "admin", "status", "--json")
-	out, err := cmd.Output()
+func (c *UpgradeCommand) getCurrentState(root string) (string, string, error) {
+	deployments, err := c.ot.ListDeployments(false)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get ostree status: %w", err)
+		return "", "", fmt.Errorf("failed to list deployments: %w", err)
 	}
 
-	type Deployment struct {
-		Booted    bool   `json:"booted"`
-		Checksum  string `json:"checksum"`
-		Stateroot string `json:"stateroot"`
-	}
-	var status struct {
-		Deployments []Deployment `json:"deployments"`
-	}
-
-	if err := json.Unmarshal(out, &status); err != nil {
-		return "", "", fmt.Errorf("failed to parse ostree status json: %w", err)
-	}
-
-	for _, dep := range status.Deployments {
+	for _, dep := range deployments {
 		if dep.Booted {
-			path := fmt.Sprintf("%s/ostree/deploy/%s/deploy/%s.0.origin", sysroot, dep.Stateroot, dep.Checksum)
+			path := fmt.Sprintf("%s/ostree/deploy/%s/deploy/%s.0.origin", root, dep.Stateroot, dep.Checksum)
 			ref, err := c.readOriginRefspec(path)
 			if err != nil {
 				return "", "", fmt.Errorf("failed to read refspec from %s: %w", path, err)
@@ -170,12 +185,12 @@ func (c *UpgradeCommand) readOriginRefspec(path string) (string, error) {
 	return "", fmt.Errorf("refspec not found in [origin] section")
 }
 
-func (c *UpgradeCommand) upgradePull(sysroot string) error {
-	return c.runCommand("ostree", getSysrootFlag(sysroot), "admin", "upgrade", "--pull-only")
+func (c *UpgradeCommand) upgradePull(root string) error {
+	return c.runCommand("ostree", getSysrootFlag(root), "admin", "upgrade", "--pull-only")
 }
 
-func (c *UpgradeCommand) getCommitSHA(sysroot, ref string) (string, error) {
-	out, err := execCommand("ostree", getRepoFlag(sysroot), "rev-parse", ref).Output()
+func (c *UpgradeCommand) getCommitSHA(root, ref string) (string, error) {
+	out, err := execCommand("ostree", getRepoFlag(root), "rev-parse", ref).Output()
 	if err != nil {
 		return "", err
 	}
@@ -197,12 +212,12 @@ func (c *UpgradeCommand) promptUser(prompt string) bool {
 	return response == "y" || response == "yes"
 }
 
-func (c *UpgradeCommand) analyzeDiff(sysroot, oldSHA, newSHA string) error {
-	oldPkgs, err := c.listPackages(sysroot, oldSHA)
+func (c *UpgradeCommand) analyzeDiff(root, oldSHA, newSHA string) error {
+	oldPkgs, err := c.listPackages(root, oldSHA)
 	if err != nil {
 		return err
 	}
-	newPkgs, err := c.listPackages(sysroot, newSHA)
+	newPkgs, err := c.listPackages(root, newSHA)
 	if err != nil {
 		return err
 	}
@@ -266,16 +281,16 @@ func (c *UpgradeCommand) analyzeDiff(sysroot, oldSHA, newSHA string) error {
 	return nil
 }
 
-func (c *UpgradeCommand) listPackages(sysroot, commit string) (map[string]bool, error) {
-	pkgs, err := c.listPackagesFromPath(sysroot, commit, "/usr/var-db-pkg")
+func (c *UpgradeCommand) listPackages(root, commit string) (map[string]bool, error) {
+	pkgs, err := c.listPackagesFromPath(root, commit, "/usr/var-db-pkg")
 	if err == nil && len(pkgs) > 0 {
 		return pkgs, nil
 	}
-	return c.listPackagesFromPath(sysroot, commit, "/var/db/pkg")
+	return c.listPackagesFromPath(root, commit, "/var/db/pkg")
 }
 
-func (c *UpgradeCommand) listPackagesFromPath(sysroot, commit, path string) (map[string]bool, error) {
-	cmd := execCommand("ostree", getRepoFlag(sysroot), "ls", "-R", commit, "--", path)
+func (c *UpgradeCommand) listPackagesFromPath(root, commit, path string) (map[string]bool, error) {
+	cmd := execCommand("ostree", getRepoFlag(root), "ls", "-R", commit, "--", path)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err

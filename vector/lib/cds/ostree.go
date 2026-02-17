@@ -336,11 +336,14 @@ func ListDeploymentsWithSysroot(sysroot string, verbose bool) ([]Deployment, err
 		return nil, errors.New("failed to get ostree status")
 	}
 
-	var deployments []Deployment
+	var deployments struct {
+		Deployments []Deployment `json:"deployments"`
+	}
+
 	if err := json.Unmarshal(*data, &deployments); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal ostree status: %w", err)
 	}
-	return deployments, nil
+	return deployments.Deployments, nil
 }
 
 func ostreeAdminStatusJson(sysroot string, verbose bool) (*[]byte, error) {
@@ -636,7 +639,9 @@ func Run(verbose bool, args ...string) error {
 	return run(os.Stdout, os.Stderr, verbose, args...)
 }
 
-func RunWithStdoutCapture(verbose bool, args ...string) (io.Reader, error) {
+// RunWithStdoutCapture runs an ostree command and captures its stdout,
+// with --verbose if requested.
+var RunWithStdoutCapture = func(verbose bool, args ...string) (io.Reader, error) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, ">> Executing: ostree (stdout capture) %s\n", strings.Join(args, " "))
 	}
@@ -759,7 +764,7 @@ func (o *Ostree) RepoDir() (string, error) {
 	return repoDir, nil
 }
 
-// Sysroot returns the path to the ostree sysroot directory.
+// Sysroot returns the path to the ostree sysroot directory. Usually /sysroot.
 func (o *Ostree) Sysroot() (string, error) {
 	sysroot, err := o.cfg.GetItem("Ostree.Sysroot")
 	if err != nil {
@@ -769,6 +774,19 @@ func (o *Ostree) Sysroot() (string, error) {
 		return "", errors.New("invalid Ostree.Sysroot")
 	}
 	return sysroot, nil
+}
+
+// Root returns the path to the root filesystem directory used as root for
+// ostree operations (i.e. --sysroot).
+func (o *Ostree) Root() (string, error) {
+	root, err := o.cfg.GetItem("Ostree.Root")
+	if err != nil {
+		return "", err
+	}
+	if root == "" {
+		return "", errors.New("invalid Ostree.Root")
+	}
+	return root, nil
 }
 
 // Remote returns the name of the remote.
@@ -1455,11 +1473,11 @@ func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
 
 // ListDeployments lists the deployments in the sysroot.
 func (o *Ostree) ListDeployments(verbose bool) ([]Deployment, error) {
-	sysroot, err := o.Sysroot()
+	root, err := o.Root()
 	if err != nil {
 		return nil, err
 	}
-	return ListDeploymentsWithSysroot(sysroot, verbose)
+	return ListDeploymentsWithSysroot(root, verbose)
 }
 
 // DeployedRootfs returns the path to the deployed rootfs.
@@ -1488,20 +1506,20 @@ func (o *Ostree) DeployedRootfs(ref string, verbose bool) (string, error) {
 
 // BootedRef returns the ref of the booted deployment.
 func (o *Ostree) BootedRef(verbose bool) (string, error) {
-	sysroot, err := o.Sysroot()
+	root, err := o.Root()
 	if err != nil {
 		return "", err
 	}
-	return BootedRefWithSysroot(sysroot, verbose)
+	return BootedRefWithSysroot(root, verbose)
 }
 
 // BootedHash returns the commit hash of the booted deployment.
 func (o *Ostree) BootedHash(verbose bool) (string, error) {
-	sysroot, err := o.Sysroot()
+	root, err := o.Root()
 	if err != nil {
 		return "", err
 	}
-	return BootedHashWithSysroot(sysroot, verbose)
+	return BootedHashWithSysroot(root, verbose)
 }
 
 func (o *Ostree) prepareVarHome(imageDir, homeName, varHomeName string) error {

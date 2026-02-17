@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"matrixos/vector/lib/cds"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,6 +96,7 @@ func TestUpgradeHelperProcess(t *testing.T) {
 // --- Command Handlers ---
 
 func handleOstreeStatus(args []string) bool {
+	fmt.Fprintf(os.Stderr, "handleOstreeStatus called with args: %v\n", args)
 	// match: ostree --sysroot=... admin status --json
 	if len(args) < 4 || args[0] != "ostree" || args[2] != "admin" || args[3] != "status" {
 		return false
@@ -203,6 +205,20 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 	origExec := execCommand
 	execCommand = mockExecUpgradeCommand
 
+	// Mock cds.RunWithStdoutCapture
+	origRun := cds.RunWithStdoutCapture
+	cds.RunWithStdoutCapture = func(verbose bool, args ...string) (io.Reader, error) {
+		cmd := mockExecUpgradeCommand("ostree", args...)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("mock run failed: %v, stderr: %s", err, stderr.String())
+		}
+		return &stdout, nil
+	}
+
 	// Mock root user
 	origEuid := getEuid
 	getEuid = func() int { return 0 }
@@ -212,7 +228,32 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.Setenv("ROOT", tmpDir)
+
+	// Setup config in temp dir
+	confDir := filepath.Join(tmpDir, "conf")
+	if err := os.Mkdir(confDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := fmt.Sprintf(`
+[matrixOS]
+Root=%s
+
+[Ostree]
+Root=%s
+`, tmpDir, tmpDir)
+
+	if err := os.WriteFile(filepath.Join(confDir, "matrixos.conf"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// MatrixOS marker
+	if err := os.WriteFile(filepath.Join(tmpDir, ".matrixos"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
 
 	// Create origin file structure
 	originDir := filepath.Join(tmpDir, "ostree/deploy", stateroot, "deploy")
@@ -231,10 +272,11 @@ func setupUpgradeTest(t *testing.T, currentSHA string) *testEnv {
 		tmpDir:     tmpDir,
 		originFile: originPath,
 		cleanup: func() {
+			os.Chdir(origWd)
 			os.RemoveAll(tmpDir)
-			os.Unsetenv("ROOT")
 			execCommand = origExec
 			getEuid = origEuid
+			cds.RunWithStdoutCapture = origRun
 		},
 	}
 }

@@ -655,25 +655,27 @@ func TestBootedStatus(t *testing.T) {
 
 	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
 		// Mock ostree admin status --json
-		jsonOutput := `[
-            {
-                "booted": true,
-                "checksum": "hash123",
-                "refspec": "origin:branch"
-            },
-            {
-                "booted": false,
-                "checksum": "hash456",
-                "refspec": "origin:old"
-            }
-        ]`
+		jsonOutput := `{
+			"deployments": [
+				{
+					"booted": true,
+					"checksum": "hash123",
+					"refspec": "origin:branch"
+				},
+				{
+					"booted": false,
+					"checksum": "hash456",
+					"refspec": "origin:old"
+				}
+			]
+		}`
 		stdout.Write([]byte(jsonOutput))
 		return nil
 	}
 
 	cfg := &MockConfig{
 		Items: map[string][]string{
-			"Ostree.Sysroot": {"/sysroot"},
+			"Ostree.Root": {"/"},
 		},
 	}
 	o, err := NewOstree(cfg)
@@ -1749,7 +1751,7 @@ func TestBootedStatus_Errors(t *testing.T) {
 		},
 		{
 			name:       "no booted deployment",
-			jsonOutput: `[{"booted": false}]`,
+			jsonOutput: `{"deployments": [{"booted": false}]}`,
 			wantRefErr: true,
 		},
 	}
