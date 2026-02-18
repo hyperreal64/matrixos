@@ -26,6 +26,20 @@ _is_cosmic() {
     _is_seed "cosmic"
 }
 
+_dump_logs() {
+    echo "Collecting systemctl status for debugging:"
+    systemctl status --no-pager > /tmp/systemctl_status.log
+    cat /tmp/systemctl_status.log
+
+    echo "Listing failed units:"
+    systemctl --failed > /tmp/systemctl_failed.log
+    cat /tmp/systemctl_failed.log
+
+    echo "Journalctl -xb output:"
+    journalctl -xb > /tmp/journalctl.log
+    cat /tmp/journalctl.log
+}
+
 test.etc_resolv_conf() {
     local resolv_conf="/etc/resolv.conf"
 
@@ -166,6 +180,12 @@ main() {
             echo "Test passed: ${test}"
         fi
     done
+
+    if [ "${exit_st}" != "0" ]; then
+        echo "One or more tests failed. Collecting logs for debugging."
+        _dump_logs || true
+    fi
+
     return "${exit_st}"
 }
 
