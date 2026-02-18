@@ -13,7 +13,6 @@ import (
 	"unicode"
 
 	"matrixos/vector/lib/cds"
-	"matrixos/vector/lib/config"
 )
 
 var (
@@ -25,10 +24,9 @@ var (
 
 // UpgradeCommand is a command for upgrading the system
 type UpgradeCommand struct {
+	BaseCommand
 	UI
 	fs            *flag.FlagSet
-	cfg           config.IConfig
-	ot            *cds.Ostree
 	assumeYes     bool
 	updBootloader bool
 	pretend       bool
@@ -53,35 +51,16 @@ func (c *UpgradeCommand) Name() string {
 	return c.fs.Name()
 }
 
-func (c *UpgradeCommand) initConfig() error {
-	cfg, err := config.NewIniConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-	if err := cfg.Load(); err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-	c.cfg = cfg
-	return nil
-}
-
-func (c *UpgradeCommand) initOstree() error {
-	ot, err := cds.NewOstree(c.cfg)
-	if err != nil {
-		return fmt.Errorf("failed to initialize ostree: %w", err)
-	}
-	c.ot = ot
-	return nil
-}
-
 // Init initializes the command
 func (c *UpgradeCommand) Init(args []string) error {
 	if err := c.initConfig(); err != nil {
 		return err
 	}
+
 	if err := c.initOstree(); err != nil {
 		return err
 	}
+
 	c.StartUI()
 
 	c.fs.Usage = func() {

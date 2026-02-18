@@ -19,11 +19,15 @@ type ICommand interface {
 // UI provides common UI styles and icons for commands
 type UI struct {
 	// UI Styles
-	cReset, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cBold string
+	cReset, cRed, cGreen, cYellow, cBlue string
+	cMagenta, cCyan, cWhite, cBold       string
 
 	// UI Icons
-	iconSearch, iconDownload, iconCheck, iconUpdate, iconPackage, iconQuestion, iconRocket, iconGear, iconDoc, iconNew, iconError, iconWarn string
-	separator                                                                                                                               string
+	iconSearch, iconDownload, iconCheck         string
+	iconUpdate, iconPackage                     string
+	iconQuestion, iconRocket, iconGear, iconDoc string
+	iconNew, iconError, iconWarn                string
+	separator                                   string
 }
 
 // StartUI initializes the UI component with environment detection
