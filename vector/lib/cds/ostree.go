@@ -1494,12 +1494,18 @@ func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
 	return ListRemoteRefs(repoDir, remote, verbose)
 }
 
-// ListDeployments lists the deployments in the sysroot.
-func (o *Ostree) ListDeployments(verbose bool) ([]Deployment, error) {
+// ListRootDeployments lists the deployments in the / filesystem.
+func (o *Ostree) ListRootDeployments(verbose bool) ([]Deployment, error) {
 	root, err := o.Root()
 	if err != nil {
 		return nil, err
 	}
+	return ListDeploymentsWithSysroot(root, verbose)
+}
+
+// ListDeploymentsInChroot lists the deployments in the given root,
+// which is usually used for chroot operations.
+func (o *Ostree) ListDeploymentsInChroot(root string, verbose bool) ([]Deployment, error) {
 	return ListDeploymentsWithSysroot(root, verbose)
 }
 

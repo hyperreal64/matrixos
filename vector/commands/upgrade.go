@@ -187,7 +187,7 @@ func (c *UpgradeCommand) Run() error {
 }
 
 func (c *UpgradeCommand) getCurrentState() (string, string, error) {
-	deployments, err := c.ot.ListDeployments(false)
+	deployments, err := c.ot.ListRootDeployments(false)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to list deployments: %w", err)
 	}
@@ -314,7 +314,7 @@ func (c *UpgradeCommand) updateGrubDir_x64(efiDir, commit string) error {
 		return fmt.Errorf("failed to get ostree root: %w", err)
 	}
 
-	deployments, err := c.ot.ListDeployments(false)
+	deployments, err := c.ot.ListRootDeployments(false)
 	if err != nil {
 		return fmt.Errorf("failed to list deployments: %w", err)
 	}

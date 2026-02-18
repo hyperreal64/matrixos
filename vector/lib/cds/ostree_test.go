@@ -1935,3 +1935,388 @@ func TestValidateFilesystemHierarchy(t *testing.T) {
 		}
 	})
 }
+
+func TestListRootDeployments(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	fakeJSON := `{
+		"deployments": [
+			{
+				"checksum": "abc123",
+				"stateroot": "matrixos",
+				"refspec": "origin:matrixos/amd64/gnome",
+				"booted": true,
+				"pending": false,
+				"rollback": false,
+				"staged": false,
+				"index": 0,
+				"serial": 1
+			},
+			{
+				"checksum": "def456",
+				"stateroot": "matrixos",
+				"refspec": "origin:matrixos/amd64/server",
+				"booted": false,
+				"pending": false,
+				"rollback": true,
+				"staged": false,
+				"index": 1,
+				"serial": 0
+			}
+		]
+	}`
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Expect ostree admin status --json
+		stdout.Write([]byte(fakeJSON))
+		return nil
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Root": {root},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	deployments, err := o.ListRootDeployments(false)
+	if err != nil {
+		t.Fatalf("ListRootDeployments failed: %v", err)
+	}
+
+	if len(deployments) != 2 {
+		t.Fatalf("expected 2 deployments, got %d", len(deployments))
+	}
+
+	// Verify first deployment (booted)
+	d0 := deployments[0]
+	if d0.Checksum != "abc123" {
+		t.Errorf("deployment[0].Checksum = %q, want %q", d0.Checksum, "abc123")
+	}
+	if d0.Stateroot != "matrixos" {
+		t.Errorf("deployment[0].Stateroot = %q, want %q", d0.Stateroot, "matrixos")
+	}
+	if d0.Refspec != "origin:matrixos/amd64/gnome" {
+		t.Errorf("deployment[0].Refspec = %q, want %q", d0.Refspec, "origin:matrixos/amd64/gnome")
+	}
+	if !d0.Booted {
+		t.Error("deployment[0].Booted should be true")
+	}
+	if d0.Rollback {
+		t.Error("deployment[0].Rollback should be false")
+	}
+	if d0.Index != 0 {
+		t.Errorf("deployment[0].Index = %d, want 0", d0.Index)
+	}
+	if d0.Serial != 1 {
+		t.Errorf("deployment[0].Serial = %d, want 1", d0.Serial)
+	}
+
+	// Verify second deployment (rollback)
+	d1 := deployments[1]
+	if d1.Checksum != "def456" {
+		t.Errorf("deployment[1].Checksum = %q, want %q", d1.Checksum, "def456")
+	}
+	if d1.Booted {
+		t.Error("deployment[1].Booted should be false")
+	}
+	if !d1.Rollback {
+		t.Error("deployment[1].Rollback should be true")
+	}
+	if d1.Index != 1 {
+		t.Errorf("deployment[1].Index = %d, want 1", d1.Index)
+	}
+}
+
+func TestListRootDeployments_EmptyRoot(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	_, err = o.ListRootDeployments(false)
+	if err == nil {
+		t.Error("expected error for empty root, got nil")
+	}
+}
+
+func TestListRootDeployments_NoDeployments(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		stdout.Write([]byte(`{"deployments": []}`))
+		return nil
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Root": {root},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	deployments, err := o.ListRootDeployments(false)
+	if err != nil {
+		t.Fatalf("ListRootDeployments failed: %v", err)
+	}
+	if len(deployments) != 0 {
+		t.Errorf("expected 0 deployments, got %d", len(deployments))
+	}
+}
+
+func TestListRootDeployments_CommandError(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("ostree command failed")
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Root": {root},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	_, err = o.ListRootDeployments(false)
+	if err == nil {
+		t.Error("expected error when ostree command fails, got nil")
+	}
+}
+
+func TestListRootDeployments_InvalidJSON(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		stdout.Write([]byte(`{not valid json}`))
+		return nil
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Root": {root},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	_, err = o.ListRootDeployments(false)
+	if err == nil {
+		t.Error("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestListDeploymentsInChroot(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	fakeJSON := `{
+		"deployments": [
+			{
+				"checksum": "chroot111",
+				"stateroot": "matrixos",
+				"refspec": "origin:matrixos/amd64/dev/gnome",
+				"booted": false,
+				"pending": false,
+				"rollback": false,
+				"staged": true,
+				"index": 0,
+				"serial": 0
+			}
+		]
+	}`
+
+	var capturedArgs []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		capturedArgs = append([]string{name}, args...)
+		stdout.Write([]byte(fakeJSON))
+		return nil
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	deployments, err := o.ListDeploymentsInChroot(root, false)
+	if err != nil {
+		t.Fatalf("ListDeploymentsInChroot failed: %v", err)
+	}
+
+	if len(deployments) != 1 {
+		t.Fatalf("expected 1 deployment, got %d", len(deployments))
+	}
+
+	d := deployments[0]
+	if d.Checksum != "chroot111" {
+		t.Errorf("Checksum = %q, want %q", d.Checksum, "chroot111")
+	}
+	if d.Refspec != "origin:matrixos/amd64/dev/gnome" {
+		t.Errorf("Refspec = %q, want %q", d.Refspec, "origin:matrixos/amd64/dev/gnome")
+	}
+	if !d.Staged {
+		t.Error("Staged should be true")
+	}
+	if d.Booted {
+		t.Error("Booted should be false")
+	}
+
+	// Verify the sysroot argument was passed correctly
+	expectedSysrootArg := "--sysroot=" + root
+	found := false
+	for _, arg := range capturedArgs {
+		if arg == expectedSysrootArg {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected sysroot arg %q in command args %v", expectedSysrootArg, capturedArgs)
+	}
+}
+
+func TestListDeploymentsInChroot_EmptyRoot(t *testing.T) {
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	_, err = o.ListDeploymentsInChroot("", false)
+	if err == nil {
+		t.Error("expected error for empty root, got nil")
+	}
+}
+
+func TestListDeploymentsInChroot_CommandError(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("chroot ostree failed")
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	_, err = o.ListDeploymentsInChroot(root, false)
+	if err == nil {
+		t.Error("expected error when ostree command fails, got nil")
+	}
+}
+
+func TestListDeploymentsInChroot_MultipleDeployments(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	fakeJSON := `{
+		"deployments": [
+			{
+				"checksum": "aaa111",
+				"stateroot": "matrixos",
+				"refspec": "origin:matrixos/amd64/gnome",
+				"booted": false,
+				"pending": true,
+				"rollback": false,
+				"staged": false,
+				"index": 0,
+				"serial": 2
+			},
+			{
+				"checksum": "bbb222",
+				"stateroot": "matrixos",
+				"refspec": "origin:matrixos/amd64/gnome",
+				"booted": false,
+				"pending": false,
+				"rollback": false,
+				"staged": false,
+				"index": 1,
+				"serial": 1
+			},
+			{
+				"checksum": "ccc333",
+				"stateroot": "matrixos",
+				"refspec": "origin:matrixos/amd64/server",
+				"booted": false,
+				"pending": false,
+				"rollback": true,
+				"staged": false,
+				"index": 2,
+				"serial": 0
+			}
+		]
+	}`
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		stdout.Write([]byte(fakeJSON))
+		return nil
+	}
+
+	root := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	deployments, err := o.ListDeploymentsInChroot(root, false)
+	if err != nil {
+		t.Fatalf("ListDeploymentsInChroot failed: %v", err)
+	}
+
+	if len(deployments) != 3 {
+		t.Fatalf("expected 3 deployments, got %d", len(deployments))
+	}
+
+	// Verify pending deployment
+	if !deployments[0].Pending {
+		t.Error("deployment[0].Pending should be true")
+	}
+	if deployments[0].Serial != 2 {
+		t.Errorf("deployment[0].Serial = %d, want 2", deployments[0].Serial)
+	}
+
+	// Verify rollback deployment
+	if !deployments[2].Rollback {
+		t.Error("deployment[2].Rollback should be true")
+	}
+	if deployments[2].Refspec != "origin:matrixos/amd64/server" {
+		t.Errorf("deployment[2].Refspec = %q, want %q", deployments[2].Refspec, "origin:matrixos/amd64/server")
+	}
+}
