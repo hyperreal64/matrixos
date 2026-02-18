@@ -13,7 +13,7 @@ const (
 	helpMessage = `matrixos' vector - Your matrixOS handy tool (in the future...).
 Usage:
 
-  PROTOTYPE! Mostly vibe-coded, but I reviewed the code for correctness.
+  PROTOTYPE! Some features are wrappers around bash scripts or are not fully featured yet!
 
   help        - this command.
   branch      - vector branch command. Operates on matrixOS ostree branches.
