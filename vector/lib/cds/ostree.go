@@ -1903,6 +1903,15 @@ func (o *Ostree) ValidateFilesystemHierarchy(imageDir string) error {
 	return nil
 }
 
+// Switch runs `ostree admin switch` to switch to the given ref.
+func (o *Ostree) Switch(ref string, verbose bool) error {
+	sysroot, err := o.Sysroot()
+	if err != nil {
+		return err
+	}
+	return Run(verbose, "admin", "switch", "--sysroot="+sysroot, ref)
+}
+
 // Deploy deploys an ostree commit.
 func (o *Ostree) Deploy(ref string, bootArgs []string, verbose bool) error {
 	sysroot, err := o.Sysroot()

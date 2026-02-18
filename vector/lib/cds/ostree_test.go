@@ -2625,3 +2625,120 @@ func TestListDeploymentsInChroot_MultipleDeployments(t *testing.T) {
 		t.Errorf("deployment[2].Refspec = %q, want %q", deployments[2].Refspec, "origin:matrixos/amd64/server")
 	}
 }
+
+func TestSwitch(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var lastCmdArgs []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastCmdArgs = append([]string{name}, args...)
+		return nil
+	}
+
+	sysroot := t.TempDir()
+	ref := "origin:matrixos/amd64/gnome"
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Sysroot": {sysroot},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	err = o.Switch(ref, false)
+	if err != nil {
+		t.Fatalf("Switch failed: %v", err)
+	}
+
+	expectedCmd := fmt.Sprintf("ostree admin switch --sysroot=%s %s", sysroot, ref)
+	gotCmd := strings.Join(lastCmdArgs, " ")
+	if gotCmd != expectedCmd {
+		t.Errorf("Command mismatch:\nGot:  %s\nWant: %s", gotCmd, expectedCmd)
+	}
+}
+
+func TestSwitch_MissingSysroot(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return nil
+	}
+
+	cfg := &MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	err = o.Switch("ref", false)
+	if err == nil {
+		t.Fatal("Switch should fail when Ostree.Sysroot is missing")
+	}
+}
+
+func TestSwitch_CommandError(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("ostree admin switch failed")
+	}
+
+	sysroot := t.TempDir()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Sysroot": {sysroot},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	err = o.Switch("ref", false)
+	if err == nil {
+		t.Fatal("Switch should propagate command error")
+	}
+}
+
+func TestSwitch_Verbose(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var lastCmdArgs []string
+	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastCmdArgs = append([]string{name}, args...)
+		return nil
+	}
+
+	sysroot := t.TempDir()
+	ref := "matrixos/amd64/gnome"
+
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Sysroot": {sysroot},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	err = o.Switch(ref, true)
+	if err != nil {
+		t.Fatalf("Switch failed: %v", err)
+	}
+
+	expectedCmd := fmt.Sprintf("ostree --verbose admin switch --sysroot=%s %s", sysroot, ref)
+	gotCmd := strings.Join(lastCmdArgs, " ")
+	if gotCmd != expectedCmd {
+		t.Errorf("Command mismatch:\nGot:  %s\nWant: %s", gotCmd, expectedCmd)
+	}
+}
