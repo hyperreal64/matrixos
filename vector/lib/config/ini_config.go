@@ -32,13 +32,6 @@ func searchPaths() []searchPath {
 			dirPath:     "../conf",
 			defaultRoot: "..",
 		},
-		// Setup for when vector runs from an installed location,
-		// with config in /etc/matrixos/conf.
-		{
-			fileName:    configFileName,
-			dirPath:     "/etc/matrixos/conf",
-			defaultRoot: "/var/lib/matrixos",
-		},
 	}...)
 
 	cwd, err := os.Getwd()
@@ -79,6 +72,15 @@ func searchPaths() []searchPath {
 		}
 		cwd = parent
 	}
+
+	// add this as last resort option at the moment.
+	sps = append(sps, searchPath{
+		// Setup for when vector runs from an installed location,
+		// with config in /etc/matrixos/conf.
+		fileName:    configFileName,
+		dirPath:     "/etc/matrixos/conf",
+		defaultRoot: "/usr/lib/matrixos",
+	})
 
 	return sps
 }
