@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"matrixos/vector/lib/config"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,6 +130,7 @@ func (vm *VMDriver) Wait() error {
 // VMCommand checks matrixOS images via QEMU
 type VMCommand struct {
 	fs          *flag.FlagSet
+	cfg         config.IConfig
 	imagePath   string
 	memory      string
 	port        string
@@ -166,8 +168,23 @@ func (c *VMCommand) Name() string {
 	return c.fs.Name()
 }
 
+func (c *VMCommand) initConfig() error {
+	cfg, err := config.NewIniConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	if err := cfg.Load(); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	c.cfg = cfg
+	return nil
+}
+
 // Init initializes the command
 func (c *VMCommand) Init(args []string) error {
+	if err := c.initConfig(); err != nil {
+		return err
+	}
 	c.fs.Usage = func() {
 		fmt.Printf("Usage: vector dev %s\n", c.Name())
 		c.fs.PrintDefaults()
@@ -195,8 +212,13 @@ func (c *VMCommand) Run() error {
 	}
 	defer os.RemoveAll(tempDir)
 
+	mroot, err := c.cfg.GetItem("matrixOS.Root")
+	if err != nil {
+		return fmt.Errorf("failed to get matrixOS.Root from config: %w", err)
+	}
+	varsSrc := filepath.Join(mroot, "vector/tests/data/OVMF_VARS.fd")
 	varsDst := filepath.Join(tempDir, "my_vars.fd")
-	if err := copyFile("/usr/share/edk2-ovmf/OVMF_VARS.fd", varsDst); err != nil {
+	if err := copyFile(varsSrc, varsDst); err != nil {
 		return fmt.Errorf("failed to copy OVMF_VARS.fd: %w", err)
 	}
 
