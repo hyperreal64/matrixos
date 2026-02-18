@@ -167,6 +167,7 @@ qa_lib.verify_distro_rootfs_environment_setup() {
         ostree
         partprobe
         qemu-img
+        qemu-system-x86_64
         sha256sum
         sgdisk
         udevadm
@@ -251,6 +252,7 @@ qa_lib.verify_imager_environment_setup() {
         ostree
         partprobe
         qemu-img
+        qemu-system-x86_64
         sha256sum
         sgdisk
         udevadm
