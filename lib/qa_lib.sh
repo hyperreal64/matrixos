@@ -201,9 +201,13 @@ qa_lib.verify_releaser_environment_setup() {
         ostree
         unshare
     )
-    local dirs=(
-        "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
-    )
+    local dirs=()
+    if [ "${imagedir}" != "/" ]; then
+        # inside chroots, we always use the default path.
+        dirs+=( "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" )
+    else
+        dirs+=( "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" )
+    fi
     qa_lib._verify_environment_setup "${imagedir}" "${executables[@]}" "--" "${dirs[@]}"
 }
 
@@ -221,9 +225,13 @@ qa_lib.verify_seeder_environment_setup() {
         unshare
         wget
     )
-    local dirs=(
-        "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
-    )
+    local dirs=()
+    if [ "${imagedir}" != "/" ]; then
+        # inside chroots, we always use the default path.
+        dirs+=( "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" )
+    else
+        dirs+=( "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" )
+    fi
     qa_lib._verify_environment_setup "${imagedir}" "${executables[@]}" "--" "${dirs[@]}"
 }
 

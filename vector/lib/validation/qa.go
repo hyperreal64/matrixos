@@ -267,6 +267,24 @@ func (q *QA) VerifyDistroRootfsEnvironmentSetup(imageDir string) error {
 	return verifyEnvironmentSetup(imageDir, executables, dirs)
 }
 
+func (q *QA) privateGitRepoPath(imageDir string) (string, error) {
+	var path string
+	var err error
+	if imageDir == "/" {
+		path, err = q.cfg.GetItem("matrixOS.PrivateGitRepoPath")
+	} else {
+		path, err = q.cfg.GetItem("matrixOS.DefaultPrivateGitRepoPath")
+	}
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", errors.New("matrixOS.PrivateGitRepoPath not set")
+	}
+	return path, nil
+
+}
+
 // VerifyReleaserEnvironmentSetup checks for tools required by releaser
 func (q *QA) VerifyReleaserEnvironmentSetup(imageDir string) error {
 	if imageDir == "" {
@@ -282,11 +300,12 @@ func (q *QA) VerifyReleaserEnvironmentSetup(imageDir string) error {
 		"unshare",
 	}
 
-	path, err := q.cfg.GetItem("matrixOS.DefaultPrivateGitRepoPath")
+	var dirs []string
+	privatePath, err := q.privateGitRepoPath(imageDir)
 	if err != nil {
 		return err
 	}
-	dirs := []string{path}
+	dirs = append(dirs, privatePath)
 	return verifyEnvironmentSetup(imageDir, executables, dirs)
 }
 
@@ -304,11 +323,12 @@ func (q *QA) VerifySeederEnvironmentSetup(imageDir string) error {
 		"wget",
 	}
 
-	path, err := q.cfg.GetItem("matrixOS.DefaultPrivateGitRepoPath")
+	var dirs []string
+	privatePath, err := q.privateGitRepoPath(imageDir)
 	if err != nil {
 		return err
 	}
-	dirs := []string{path}
+	dirs = append(dirs, privatePath)
 	return verifyEnvironmentSetup(imageDir, executables, dirs)
 }
 
