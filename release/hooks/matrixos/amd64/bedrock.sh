@@ -1,5 +1,5 @@
 #!/bin/bash
-# cosmic.sh (hook) - Execute a customization script for QA or other CI/CD systems
+# bedrock.sh (hook) - Execute a customization script for QA or other CI/CD systems
 #                    to consume right before committing the root filesystem (CHROOT_DIR)
 #                    to the local ostree repository. This hook should return non-zero exit
 #                    status in case of issues. Warnings must be logged to stderr.
@@ -13,26 +13,24 @@ set -e
 source "${MATRIXOS_DEV_DIR}/headers/env.include.sh"
 
 
-setup_greetd() {
+setup_networkd() {
     local imagedir="${1}"
+    echo "Setting up systemd-networkd configuration for DHCP in ${imagedir}"
 
-    local greetd_dir="${imagedir}/etc/greetd"
-    if [ ! -d "${greetd_dir}" ]; then
-        mkdir -p "${greetd_dir}"
-    fi
-    local greetd_cfg="${greetd_dir}/config.toml"
-    cat > "${greetd_cfg}" << EOF
-[terminal]
-vt = 7
+    local networkd_dir="${imagedir}/etc/systemd/network"
+    mkdir -p "${networkd_dir}"
+    cat > "${networkd_dir}/20-matrixos-wired.network" << EOF
+[Match]
+Type=ether
 
-[default_session]
-command = "/usr/bin/dbus-run-session /usr/bin/cosmic-comp /usr/bin/cosmic-greeter 2>&1 | /usr/bin/logger -t cosmic-greeter"
-user = "cosmic-greeter"
+[Network]
+DHCP=yes
 EOF
 }
 
 main() {
-    setup_greetd "${CHROOT_DIR}"
+    setup_networkd "${CHROOT_DIR}"
 }
 
 main "${@}"
+
