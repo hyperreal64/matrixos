@@ -21,8 +21,12 @@ func (m *MockConfig) Load() error {
 }
 
 func (m *MockConfig) GetItem(key string) (string, error) {
-	if val, ok := m.Items[key]; ok {
-		return val[0], nil
+	if lst, ok := m.Items[key]; ok {
+		var val string
+		if len(lst) > 0 {
+			val = lst[len(lst)-1]
+		}
+		return val, nil
 	}
 	return "", nil // Return empty string for not found to simulate empty config
 }
@@ -340,29 +344,8 @@ func assertDir(t *testing.T, path string) {
 }
 
 func TestDeploy(t *testing.T) {
-	// Save original runCommand and restore after test
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var commands [][]string
 	fakeCommit := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-
-	// Mock runCommand
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		// Capture the command
-		cmdArgs := append([]string{name}, args...)
-		commands = append(commands, cmdArgs)
-
-		// Handle specific commands that need output
-		// args[0] is usually the ostree subcommand if name is "ostree"
-		if len(args) > 0 {
-			if args[0] == "rev-parse" {
-				// LastCommit expects a hash
-				stdout.Write([]byte(fakeCommit + "\n"))
-			}
-		}
-		return nil
-	}
 
 	sysroot := t.TempDir()
 	repoDir := "/fake/repo"
@@ -381,6 +364,18 @@ func TestDeploy(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmdArgs := append([]string{name}, args...)
+		commands = append(commands, cmdArgs)
+
+		if len(args) > 0 {
+			if args[0] == "rev-parse" {
+				stdout.Write([]byte(fakeCommit + "\n"))
+			}
+		}
+		return nil
 	}
 
 	// Call Deploy
@@ -587,19 +582,7 @@ func TestCollectionIDArgs(t *testing.T) {
 }
 
 func TestOstreeCommandsMocked(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var lastCmdArgs []string
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		lastCmdArgs = args
-		// Mock rev-parse for GenerateStaticDelta
-		if len(args) > 0 && args[0] == "rev-parse" {
-			stdout.Write([]byte("commit-hash\n"))
-		}
-		return nil
-	}
 
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -616,21 +599,36 @@ func TestOstreeCommandsMocked(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastCmdArgs = args
+		// Mock rev-parse for GenerateStaticDelta
+		if len(args) > 0 && args[0] == "rev-parse" {
+			stdout.Write([]byte("commit-hash\n"))
+		}
+		return nil
+	}
+
 	// Pull
-	o.Pull("origin:ref", false)
+	if err := o.Pull("origin:ref", false); err != nil {
+		t.Fatalf("Pull failed: %v", err)
+	}
 	if lastCmdArgs[1] != "pull" || lastCmdArgs[2] != "origin" || lastCmdArgs[3] != "ref" {
 		t.Errorf("Pull args mismatch: %v", lastCmdArgs)
 	}
 
 	// Prune
-	o.Prune("ref", false)
+	if err := o.Prune("ref", false); err != nil {
+		t.Fatalf("Prune failed: %v", err)
+	}
 	// args: --repo=/repo prune --depth=5 --refs-only --keep-younger-than=... --only-branch=ref
 	if lastCmdArgs[1] != "prune" || lastCmdArgs[5] != "--only-branch=ref" {
 		t.Errorf("Prune args mismatch: %v", lastCmdArgs)
 	}
 
 	// GenerateStaticDelta
-	o.GenerateStaticDelta("ref", false)
+	if err := o.GenerateStaticDelta("ref", false); err != nil {
+		t.Fatalf("GenerateStaticDelta failed: %v", err)
+	}
 	// First it calls rev-parse, then static-delta generate
 	// Since we only capture last, we check static-delta
 	if lastCmdArgs[1] != "static-delta" || lastCmdArgs[2] != "generate" {
@@ -638,24 +636,34 @@ func TestOstreeCommandsMocked(t *testing.T) {
 	}
 
 	// UpdateSummary
-	o.UpdateSummary(false)
+	if err := o.UpdateSummary(false); err != nil {
+		t.Fatalf("UpdateSummary failed: %v", err)
+	}
 	if lastCmdArgs[1] != "summary" || lastCmdArgs[2] != "--update" {
 		t.Errorf("UpdateSummary args mismatch: %v", lastCmdArgs)
 	}
 
 	// Upgrade
-	o.Upgrade([]string{"--check"}, false)
-	fmt.Fprintf(os.Stderr, "lastCmdArgs: %v\n", lastCmdArgs)
+	if err := o.Upgrade([]string{"--check"}, false); err != nil {
+		t.Fatalf("Upgrade failed: %v", err)
+	}
 	if lastCmdArgs[1] != "upgrade" || lastCmdArgs[3] != "--check" {
 		t.Errorf("Upgrade args mismatch: %v", lastCmdArgs)
 	}
 }
 
 func TestBootedStatus(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
+	cfg := &MockConfig{
+		Items: map[string][]string{
+			"Ostree.Root": {"/"},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
 
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
 		// Mock ostree admin status --json
 		jsonOutput := `{
 			"deployments": [
@@ -673,16 +681,6 @@ func TestBootedStatus(t *testing.T) {
 		}`
 		stdout.Write([]byte(jsonOutput))
 		return nil
-	}
-
-	cfg := &MockConfig{
-		Items: map[string][]string{
-			"Ostree.Root": {"/"},
-		},
-	}
-	o, err := NewOstree(cfg)
-	if err != nil {
-		t.Fatalf("NewOstree failed: %v", err)
 	}
 
 	ref, err := o.BootedRef(false)
@@ -737,16 +735,6 @@ func TestPatchGpgHomeDir(t *testing.T) {
 }
 
 func TestGpgKeyID(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		// Mock gpg output
-		// Format: pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:
-		fmt.Fprintln(stdout, "pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:")
-		return nil
-	}
-
 	tmpDir := t.TempDir()
 	pubKey := filepath.Join(tmpDir, "pub.key")
 	if err := os.WriteFile(pubKey, []byte("dummy"), 0644); err != nil {
@@ -763,6 +751,13 @@ func TestGpgKeyID(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock gpg output
+		// Format: pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:
+		fmt.Fprintln(stdout, "pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:")
+		return nil
 	}
 
 	keyID, err := o.GpgKeyID()
@@ -809,15 +804,7 @@ func TestBootCommit(t *testing.T) {
 }
 
 func TestMaybeInitializeRemote(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var cmds []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		cmds = append(cmds, strings.Join(args, " "))
-		return nil
-	}
-
 	repoDir := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -829,6 +816,11 @@ func TestMaybeInitializeRemote(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, strings.Join(args, " "))
+		return nil
 	}
 
 	if err := o.MaybeInitializeRemote(false); err != nil {
@@ -844,16 +836,6 @@ func TestMaybeInitializeRemote(t *testing.T) {
 }
 
 func TestRemoteRefs(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		// Mock ostree remote refs output
-		fmt.Fprintln(stdout, "matrixos/dev/gnome")
-		fmt.Fprintln(stdout, "matrixos/prod/server")
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
@@ -863,6 +845,13 @@ func TestRemoteRefs(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock ostree remote refs output
+		fmt.Fprintln(stdout, "matrixos/dev/gnome")
+		fmt.Fprintln(stdout, "matrixos/prod/server")
+		return nil
 	}
 
 	refs, err := o.RemoteRefs(false)
@@ -878,15 +867,7 @@ func TestRemoteRefs(t *testing.T) {
 }
 
 func TestAddRemoteWithSysroot(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var lastArgs []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		lastArgs = args
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.Remote":    {"origin"},
@@ -897,6 +878,11 @@ func TestAddRemoteWithSysroot(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastArgs = args
+		return nil
 	}
 
 	if err := o.AddRemoteWithSysroot("/sysroot", false); err != nil {
@@ -917,14 +903,6 @@ func TestAddRemoteWithSysroot(t *testing.T) {
 }
 
 func TestLastCommitWithSysroot(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		fmt.Fprintln(stdout, "hash123")
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.Sysroot": {"/sysroot"},
@@ -933,6 +911,11 @@ func TestLastCommitWithSysroot(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		fmt.Fprintln(stdout, "hash123")
+		return nil
 	}
 
 	hash, err := o.LastCommitWithSysroot("ref", false)
@@ -945,25 +928,7 @@ func TestLastCommitWithSysroot(t *testing.T) {
 }
 
 func TestGpgSignFile(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var cmds []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		cmds = append(cmds, strings.Join(args, " "))
-		// Mock GpgKeyID call
-		if len(args) > 0 && args[0] == "--homedir" {
-			// Check if it's the --show-keys call
-			for _, arg := range args {
-				if arg == "--show-keys" {
-					fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
-					return nil
-				}
-			}
-		}
-		return nil
-	}
-
 	tmpDir := t.TempDir()
 	dummyFile := filepath.Join(tmpDir, "file.txt")
 	if err := os.WriteFile(dummyFile, []byte("data"), 0644); err != nil {
@@ -985,6 +950,21 @@ func TestGpgSignFile(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, strings.Join(args, " "))
+		// Mock GpgKeyID call
+		if len(args) > 0 && args[0] == "--homedir" {
+			// Check if it's the --show-keys call
+			for _, arg := range args {
+				if arg == "--show-keys" {
+					fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
+					return nil
+				}
+			}
+		}
+		return nil
+	}
+
 	if err := o.GpgSignFile(dummyFile); err != nil {
 		t.Fatalf("GpgSignFile failed: %v", err)
 	}
@@ -1002,15 +982,7 @@ func TestGpgSignFile(t *testing.T) {
 }
 
 func TestImportGpgKey(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var lastArgs []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		lastArgs = args
-		return nil
-	}
-
 	tmpDir := t.TempDir()
 	keyFile := filepath.Join(tmpDir, "key.asc")
 	if err := os.WriteFile(keyFile, []byte("key data"), 0644); err != nil {
@@ -1025,6 +997,11 @@ func TestImportGpgKey(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastArgs = args
+		return nil
 	}
 
 	if err := o.ImportGpgKey(keyFile); err != nil {
@@ -1136,15 +1113,7 @@ func TestPrepareFilesystemHierarchySafety(t *testing.T) {
 }
 
 func TestMaybeInitializeGpg(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var cmds [][]string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		cmds = append(cmds, args)
-		return nil
-	}
-
 	tmpDir := t.TempDir()
 	privKey := filepath.Join(tmpDir, "priv.key")
 	pubKey := filepath.Join(tmpDir, "pub.key")
@@ -1172,6 +1141,11 @@ func TestMaybeInitializeGpg(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, args)
+		return nil
 	}
 
 	if err := o.MaybeInitializeGpg(false); err != nil {
@@ -1212,15 +1186,7 @@ func TestMaybeInitializeGpg(t *testing.T) {
 }
 
 func TestPullWithRemoteExplicit(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var lastArgs []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		lastArgs = args
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
@@ -1229,6 +1195,11 @@ func TestPullWithRemoteExplicit(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastArgs = args
+		return nil
 	}
 
 	if err := o.PullWithRemote("myremote", "myref", false); err != nil {
@@ -1284,23 +1255,7 @@ func TestConfigGettersErrors(t *testing.T) {
 }
 
 func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var cmds []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		cmds = append(cmds, strings.Join(args, " "))
-		// Mock ListRemotes output
-		// args: --repo=... remote list
-		for i, arg := range args {
-			if arg == "remote" && i+1 < len(args) && args[i+1] == "list" {
-				fmt.Fprintln(stdout, "origin")
-				return nil
-			}
-		}
-		return nil
-	}
-
 	repoDir := t.TempDir()
 	// Create objects dir to simulate existing repo
 	os.MkdirAll(filepath.Join(repoDir, "objects"), 0755)
@@ -1315,6 +1270,19 @@ func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, strings.Join(args, " "))
+		// Mock ListRemotes output
+		// args: --repo=... remote list
+		for i, arg := range args {
+			if arg == "remote" && i+1 < len(args) && args[i+1] == "list" {
+				fmt.Fprintln(stdout, "origin")
+				return nil
+			}
+		}
+		return nil
 	}
 
 	if err := o.MaybeInitializeRemote(false); err != nil {
@@ -1332,12 +1300,17 @@ func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
 	}
 }
 
-func setupMinimalHierarchy(_ *testing.T, imageDir string) {
+func setupMinimalHierarchy(t *testing.T, imageDir string) {
+	t.Helper()
 	dirs := []string{"tmp", "etc", "var/db/pkg", "opt", "srv", "usr/local"}
 	for _, d := range dirs {
-		os.MkdirAll(filepath.Join(imageDir, d), 0755)
+		if err := os.MkdirAll(filepath.Join(imageDir, d), 0755); err != nil {
+			t.Fatalf("failed to create dir %s: %v", d, err)
+		}
 	}
-	os.WriteFile(filepath.Join(imageDir, "etc", "machine-id"), []byte("id"), 0644)
+	if err := os.WriteFile(filepath.Join(imageDir, "etc", "machine-id"), []byte("id"), 0644); err != nil {
+		t.Fatalf("failed to write machine-id: %v", err)
+	}
 }
 
 func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
@@ -1434,15 +1407,6 @@ func TestGpgArgsEnabled(t *testing.T) {
 	os.WriteFile(pubKey, []byte("key"), 0644)
 
 	// Mock GpgKeyID execution
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		if len(args) > 0 && args[0] == "--homedir" {
-			fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
-		}
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
@@ -1455,6 +1419,13 @@ func TestGpgArgsEnabled(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		if len(args) > 0 && args[0] == "--homedir" {
+			fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
+		}
+		return nil
 	}
 
 	args, err := o.GpgArgs()
@@ -1572,12 +1543,6 @@ func TestRunVerbose(t *testing.T) {
 }
 
 func TestOstreeWrappers(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
@@ -1586,6 +1551,10 @@ func TestOstreeWrappers(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return nil
 	}
 
 	if _, err := o.ListRemotes(false); err != nil {
@@ -1597,20 +1566,6 @@ func TestOstreeWrappers(t *testing.T) {
 }
 
 func TestListPackagesMocked(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		// Mock ls -R output
-		output := `d00755 0 0 0 /
-d00755 0 0 0 /var/db/pkg/cat/pkg
--00644 0 0 0 /var/db/pkg/cat/pkg/CONTENTS
-d00755 0 0 0 /var/db/pkg/cat/other
-`
-		stdout.Write([]byte(output))
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
@@ -1619,6 +1574,17 @@ d00755 0 0 0 /var/db/pkg/cat/other
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		// Mock ls -R output
+		output := `d00755 0 0 0 /
+d00755 0 0 0 /var/db/pkg/cat/pkg
+-00644 0 0 0 /var/db/pkg/cat/pkg/CONTENTS
+d00755 0 0 0 /var/db/pkg/cat/other
+`
+		stdout.Write([]byte(output))
+		return nil
 	}
 
 	// We need directoryExists to return true for sysroot/var/db/pkg
@@ -1678,9 +1644,6 @@ func TestOstreeBranchMethodsErrors(t *testing.T) {
 }
 
 func TestDeploy_Errors(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	// Trigger error at specific steps
 	tests := []struct {
 		name      string
@@ -1732,9 +1695,6 @@ func TestDeploy_Errors(t *testing.T) {
 }
 
 func TestBootedStatus_Errors(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	tests := []struct {
 		name       string
 		jsonOutput string
@@ -1758,7 +1718,7 @@ func TestBootedStatus_Errors(t *testing.T) {
 		},
 	}
 
-	cfg := &MockConfig{Items: map[string][]string{"Ostree.Sysroot": {"/sysroot"}}}
+	cfg := &MockConfig{Items: map[string][]string{"Ostree.Root": {"/"}}}
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
@@ -1783,17 +1743,14 @@ func TestBootedStatus_Errors(t *testing.T) {
 }
 
 func TestMiscWrappers_Errors(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return fmt.Errorf("cmd error")
-	}
-
 	cfg := &MockConfig{Items: map[string][]string{"Ostree.RepoDir": {"/repo"}}}
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("cmd error")
 	}
 
 	if err := o.Pull("ref", false); err == nil {
@@ -1840,12 +1797,6 @@ func TestListRemotes_Errors(t *testing.T) {
 }
 
 func TestAddRemote_Error(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return fmt.Errorf("error")
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
@@ -1856,17 +1807,17 @@ func TestAddRemote_Error(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("error")
+	}
 	if err := o.AddRemote(false); err == nil {
 		t.Error("AddRemote should fail on error")
 	}
 }
 
 func TestValidateFilesystemHierarchy(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "matrixos-test-hierarchy")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	cfg := &MockConfig{}
 	o, err := NewOstree(cfg)
@@ -1937,15 +1888,7 @@ func TestValidateFilesystemHierarchy(t *testing.T) {
 }
 
 func TestListRootRemotes(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	t.Run("Success", func(t *testing.T) {
-		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-			stdout.Write([]byte("origin\nbackup\n"))
-			return nil
-		}
-
 		root := t.TempDir()
 		cfg := &MockConfig{
 			Items: map[string][]string{
@@ -1955,6 +1898,11 @@ func TestListRootRemotes(t *testing.T) {
 		o, err := NewOstree(cfg)
 		if err != nil {
 			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+			stdout.Write([]byte("origin\nbackup\n"))
+			return nil
 		}
 
 		remotes, err := o.ListRootRemotes(false)
@@ -2074,15 +2022,7 @@ func TestListRootRemotes(t *testing.T) {
 }
 
 func TestListRootRemoteRefs(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	t.Run("Success", func(t *testing.T) {
-		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-			stdout.Write([]byte("matrixos/amd64/gnome\nmatrixos/amd64/server\nmatrixos/amd64/dev/gnome\n"))
-			return nil
-		}
-
 		root := "/myroot"
 		cfg := &MockConfig{
 			Items: map[string][]string{
@@ -2093,6 +2033,11 @@ func TestListRootRemoteRefs(t *testing.T) {
 		o, err := NewOstree(cfg)
 		if err != nil {
 			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+			stdout.Write([]byte("matrixos/amd64/gnome\nmatrixos/amd64/server\nmatrixos/amd64/dev/gnome\n"))
+			return nil
 		}
 
 		refs, err := o.ListRootRemoteRefs(false)
@@ -2242,9 +2187,6 @@ func TestListRootRemoteRefs(t *testing.T) {
 }
 
 func TestListRootDeployments(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	fakeJSON := `{
 		"deployments": [
 			{
@@ -2354,14 +2296,6 @@ func TestListRootDeployments_EmptyRoot(t *testing.T) {
 }
 
 func TestListRootDeployments_NoDeployments(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		stdout.Write([]byte(`{"deployments": []}`))
-		return nil
-	}
-
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2371,6 +2305,11 @@ func TestListRootDeployments_NoDeployments(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		stdout.Write([]byte(`{"deployments": []}`))
+		return nil
 	}
 
 	deployments, err := o.ListRootDeployments(false)
@@ -2383,13 +2322,6 @@ func TestListRootDeployments_NoDeployments(t *testing.T) {
 }
 
 func TestListRootDeployments_CommandError(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return fmt.Errorf("ostree command failed")
-	}
-
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2399,6 +2331,10 @@ func TestListRootDeployments_CommandError(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("ostree command failed")
 	}
 
 	_, err = o.ListRootDeployments(false)
@@ -2408,14 +2344,6 @@ func TestListRootDeployments_CommandError(t *testing.T) {
 }
 
 func TestListRootDeployments_InvalidJSON(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		stdout.Write([]byte(`{not valid json}`))
-		return nil
-	}
-
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2427,6 +2355,11 @@ func TestListRootDeployments_InvalidJSON(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		stdout.Write([]byte(`{not valid json}`))
+		return nil
+	}
+
 	_, err = o.ListRootDeployments(false)
 	if err == nil {
 		t.Error("expected error for invalid JSON, got nil")
@@ -2434,9 +2367,6 @@ func TestListRootDeployments_InvalidJSON(t *testing.T) {
 }
 
 func TestListDeploymentsInChroot(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	fakeJSON := `{
 		"deployments": [
 			{
@@ -2522,13 +2452,6 @@ func TestListDeploymentsInChroot_EmptyRoot(t *testing.T) {
 }
 
 func TestListDeploymentsInChroot_CommandError(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return fmt.Errorf("chroot ostree failed")
-	}
-
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{},
@@ -2538,6 +2461,10 @@ func TestListDeploymentsInChroot_CommandError(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("chroot ostree failed")
+	}
+
 	_, err = o.ListDeploymentsInChroot(root, false)
 	if err == nil {
 		t.Error("expected error when ostree command fails, got nil")
@@ -2545,9 +2472,6 @@ func TestListDeploymentsInChroot_CommandError(t *testing.T) {
 }
 
 func TestListDeploymentsInChroot_MultipleDeployments(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	fakeJSON := `{
 		"deployments": [
 			{
@@ -2627,15 +2551,7 @@ func TestListDeploymentsInChroot_MultipleDeployments(t *testing.T) {
 }
 
 func TestSwitch(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var lastCmdArgs []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		lastCmdArgs = append([]string{name}, args...)
-		return nil
-	}
-
 	sysroot := t.TempDir()
 	ref := "origin:matrixos/amd64/gnome"
 
@@ -2647,6 +2563,11 @@ func TestSwitch(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastCmdArgs = append([]string{name}, args...)
+		return nil
 	}
 
 	err = o.Switch(ref, false)
@@ -2662,19 +2583,16 @@ func TestSwitch(t *testing.T) {
 }
 
 func TestSwitch_MissingSysroot(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return nil
-	}
-
 	cfg := &MockConfig{
 		Items: map[string][]string{},
 	}
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return nil
 	}
 
 	err = o.Switch("ref", false)
@@ -2684,13 +2602,6 @@ func TestSwitch_MissingSysroot(t *testing.T) {
 }
 
 func TestSwitch_CommandError(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		return fmt.Errorf("ostree admin switch failed")
-	}
-
 	sysroot := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2702,6 +2613,10 @@ func TestSwitch_CommandError(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		return fmt.Errorf("ostree admin switch failed")
+	}
+
 	err = o.Switch("ref", false)
 	if err == nil {
 		t.Fatal("Switch should propagate command error")
@@ -2709,15 +2624,7 @@ func TestSwitch_CommandError(t *testing.T) {
 }
 
 func TestSwitch_Verbose(t *testing.T) {
-	origRunCommand := runCommand
-	defer func() { runCommand = origRunCommand }()
-
 	var lastCmdArgs []string
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-		lastCmdArgs = append([]string{name}, args...)
-		return nil
-	}
-
 	sysroot := t.TempDir()
 	ref := "matrixos/amd64/gnome"
 
@@ -2729,6 +2636,11 @@ func TestSwitch_Verbose(t *testing.T) {
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		lastCmdArgs = append([]string{name}, args...)
+		return nil
 	}
 
 	err = o.Switch(ref, true)

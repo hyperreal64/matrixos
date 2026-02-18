@@ -35,20 +35,12 @@ type UpgradeCommand struct {
 
 // NewUpgradeCommand creates a new UpgradeCommand
 func NewUpgradeCommand() ICommand {
-	c := &UpgradeCommand{
-		fs: flag.NewFlagSet("upgrade", flag.ExitOnError),
-	}
-	c.fs.BoolVar(&c.updBootloader, "update-bootloader", false,
-		"Update bootloader binaries in /efi")
-	c.fs.BoolVar(&c.assumeYes, "y", false, "Assume yes to all prompts")
-	c.fs.BoolVar(&c.pretend, "pretend", false, "Only fetch updates and show diff without applying them")
-	c.fs.BoolVar(&c.force, "force", false, "Force upgrade even if up to date")
-	return c
+	return &UpgradeCommand{}
 }
 
 // Name returns the name of the command
 func (c *UpgradeCommand) Name() string {
-	return c.fs.Name()
+	return "upgrade"
 }
 
 // Init initializes the command
@@ -63,6 +55,17 @@ func (c *UpgradeCommand) Init(args []string) error {
 
 	c.StartUI()
 
+	return c.parseArgs(args)
+}
+
+// parseArgs parses the command-line arguments without initializing config or ostree.
+func (c *UpgradeCommand) parseArgs(args []string) error {
+	c.fs = flag.NewFlagSet("upgrade", flag.ContinueOnError)
+	c.fs.BoolVar(&c.updBootloader, "update-bootloader", false,
+		"Update bootloader binaries in /efi")
+	c.fs.BoolVar(&c.assumeYes, "y", false, "Assume yes to all prompts")
+	c.fs.BoolVar(&c.pretend, "pretend", false, "Only fetch updates and show diff without applying them")
+	c.fs.BoolVar(&c.force, "force", false, "Force upgrade even if up to date")
 	c.fs.Usage = func() {
 		fmt.Printf("Usage: vector %s [options]\n", c.Name())
 		c.fs.PrintDefaults()

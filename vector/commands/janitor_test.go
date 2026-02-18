@@ -8,63 +8,46 @@ import (
 	"time"
 )
 
-// TestJanitorCommand creates an integration-style test for the Janitor command.
-// It mocks the configuration via MATRIXOS_CONFIG and verifies file deletions.
-func TestJanitorCommand(t *testing.T) {
-	// Mock getEuid to simulate root
-	origGetEuid := getEuid
-	getEuid = func() int { return 0 }
-	defer func() { getEuid = origGetEuid }()
+// setupJanitorTest creates a temp directory with a config file and test artifacts
+// for the Janitor command. Returns the config file path and paths to verify.
+func setupJanitorTest(t *testing.T) (configFile, imgOld, imgNew, dlFile, logFile string) {
+	t.Helper()
 
-	// Create temporary workspace
-	tmpDir, err := os.MkdirTemp("", "janitor-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
-	// Define paths within temp workspace
 	confDir := filepath.Join(tmpDir, "conf")
 	imagesDir := filepath.Join(tmpDir, "images")
 	downloadsDir := filepath.Join(tmpDir, "downloads")
 	logsDir := filepath.Join(tmpDir, "logs")
 	logsWeeklyDir := filepath.Join(logsDir, "weekly-builder")
 
-	// Create directories
 	for _, dir := range []string{confDir, imagesDir, downloadsDir, logsWeeklyDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to create dir %s: %v", dir, err)
 		}
 	}
 
-	// Create dummy files to be cleaned
-	// 1. Images: Keep 1, delete older
-	imgOld := filepath.Join(imagesDir, "matrixos-20230101.img.xz")
-	imgNew := filepath.Join(imagesDir, "matrixos-20230102.img.xz")
-	// 2. Downloads: All deleted
-	dlFile := filepath.Join(downloadsDir, "some-download.tar.gz")
-	// 3. Logs: All deleted
-	logFile := filepath.Join(logsWeeklyDir, "build.log")
+	imgOld = filepath.Join(imagesDir, "matrixos-20230101.img.xz")
+	imgNew = filepath.Join(imagesDir, "matrixos-20230102.img.xz")
+	dlFile = filepath.Join(downloadsDir, "some-download.tar.gz")
+	logFile = filepath.Join(logsWeeklyDir, "build.log")
 
-	filesToCreate := []string{imgOld, imgNew, dlFile, logFile}
-	for _, f := range filesToCreate {
+	for _, f := range []string{imgOld, imgNew, dlFile, logFile} {
 		if err := os.WriteFile(f, []byte("dummy content"), 0644); err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to create file %s: %v", f, err)
 		}
 	}
 
-	// Adjust mtime for downloads and logs to be older than 30 days
-	// The default cutoff is 30 days.
+	// Make downloads and logs older than the default 30-day cutoff.
 	archiveTime := time.Now().Add(-31 * 24 * time.Hour)
 	if err := os.Chtimes(dlFile, archiveTime, archiveTime); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to set mtime on %s: %v", dlFile, err)
 	}
 	if err := os.Chtimes(logFile, archiveTime, archiveTime); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to set mtime on %s: %v", logFile, err)
 	}
 
-	// Create config file
-	configFile := filepath.Join(confDir, "matrixos.conf")
+	configFile = filepath.Join(confDir, "matrixos.conf")
 	configContent := fmt.Sprintf(`
 [Imager]
 ImagesDir = %s
@@ -87,39 +70,66 @@ DryRun = false
 `, imagesDir, downloadsDir, logsDir)
 
 	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to write config: %v", err)
 	}
+	return
+}
 
-	// Initialize and Run Janitor Command
+func TestJanitorCommand(t *testing.T) {
+	origGetEuid := getEuid
+	getEuid = func() int { return 0 }
+	defer func() { getEuid = origGetEuid }()
+
+	configFile, imgOld, imgNew, dlFile, logFile := setupJanitorTest(t)
+
 	cmd := NewJanitorCommand()
-	// Pass the config file path via the --conf flag
 	if err := cmd.Init([]string{"--conf", configFile}); err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
 
-	// Capture stdout/stderr to avoid polluting test output
-	// (Optional, but good practice)
+	// Capture stdout to avoid polluting test output
+	captureStdout(t, func() {
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("Run failed: %v", err)
+		}
+	})
 
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("Run failed: %v", err)
-	}
-
-	// Verify deletions
-	// 1. Images: Old should be gone, New should be present
+	// Images: older image should be deleted, newer should remain
 	if _, err := os.Stat(imgOld); !os.IsNotExist(err) {
-		t.Errorf("Expected old image %s to be deleted, but it exists", imgOld)
+		t.Errorf("Expected old image %s to be deleted", imgOld)
 	}
 	if _, err := os.Stat(imgNew); os.IsNotExist(err) {
-		t.Errorf("Expected new image %s to exist, but it is missing", imgNew)
+		t.Errorf("Expected new image %s to exist", imgNew)
 	}
 
-	// 2. Downloads: Should be gone
+	// Downloads older than 30 days should be deleted
 	if _, err := os.Stat(dlFile); !os.IsNotExist(err) {
-		t.Errorf("Expected download file %s to be deleted", dlFile)
+		t.Errorf("Expected download %s to be deleted", dlFile)
 	}
 
-	// 3. Logs: Should be gone
+	// Logs older than 30 days should be deleted
 	if _, err := os.Stat(logFile); !os.IsNotExist(err) {
-		t.Errorf("Expected log file %s to be deleted", logFile)
+		t.Errorf("Expected log %s to be deleted", logFile)
+	}
+}
+
+func TestJanitorNotRoot(t *testing.T) {
+	origGetEuid := getEuid
+	getEuid = func() int { return 1000 }
+	defer func() { getEuid = origGetEuid }()
+
+	configFile, _, _, _, _ := setupJanitorTest(t)
+
+	cmd := NewJanitorCommand()
+	if err := cmd.Init([]string{"--conf", configFile}); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("Expected error for non-root user, got nil")
+	}
+	if err.Error() != "this command must be run as root" {
+		t.Errorf("Unexpected error: %v", err)
 	}
 }

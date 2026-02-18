@@ -2,155 +2,264 @@ package commands
 
 import (
 	"bytes"
-	"fmt"
+	"matrixos/vector/lib/cds"
 	"os"
-	"os/exec"
-	"strings"
 	"testing"
 )
 
-// mockExecCommand is a helper function to mock exec.Command for testing.
-func mockExecCommand(command string, args ...string) *exec.Cmd {
-	cs := []string{" -test.run=TestHelperProcess", "--", command}
-	cs = append(cs, args...)
-	cmd := exec.Command(os.Args[0], cs...)
-	cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
+// mockOstree implements IOstree for testing commands.
+// Only the fields/methods relevant to each test need to be configured;
+// everything else returns safe zero values.
+type mockOstree struct {
+	root           string
+	rootErr        error
+	deployments    []cds.Deployment
+	deploymentsErr error
+	refs           []string
+	refsErr        error
+	switchRef      string
+	switchErr      error
+	lastCommit     string
+	lastCommitErr  error
+	upgradeErr     error
+	upgradeArgs    []string
+	packages       []string
+	packagesErr    error
+}
+
+// Config accessors — return zero values (not used in branch/upgrade tests).
+func (m *mockOstree) FullBranchSuffix() (string, error)                              { return "", nil }
+func (m *mockOstree) IsBranchFullSuffixed(string) (bool, error)                      { return false, nil }
+func (m *mockOstree) BranchShortnameToFull(_, _, _, _ string) (string, error)        { return "", nil }
+func (m *mockOstree) BranchToFull(string) (string, error)                            { return "", nil }
+func (m *mockOstree) RemoveFullFromBranch(string) (string, error)                    { return "", nil }
+func (m *mockOstree) GpgEnabled() (bool, error)                                      { return false, nil }
+func (m *mockOstree) GpgPrivateKeyPath() (string, error)                             { return "", nil }
+func (m *mockOstree) GpgPublicKeyPath() (string, error)                              { return "", nil }
+func (m *mockOstree) GpgOfficialPubKeyPath() (string, error)                         { return "", nil }
+func (m *mockOstree) OsName() (string, error)                                        { return "", nil }
+func (m *mockOstree) Arch() (string, error)                                          { return "", nil }
+func (m *mockOstree) RepoDir() (string, error)                                       { return "", nil }
+func (m *mockOstree) Sysroot() (string, error)                                       { return "", nil }
+func (m *mockOstree) Remote() (string, error)                                        { return "", nil }
+func (m *mockOstree) RemoteURL() (string, error)                                     { return "", nil }
+func (m *mockOstree) AvailableGpgPubKeyPaths() ([]string, error)                     { return nil, nil }
+func (m *mockOstree) GpgBestPubKeyPath() (string, error)                             { return "", nil }
+func (m *mockOstree) ClientSideGpgArgs() ([]string, error)                           { return nil, nil }
+func (m *mockOstree) GpgHomeDir() (string, error)                                    { return "", nil }
+func (m *mockOstree) GpgKeyID() (string, error)                                      { return "", nil }
+func (m *mockOstree) GpgArgs() ([]string, error)                                     { return nil, nil }
+func (m *mockOstree) SetupEtc(string) error                                          { return nil }
+func (m *mockOstree) PrepareFilesystemHierarchy(string) error                        { return nil }
+func (m *mockOstree) ValidateFilesystemHierarchy(string) error                       { return nil }
+func (m *mockOstree) BootCommit(string) (string, error)                              { return "", nil }
+func (m *mockOstree) ListRemotes(bool) ([]string, error)                             { return nil, nil }
+func (m *mockOstree) ListRootRemotes(bool) ([]string, error)                         { return nil, nil }
+func (m *mockOstree) LastCommit(string, bool) (string, error)                        { return "", nil }
+func (m *mockOstree) LastCommitWithSysroot(string, bool) (string, error)             { return "", nil }
+func (m *mockOstree) ImportGpgKey(string) error                                      { return nil }
+func (m *mockOstree) GpgSignFile(string) error                                       { return nil }
+func (m *mockOstree) MaybeInitializeGpg(bool) error                                  { return nil }
+func (m *mockOstree) MaybeInitializeGpgForRepo(string, string, bool) error           { return nil }
+func (m *mockOstree) MaybeInitializeRemote(bool) error                               { return nil }
+func (m *mockOstree) Pull(string, bool) error                                        { return nil }
+func (m *mockOstree) PullWithRemote(string, string, bool) error                      { return nil }
+func (m *mockOstree) Prune(string, bool) error                                       { return nil }
+func (m *mockOstree) GenerateStaticDelta(string, bool) error                         { return nil }
+func (m *mockOstree) UpdateSummary(bool) error                                       { return nil }
+func (m *mockOstree) AddRemote(bool) error                                           { return nil }
+func (m *mockOstree) AddRemoteWithSysroot(string, bool) error                        { return nil }
+func (m *mockOstree) LocalRefs(bool) ([]string, error)                               { return nil, nil }
+func (m *mockOstree) RemoteRefs(bool) ([]string, error)                              { return nil, nil }
+func (m *mockOstree) ListDeploymentsInChroot(string, bool) ([]cds.Deployment, error) { return nil, nil }
+func (m *mockOstree) DeployedRootfs(string, bool) (string, error)                    { return "", nil }
+func (m *mockOstree) BootedRef(bool) (string, error)                                 { return "", nil }
+func (m *mockOstree) BootedHash(bool) (string, error)                                { return "", nil }
+func (m *mockOstree) Deploy(string, []string, bool) error                            { return nil }
+
+// Methods with configurable behavior for tests.
+func (m *mockOstree) Root() (string, error) {
+	if m.root == "" {
+		return "/", m.rootErr
+	}
+	return m.root, m.rootErr
+}
+
+func (m *mockOstree) ListRootDeployments(_ bool) ([]cds.Deployment, error) {
+	return m.deployments, m.deploymentsErr
+}
+
+func (m *mockOstree) ListRootRemoteRefs(_ bool) ([]string, error) {
+	return m.refs, m.refsErr
+}
+
+func (m *mockOstree) Switch(ref string, _ bool) error {
+	m.switchRef = ref
+	return m.switchErr
+}
+
+func (m *mockOstree) LastCommitWithRoot(ref string, _ bool) (string, error) {
+	return m.lastCommit, m.lastCommitErr
+}
+
+func (m *mockOstree) Upgrade(args []string, _ bool) error {
+	m.upgradeArgs = args
+	return m.upgradeErr
+}
+
+func (m *mockOstree) ListPackages(commit, sysroot string, _ bool) ([]string, error) {
+	return m.packages, m.packagesErr
+}
+
+// newTestBranchCommand creates a BranchCommand with injected mock dependencies,
+// bypassing initConfig/initOstree which require real config files.
+func newTestBranchCommand(ot IOstree) *BranchCommand {
+	cmd := &BranchCommand{}
+	cmd.ot = ot
 	return cmd
 }
 
-// TestHelperProcess isn't a real test. It's used as a helper for mockExecCommand.
-func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
-		return
+// captureStdout runs fn while capturing os.Stdout and returns the output.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
 	}
-	defer os.Exit(0)
+	os.Stdout = w
 
-	args := os.Args
-	for len(args) > 0 {
-		if args[0] == "--" {
-			args = args[1:]
-			break
-		}
-		args = args[1:]
-	}
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "No command to mock\n")
-		os.Exit(1)
-	}
+	fn()
 
-	cmd, args := args[0], args[1:]
-	if cmd == "ostree" && args[0] == "admin" && args[1] == "status" {
-		fmt.Fprint(os.Stdout, `{
-			"deployments": [
-				{
-					"booted": true,
-					"checksum": "f2a3c7f8...",
-					"origin": "remote:branch",
-					"refspec": ["remote:branch/1/2"]
-				}
-			]
-		}`)
-	} else if cmd == "ostree" && args[0] == "remote" && args[1] == "refs" {
-		fmt.Fprint(os.Stdout, "origin:branch1\norigin:branch2")
-	} else if cmd == "ostree" && args[0] == "admin" && args[1] == "switch" {
-		// Do nothing
-	} else {
-		fmt.Fprintf(os.Stderr, "Unknown command: %s %v\n", cmd, args)
-		os.Exit(1)
-	}
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
 }
 
 func TestBranchShow(t *testing.T) {
-	execCommand = mockExecCommand
-	defer func() { execCommand = exec.Command }()
-
-	cmd := NewBranchCommand()
-	err := cmd.Init([]string{"show"})
-	if err != nil {
-		t.Fatalf("Init failed: %v", err)
+	mock := &mockOstree{
+		deployments: []cds.Deployment{
+			{
+				Booted:    true,
+				Checksum:  "abc123",
+				Stateroot: "matrixos",
+				Refspec:   "origin:matrixos/amd64/gnome",
+				Index:     0,
+				Serial:    1,
+			},
+		},
+	}
+	cmd := newTestBranchCommand(mock)
+	if err := cmd.parseArgs([]string{"show"}); err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
 	}
 
-	// Redirect stdout to capture the output
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("Run failed: %v", err)
+		}
+	})
 
-	err = cmd.Run()
-	if err != nil {
-		t.Fatalf("Run failed: %v", err)
-	}
-
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := buf.String()
-
-	expected := "Current branch:\n  RefSpec: [remote:branch/1/2]\n  Checksum: f2a3c7f8...\n  Origin: remote:branch\n"
+	expected := "Current branch:\n" +
+		"  Name: matrixos\n" +
+		"  Branch/Ref: origin:matrixos/amd64/gnome\n" +
+		"  Checksum: abc123\n" +
+		"  Index: 0\n" +
+		"  Serial: 1\n"
 	if output != expected {
-		t.Errorf("Expected output %q, but got %q", expected, output)
+		t.Errorf("output mismatch\nwant: %q\n got: %q", expected, output)
+	}
+}
+
+func TestBranchShowNoBooted(t *testing.T) {
+	mock := &mockOstree{
+		deployments: []cds.Deployment{
+			{Booted: false, Stateroot: "matrixos"},
+		},
+	}
+	cmd := newTestBranchCommand(mock)
+	if err := cmd.parseArgs([]string{"show"}); err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for no booted deployment, got nil")
+	}
+	if err.Error() != "could not find booted deployment" {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 func TestBranchList(t *testing.T) {
-	execCommand = mockExecCommand
-	defer func() { execCommand = exec.Command }()
-
-	cmd := NewBranchCommand()
-	err := cmd.Init([]string{"list"})
-	if err != nil {
-		t.Fatalf("Init failed: %v", err)
+	mock := &mockOstree{
+		refs: []string{"origin:branch1", "origin:branch2"},
+	}
+	cmd := newTestBranchCommand(mock)
+	if err := cmd.parseArgs([]string{"list"}); err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
 	}
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output := captureStdout(t, func() {
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("Run failed: %v", err)
+		}
+	})
 
-	err = cmd.Run()
-	if err != nil {
-		t.Fatalf("Run failed: %v", err)
-	}
-
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := buf.String()
-
-	expected := "origin:branch1\norigin:branch2"
+	expected := "origin:branch1\norigin:branch2\n"
 	if output != expected {
-		t.Errorf("Expected output %q, but got %q", expected, output)
+		t.Errorf("output mismatch\nwant: %q\n got: %q", expected, output)
 	}
 }
 
 func TestBranchSwitch(t *testing.T) {
-	execCommand = mockExecCommand
-	defer func() { execCommand = exec.Command }()
-
-	cmd := NewBranchCommand()
-	err := cmd.Init([]string{"switch", "new/branch"})
-	if err != nil {
-		t.Fatalf("Init failed: %v", err)
+	mock := &mockOstree{}
+	cmd := newTestBranchCommand(mock)
+	if err := cmd.parseArgs([]string{"switch", "new/branch"}); err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
 	}
 
-	// Redirect stdout to check the "Switching to..." message
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err = cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
+	if mock.switchRef != "new/branch" {
+		t.Errorf("expected switch ref %q, got %q", "new/branch", mock.switchRef)
+	}
+}
 
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := buf.String()
+func TestBranchSwitchMissingArg(t *testing.T) {
+	mock := &mockOstree{}
+	cmd := newTestBranchCommand(mock)
+	if err := cmd.parseArgs([]string{"switch"}); err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
 
-	expectedMsg := "Switching to origin:new/branch...\n"
-	if !strings.Contains(output, expectedMsg) {
-		t.Errorf("Expected output to contain %q, but got %q", expectedMsg, output)
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for missing switch arg, got nil")
+	}
+}
+
+func TestBranchUnknownSubcommand(t *testing.T) {
+	mock := &mockOstree{}
+	cmd := newTestBranchCommand(mock)
+	if err := cmd.parseArgs([]string{"foo"}); err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for unknown subcommand, got nil")
+	}
+}
+
+func TestBranchNoSubcommand(t *testing.T) {
+	mock := &mockOstree{}
+	cmd := newTestBranchCommand(mock)
+	err := cmd.parseArgs([]string{})
+	if err == nil {
+		t.Fatal("expected error for missing subcommand, got nil")
 	}
 }
