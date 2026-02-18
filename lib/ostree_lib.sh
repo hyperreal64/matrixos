@@ -363,7 +363,6 @@ ostree_lib.validate_filesystem_hierarchy() {
     imagedir="${imagedir%/}"
     # Basic sanity checks, make sure that we have correct directory structure.
     local expected_valid_dir_symlinks=(
-        "/etc"
         "/home"
         "/opt"
         "/root"

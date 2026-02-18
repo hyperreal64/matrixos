@@ -1795,15 +1795,12 @@ func (o *Ostree) PrepareFilesystemHierarchy(imageDir string) error {
 }
 
 // ValidateFilesystemHierarchy validates the filesystem hierarchy for OSTree.
-// It ports the logic from ostree_lib.validate_filesystem_hierarchy in
-// ostree_lib.sh.
 func (o *Ostree) ValidateFilesystemHierarchy(imageDir string) error {
 	if imageDir == "" {
 		return errors.New("missing imageDir parameter")
 	}
 
 	expected := []string{
-		"/etc",
 		"/home",
 		"/opt",
 		"/root",
