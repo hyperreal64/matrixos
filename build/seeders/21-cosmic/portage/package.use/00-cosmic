@@ -1,2 +1,5 @@
 # Enable COSMIC App Store.
 cosmic-base/cosmic-meta store
+
+# Required by firefox with USE=system-libvpx
+media-libs/libvpx postproc
