@@ -256,7 +256,6 @@ func (c *VMCommand) Run() error {
 		"-enable-kvm", "-m", c.memory,
 		"-cpu", "host", "-smp", c.cpus,
 		"-nic", fmt.Sprintf("user,model=virtio-net-pci,hostfwd=tcp::%s-:22", c.port),
-		"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/edk2-ovmf/OVMF_CODE.fd",
 		"-drive", "if=pflash,format=raw,file=" + varsDst,
 		"-drive", fmt.Sprintf("file=%s,format=%s,if=virtio", c.imagePath, format),
 		"-drive", fmt.Sprintf("file=%s,format=raw,if=virtio", testImageFile.Name()),
