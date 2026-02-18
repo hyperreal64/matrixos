@@ -1936,6 +1936,311 @@ func TestValidateFilesystemHierarchy(t *testing.T) {
 	})
 }
 
+func TestListRootRemotes(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	t.Run("Success", func(t *testing.T) {
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			stdout.Write([]byte("origin\nbackup\n"))
+			return nil
+		}
+
+		root := t.TempDir()
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root": {root},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		remotes, err := o.ListRootRemotes(false)
+		if err != nil {
+			t.Fatalf("ListRootRemotes failed: %v", err)
+		}
+		if len(remotes) != 2 {
+			t.Fatalf("expected 2 remotes, got %d", len(remotes))
+		}
+		if remotes[0] != "origin" {
+			t.Errorf("remotes[0] = %q, want %q", remotes[0], "origin")
+		}
+		if remotes[1] != "backup" {
+			t.Errorf("remotes[1] = %q, want %q", remotes[1], "backup")
+		}
+	})
+
+	t.Run("VerifiesRepoPath", func(t *testing.T) {
+		var capturedArgs []string
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			capturedArgs = append([]string{name}, args...)
+			stdout.Write([]byte("origin\n"))
+			return nil
+		}
+
+		root := "/my/root"
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root": {root},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemotes(false)
+		if err != nil {
+			t.Fatalf("ListRootRemotes failed: %v", err)
+		}
+
+		expectedRepoArg := "--repo=/my/root/ostree/repo"
+		found := false
+		for _, arg := range capturedArgs {
+			if arg == expectedRepoArg {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected repo arg %q in command args %v", expectedRepoArg, capturedArgs)
+		}
+	})
+
+	t.Run("EmptyRoot", func(t *testing.T) {
+		cfg := &MockConfig{
+			Items: map[string][]string{},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemotes(false)
+		if err == nil {
+			t.Error("expected error for empty root, got nil")
+		}
+	})
+
+	t.Run("NoRemotes", func(t *testing.T) {
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			// Empty output
+			return nil
+		}
+
+		root := t.TempDir()
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root": {root},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		remotes, err := o.ListRootRemotes(false)
+		if err != nil {
+			t.Fatalf("ListRootRemotes failed: %v", err)
+		}
+		if len(remotes) != 0 {
+			t.Errorf("expected 0 remotes, got %d", len(remotes))
+		}
+	})
+
+	t.Run("CommandError", func(t *testing.T) {
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			return fmt.Errorf("ostree command failed")
+		}
+
+		root := t.TempDir()
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root": {root},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemotes(false)
+		if err == nil {
+			t.Error("expected error when ostree command fails, got nil")
+		}
+	})
+}
+
+func TestListRootRemoteRefs(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	t.Run("Success", func(t *testing.T) {
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			stdout.Write([]byte("matrixos/amd64/gnome\nmatrixos/amd64/server\nmatrixos/amd64/dev/gnome\n"))
+			return nil
+		}
+
+		root := "/myroot"
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root":   {root},
+				"Ostree.Remote": {"origin"},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		refs, err := o.ListRootRemoteRefs(false)
+		if err != nil {
+			t.Fatalf("ListRootRemoteRefs failed: %v", err)
+		}
+		if len(refs) != 3 {
+			t.Fatalf("expected 3 refs, got %d", len(refs))
+		}
+		if refs[0] != "matrixos/amd64/gnome" {
+			t.Errorf("refs[0] = %q, want %q", refs[0], "matrixos/amd64/gnome")
+		}
+		if refs[1] != "matrixos/amd64/server" {
+			t.Errorf("refs[1] = %q, want %q", refs[1], "matrixos/amd64/server")
+		}
+		if refs[2] != "matrixos/amd64/dev/gnome" {
+			t.Errorf("refs[2] = %q, want %q", refs[2], "matrixos/amd64/dev/gnome")
+		}
+	})
+
+	t.Run("VerifiesRepoPathAndRemote", func(t *testing.T) {
+		var capturedArgs []string
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			capturedArgs = append([]string{name}, args...)
+			stdout.Write([]byte("ref1\n"))
+			return nil
+		}
+
+		root := "/custom/root"
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root":   {root},
+				"Ostree.Remote": {"myremote"},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemoteRefs(false)
+		if err != nil {
+			t.Fatalf("ListRootRemoteRefs failed: %v", err)
+		}
+
+		expectedRepoArg := "--repo=/custom/root/ostree/repo"
+		foundRepo := false
+		foundRemote := false
+		for _, arg := range capturedArgs {
+			if arg == expectedRepoArg {
+				foundRepo = true
+			}
+			if arg == "myremote" {
+				foundRemote = true
+			}
+		}
+		if !foundRepo {
+			t.Errorf("expected repo arg %q in command args %v", expectedRepoArg, capturedArgs)
+		}
+		if !foundRemote {
+			t.Errorf("expected remote %q in command args %v", "myremote", capturedArgs)
+		}
+	})
+
+	t.Run("EmptyRoot", func(t *testing.T) {
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Remote": {"origin"},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemoteRefs(false)
+		if err == nil {
+			t.Error("expected error for empty root, got nil")
+		}
+	})
+
+	t.Run("EmptyRemote", func(t *testing.T) {
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root": {"/some/root"},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemoteRefs(false)
+		if err == nil {
+			t.Error("expected error for empty remote, got nil")
+		}
+	})
+
+	t.Run("NoRefs", func(t *testing.T) {
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			return nil
+		}
+
+		root := t.TempDir()
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root":   {root},
+				"Ostree.Remote": {"origin"},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		refs, err := o.ListRootRemoteRefs(false)
+		if err != nil {
+			t.Fatalf("ListRootRemoteRefs failed: %v", err)
+		}
+		if len(refs) != 0 {
+			t.Errorf("expected 0 refs, got %d", len(refs))
+		}
+	})
+
+	t.Run("CommandError", func(t *testing.T) {
+		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			return fmt.Errorf("remote refs failed")
+		}
+
+		root := t.TempDir()
+		cfg := &MockConfig{
+			Items: map[string][]string{
+				"Ostree.Root":   {root},
+				"Ostree.Remote": {"origin"},
+			},
+		}
+		o, err := NewOstree(cfg)
+		if err != nil {
+			t.Fatalf("NewOstree failed: %v", err)
+		}
+
+		_, err = o.ListRootRemoteRefs(false)
+		if err == nil {
+			t.Error("expected error when ostree command fails, got nil")
+		}
+	})
+}
+
 func TestListRootDeployments(t *testing.T) {
 	origRunCommand := runCommand
 	defer func() { runCommand = origRunCommand }()

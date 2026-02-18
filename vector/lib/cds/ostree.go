@@ -919,6 +919,16 @@ func (o *Ostree) ListRemotes(verbose bool) ([]string, error) {
 	return ListRemotes(repoDir, verbose)
 }
 
+// ListRootRemotes lists all the remote refs in the root filesystem's ostree repository.
+func (o *Ostree) ListRootRemotes(verbose bool) ([]string, error) {
+	root, err := o.Root()
+	if err != nil {
+		return nil, err
+	}
+	repoDir := filepath.Join(root, "ostree", "repo")
+	return ListRemotes(repoDir, verbose)
+}
+
 // LastCommit returns the last commit for a given ref.
 func (o *Ostree) LastCommit(ref string, verbose bool) (string, error) {
 	repoDir, err := o.RepoDir()
@@ -1487,6 +1497,20 @@ func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	remote, err := o.Remote()
+	if err != nil {
+		return nil, err
+	}
+	return ListRemoteRefs(repoDir, remote, verbose)
+}
+
+// ListRootRemoteRefs lists the remote available ostree refs in the root filesystem.
+func (o *Ostree) ListRootRemoteRefs(verbose bool) ([]string, error) {
+	root, err := o.Root()
+	if err != nil {
+		return nil, err
+	}
+	repoDir := filepath.Join(root, "ostree", "repo")
 	remote, err := o.Remote()
 	if err != nil {
 		return nil, err
