@@ -66,7 +66,6 @@ matrixOS is a hobby project created for homelab setups. It is **not** intended f
 - **Filesystem**: `btrfs` on `/boot` and `/` with zstd compression, auto-resizing on first boot. Includes `ntfsplus` driver.
 - **Security**: UEFI SecureBoot support with easy-to-install certificates.
 - **Apps**: Steam, Flatpak, Snap, AppImage, and Docker available immediately.
-- **Dev**: Ships with `Google Antigravity` for AI-assisted coding.
 
 ## 💻 Prerequisites
 
@@ -91,10 +90,12 @@ Use these keys to verify the authenticity of images and commits:
 
 ### Option 1: Flash to Drive
 
-Download the image (compressed with `xz`) and flash it to your target drive using `dd` or similar tools.
+Download the image (compressed with `xz`) and its `.sha256` file, then flash it to your target drive using `dd` or similar tools.
 
 ```shell
-xz -dc matrixos_amd64_gnome-DATE.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=sparse,sync
+sha256sum matrixos_amd64_gnome-DATE.img.xz.sha256
+xz -d matrixos_amd64_gnome-DATE.img.xz
+dd if=matrixos_amd64_gnome-DATE.img.xz of=/dev/sdX bs=4M status=progress conv=sparse,sync
 ```
 
 There are two default users:
@@ -144,7 +145,13 @@ matrixOS uses OSTree for atomic updates.
 Update to the latest image:
 
 ```shell
-./vector/vector upgrade
+ostree admin upgrade
+```
+
+Or use the *experimental* vector binary (if available in your image):
+
+```shell
+vector upgrade
 ```
 
 ### Rollbacks
@@ -153,6 +160,7 @@ If an update fails, simply boot into the previous entry (`ostree:1`). To make it
 
 ```shell
 ostree admin pin 1
+ostree admin status # to see the current state
 ```
 
 ### Branch Switching
@@ -231,6 +239,24 @@ If nouveau loads despite NVIDIA drivers being present:
 ```shell
 ostree admin kargs edit-in-place --append-if-missing=modprobe.blacklist=nouveau
 ostree admin kargs edit-in-place --append-if-missing=rd.driver.blacklist=nouveau
+```
+
+### SecureBoot Shim/MokManager does not want to enroll key
+
+This has been fixed after the `20260216` release. Disable SecureBoot, boot the image
+and then upgrade your system. You may need to copy the latest `/usr/lib/grub/grub-x86_64.efi.signed` to `/efi/EFI/BOOT/grubx64.efi` or run `vector upgrade --update-bootloader`.
+
+### Vector does not run (compile) from /matrixos/vector
+
+This is because the image files are stripped off of all the unnecessary development only
+tools and libraries, including C/C++ headers. You have two options:
+
+1. Wait for new images, where vector will be shipped compiled and working out of the box.
+1. Switch to the `-full` branch, for example, for the GNOME release:
+
+```shell
+ostree remote refs origin # shows all the branches available.
+ostree admin switch origin:matrixos/amd64/dev/gnome-full && reboot
 ```
 
 ## 🚀 Roadmap Milestones
