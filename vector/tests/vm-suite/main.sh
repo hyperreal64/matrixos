@@ -40,6 +40,13 @@ _dump_logs() {
     cat /tmp/journalctl.log
 }
 
+test.start_sshd() {
+    systemctl start sshd || {
+        echo "Failed to start sshd service"
+        return 1
+    }
+}
+
 test.etc_resolv_conf() {
     local resolv_conf="/etc/resolv.conf"
 
@@ -163,6 +170,7 @@ test.ostree_status() {
 main() {
 
     local tests=(
+        test.start_sshd
         test.wait_boot_complete
         test.etc_resolv_conf
         test.build_file
