@@ -34,6 +34,8 @@ PortageReposDir=out/seeder/repos
 GpgKeysDir=out/seeder/gpg-keys
 SecureBootPrivateKey=sb-keys/db.key
 SecureBootPublicKey=sb-keys/db.pem
+DefaultSecureBootPrivateKey=sb-keys/db.key
+DefaultSecureBootPublicKey=sb-keys/db.pem
 LocksDir=locks/seeder
 
 [Releaser]
@@ -104,10 +106,13 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	check("Ostree.RepoDir", filepath.Join(rootPath, "ostree/repo"))
 
 	// Relative to PrivateGitRepoPath
-	check("Seeder.SecureBootPrivateKey", filepath.Join(defaultPrivateRepoPath, "sb-keys/db.key"))
-	check("Seeder.SecureBootPublicKey", filepath.Join(defaultPrivateRepoPath, "sb-keys/db.pem"))
+	check("Seeder.SecureBootPrivateKey", filepath.Join(privateRepoPath, "sb-keys/db.key"))
+	check("Seeder.SecureBootPublicKey", filepath.Join(privateRepoPath, "sb-keys/db.pem"))
 	check("Ostree.GpgPrivateKey", filepath.Join(privateRepoPath, "keys/priv.key"))
 	check("Ostree.GpgPublicKey", filepath.Join(privateRepoPath, "keys/pub.key"))
+	// Relative to DefaultPrivateGitRepoPath
+	check("Seeder.DefaultSecureBootPrivateKey", filepath.Join(defaultPrivateRepoPath, "sb-keys/db.key"))
+	check("Seeder.DefaultSecureBootPublicKey", filepath.Join(defaultPrivateRepoPath, "sb-keys/db.pem"))
 }
 
 func TestIniConfig_Defaults(t *testing.T) {

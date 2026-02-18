@@ -20,6 +20,7 @@ export MATRIXOS_DEV_DIR
 
 source "${MATRIXOS_DEV_DIR}/lib/ostree_lib.sh"
 source "${MATRIXOS_DEV_DIR}/lib/qa_lib.sh"
+source "${MATRIXOS_DEV_DIR}/build/seeders/lib/seeders_lib.sh"
 
 _is_help_arg() {
     local arg="${1:-}"
@@ -64,27 +65,7 @@ main() {
         ostree_lib.setup_environment
     fi
 
-    local private_git_url="${MATRIXOS_PRIVATE_EXAMPLE_GIT_REPO}"
-    local private_repo_path="${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
-    if [ ! -d "${private_repo_path}" ]; then
-        echo "${private_repo_path} does not exist. Pulling it from: ${private_git_url} ..." >&2
-        git clone --depth 1 "${private_git_url}" "${private_repo_path}"
-        (
-            cd "${private_repo_path}"
-            ./make.sh
-        )
-    elif [ ! -d "${private_repo_path}/.git" ]; then
-        echo "${private_repo_path} must be a git repo" >&2
-        return 1
-    else
-        (
-            cd "${private_repo_path}"
-            if [ ! -e .built ]; then
-                echo "Updating ${private_repo_path} ..."
-                ./make.sh
-            fi
-        )
-    fi
+    seeders_lib.maybe_initialize_matrixos_private_example "${MATRIXOS_PRIVATE_GIT_REPO_PATH}"
 
     exec "${MATRIXOS_DEV_DIR}/dev/weekly_builder.sh" --on-build-server --disable-send-mail "${@}"
 }

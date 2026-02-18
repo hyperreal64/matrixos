@@ -283,6 +283,8 @@ func (c *IniConfig) Load() error {
 	}
 
 	privateRepoDependents := []string{
+		"Seeder.SecureBootPrivateKey",
+		"Seeder.SecureBootPublicKey",
 		"Ostree.GpgPrivateKey",
 		"Ostree.GpgPublicKey",
 	}
@@ -290,8 +292,8 @@ func (c *IniConfig) Load() error {
 		c.expand(key, "matrixOS.PrivateGitRepoPath")
 	}
 	defaultPrivateRepoDependents := []string{
-		"Seeder.SecureBootPrivateKey",
-		"Seeder.SecureBootPublicKey",
+		"Seeder.DefaultSecureBootPrivateKey",
+		"Seeder.DefaultSecureBootPublicKey",
 	}
 	for _, key := range defaultPrivateRepoDependents {
 		c.expand(key, "matrixOS.DefaultPrivateGitRepoPath")

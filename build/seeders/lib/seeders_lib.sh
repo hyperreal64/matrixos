@@ -24,6 +24,35 @@ seeders_lib.retryable_cmd() {
     done
 }
 
+seeders_lib.maybe_initialize_matrixos_private_example() {
+    local private_repo_path="${1}"
+    if [ -z "${private_repo_path}" ]; then
+        echo "matrixOS private repo path is not set." >&2
+        return 1
+    fi
+    local private_git_url="${MATRIXOS_PRIVATE_EXAMPLE_GIT_REPO}"
+    if [ ! -d "${private_repo_path}" ] || [ -z "$(ls -A "${private_repo_path}")" ]; then
+        echo "${private_repo_path} does not exist or is empty. Pulling it from: ${private_git_url} ..." >&2
+        mkdir -p "${private_repo_path}"
+        git clone --depth 1 "${private_git_url}" "${private_repo_path}"
+        (
+            cd "${private_repo_path}"
+            ./make.sh
+        )
+    elif [ ! -d "${private_repo_path}/.git" ]; then
+        echo "${private_repo_path} must be a git repo" >&2
+        return 1
+    else
+        (
+            cd "${private_repo_path}"
+            if [ ! -e .built ]; then
+                echo "Updating ${private_repo_path} ..."
+                ./make.sh
+            fi
+        )
+    fi
+}
+
 seeders_lib.seeders_dir() {
     local seeders_dir="${MATRIXOS_DEV_DIR}/build/seeders"
     if [ ! -d "${seeders_dir}" ]; then

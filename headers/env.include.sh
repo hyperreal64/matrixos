@@ -55,8 +55,10 @@ MATRIXOS_OSTREE_GPG_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO
 MATRIXOS_OSTREE_GPG_PUB_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Ostree" "GpgPublicKey")
 
 # These MUST be derived from the default path, because they are used inside chroots.
-MATRIXOS_SECUREBOOT_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPrivateKey")
-MATRIXOS_SECUREBOOT_CERT_PATH=$(env_lib.get_root_var "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPublicKey")
+MATRIXOS_SECUREBOOT_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPrivateKey")
+MATRIXOS_SECUREBOOT_CERT_PATH=$(env_lib.get_root_var "${MATRIXOS_PRIVATE_GIT_REPO_PATH}" "Seeder" "SecureBootPublicKey")
+MATRIXOS_DEFAULT_SECUREBOOT_KEY_PATH=$(env_lib.get_root_var "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" "Seeder" "DefaultSecureBootPrivateKey")
+MATRIXOS_DEFAULT_SECUREBOOT_CERT_PATH=$(env_lib.get_root_var "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}" "Seeder" "DefaultSecureBootPublicKey")
 MATRIXOS_JAILBROKEN_BOOT_LOADER_ENTRY=$(env_lib.get_simple_var "Jailbreak" "BootLoaderEntry")
 
 MATRIXOS_RO_VDB=$(env_lib.get_simple_var "Releaser" "ReadOnlyVdb")

@@ -303,38 +303,22 @@ _generate_fstab() {
 }
 
 _clean_config_setup_secureboot_keys() {
-    if ! _check_available_executable "sbctl"; then
-        echo "WARNING: sbctl not found, skipping SecureBoot keys setup." >&2
-        return 0
-    fi
-    local key="${MATRIXOS_SECUREBOOT_KEY_PATH}"
-    local cert="${MATRIXOS_SECUREBOOT_CERT_PATH}"
+    local key="${MATRIXOS_DEFAULT_SECUREBOOT_KEY_PATH}"
+    local cert="${MATRIXOS_DEFAULT_SECUREBOOT_CERT_PATH}"
 
     local keydir
-    keydir=$(dirname $(dirname "${key}"))
-    if [ -d "${keydir}" ]; then
-        echo "WARNING: SecureBoot matrixOS key dir ${keydir} already exists. Skipping SB setup" >&2
-        return 0
-    fi
+    keydir=$(dirname "${key}")
+
+    seeders_lib.maybe_initialize_matrixos_private_example "${MATRIXOS_DEFAULT_PRIVATE_GIT_REPO_PATH}"
 
     echo "matrixOS uses its own secureboot key pair. This is kept private so that"
     echo "developers can verify the bootloader, kernel and modules they ship for authenticity."
     echo "For jailbroken systems, we need to create a separate set of keys, that are"
-    echo "unique to this system. For this we will use sbctl."
+    echo "unique to this system."
     echo "matrixOS SecureBoot key path: ${key}"
     echo "matrixOS SecureBoot cert path: ${cert}"
     echo "matrixOS SecureBoot overall key dir: ${keydir}"
 
-    # assume key dir = cert dir.
-    mkdir -p "${keydir}"
-    chmod -R 600 "${keydir}"
-    chown -R root "${keydir}"
-
-    # Somehow sbctl uses landlock that does not like taking custom paths, esp. when
-    # SB is not enabled.
-    sbctl --disable-landlock -e "${keydir}" create-keys || {
-        return 0;  # best effort.
-    }
     if [ ! -d "${MATRIXOS_EFI_ROOT}" ]; then
         echo "WARNING: ${MATRIXOS_EFI_ROOT} not found, skipping SecureBoot automatic MOK generation" >&2
         return 0
