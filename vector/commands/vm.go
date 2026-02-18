@@ -216,8 +216,15 @@ func (c *VMCommand) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to get matrixOS.Root from config: %w", err)
 	}
+
+	codeSrc := filepath.Join(mroot, "vector/tests/data/OVMF_CODE.fd")
+	codeDst := filepath.Join(tempDir, "OVMF_CODE.fd")
+	if err := copyFile(codeSrc, codeDst); err != nil {
+		return fmt.Errorf("failed to copy OVMF_CODE.fd: %w", err)
+	}
+
 	varsSrc := filepath.Join(mroot, "vector/tests/data/OVMF_VARS.fd")
-	varsDst := filepath.Join(tempDir, "my_vars.fd")
+	varsDst := filepath.Join(tempDir, "OVMF_VARS.fd")
 	if err := copyFile(varsSrc, varsDst); err != nil {
 		return fmt.Errorf("failed to copy OVMF_VARS.fd: %w", err)
 	}
@@ -256,6 +263,7 @@ func (c *VMCommand) Run() error {
 		"-enable-kvm", "-m", c.memory,
 		"-cpu", "host", "-smp", c.cpus,
 		"-nic", fmt.Sprintf("user,model=virtio-net-pci,hostfwd=tcp::%s-:22", c.port),
+		"-drive", "if=pflash,format=raw,readonly=on,file=" + codeDst,
 		"-drive", "if=pflash,format=raw,file=" + varsDst,
 		"-drive", fmt.Sprintf("file=%s,format=%s,if=virtio", c.imagePath, format),
 		"-drive", fmt.Sprintf("file=%s,format=raw,if=virtio", testImageFile.Name()),
