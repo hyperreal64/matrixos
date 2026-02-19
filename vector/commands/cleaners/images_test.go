@@ -171,7 +171,7 @@ func TestImagesCleaner_Run(t *testing.T) {
 			mockConfig := &MockConfig{values: make(map[string]interface{})}
 			mockConfig.values["ImagesCleaner.DryRun"] = tt.dryRun
 			mockConfig.values["ImagesCleaner.MinAmountOfImages"] = tt.minImages
-			mockConfig.values["Imager.OutDir"] = subTempDir
+			mockConfig.values["Imager.ImagesDir"] = subTempDir
 
 			cleaner := &ImagesCleaner{}
 			err = cleaner.Init(mockConfig)
