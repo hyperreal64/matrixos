@@ -22,7 +22,7 @@ const (
 
 // newTestUpgradeCommand creates an UpgradeCommand with injected mock dependencies,
 // bypassing initConfig/initOstree which require real config files and ostree binary.
-func newTestUpgradeCommand(ot IOstree, args []string) (*UpgradeCommand, error) {
+func newTestUpgradeCommand(ot cds.IOstree, args []string) (*UpgradeCommand, error) {
 	cmd := &UpgradeCommand{}
 	cmd.ot = ot
 	cmd.StartUI()
@@ -32,9 +32,9 @@ func newTestUpgradeCommand(ot IOstree, args []string) (*UpgradeCommand, error) {
 	return cmd, nil
 }
 
-// newTestUpgradeCommandWithConfig creates an UpgradeCommand with mock IOstree and
+// newTestUpgradeCommandWithConfig creates an UpgradeCommand with mock cds.IOstree and
 // a real config from a file, for tests that need config values (e.g. bootloader).
-func newTestUpgradeCommandWithConfig(ot IOstree, cfg *testConfig, args []string) (*UpgradeCommand, error) {
+func newTestUpgradeCommandWithConfig(ot cds.IOstree, cfg *testConfig, args []string) (*UpgradeCommand, error) {
 	cmd := &UpgradeCommand{}
 	cmd.ot = ot
 	cmd.cfg = cfg

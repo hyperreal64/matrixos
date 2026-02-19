@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// mockOstree implements IOstree for testing commands.
+// mockOstree implements cds.IOstree for testing commands.
 // Only the fields/methods relevant to each test need to be configured;
 // everything else returns safe zero values.
 type mockOstree struct {
@@ -120,7 +120,7 @@ func (m *mockOstree) ListPackages(commit string, _ bool) ([]string, error) {
 
 // newTestBranchCommand creates a BranchCommand with injected mock dependencies,
 // bypassing initConfig/initOstree which require real config files.
-func newTestBranchCommand(ot IOstree) *BranchCommand {
+func newTestBranchCommand(ot cds.IOstree) *BranchCommand {
 	cmd := &BranchCommand{}
 	cmd.ot = ot
 	return cmd
