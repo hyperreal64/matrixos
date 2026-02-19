@@ -1,0 +1,42 @@
+name: Upload Vendored Source
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    name: Vendor and Upload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25.0'
+
+      - name: Vendor Dependencies
+        run: |
+          echo "::group::Go Mod Vendor"
+          go mod tidy
+          go mod vendor
+          echo "::endgroup::"
+
+          ASSET_NAME="matrixos-${{ github.ref_name }}-vendor.tar.gz"
+          echo "Creating archive: $ASSET_NAME"
+
+          tar --exclude='.git' --exclude='.github' -czf "$ASSET_NAME" .
+          echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_ENV
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.ASSET_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
