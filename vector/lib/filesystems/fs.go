@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -25,6 +26,100 @@ var (
 // BLKFLSBUF is the ioctl command to flush block device buffers.
 // It is commonly 0x1261 on Linux.
 const BLKFLSBUF = 0x1261
+
+// PathMode represents the mode of a path.
+type PathMode struct {
+	Type   string      // E.g., "-", "d", "l"
+	SetUID bool        // Set-user-ID bit
+	SetGID bool        // Set-group-ID bit
+	Sticky bool        // Sticky bit
+	Perms  fs.FileMode // Stored as uint32, printed as octal
+}
+
+// PathInfo represents the information of a path in an ostree commit.
+type PathInfo struct {
+	Mode *PathMode // Mode information of the path
+	Uid  uint64    // User ID of the owner
+	Gid  uint64    // Group ID of the owner
+	Size uint64    // Size of the file in bytes
+	Path string    // Full path of the file
+	Link string    // Target of the symlink if Type is "l"
+}
+
+// ListContents lists the contents of a path on the filesystem.
+// It walks the directory tree recursively and returns information
+// about regular files, directories, and symlinks, ignoring everything else.
+func ListContents(path string) ([]*PathInfo, error) {
+	if path == "" {
+		return nil, fmt.Errorf("missing path parameter")
+	}
+
+	var pis []*PathInfo
+
+	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		mode := info.Mode()
+		ft := mode.Type()
+
+		var typeStr string
+		switch {
+		case ft.IsRegular():
+			typeStr = "-"
+		case ft.IsDir():
+			typeStr = "d"
+		case ft&fs.ModeSymlink != 0:
+			typeStr = "l"
+		default:
+			// Ignore anything that is not a regular file, directory, or symlink
+			return nil
+		}
+
+		pm := &PathMode{
+			Type:   typeStr,
+			SetUID: mode&fs.ModeSetuid != 0,
+			SetGID: mode&fs.ModeSetgid != 0,
+			Sticky: mode&fs.ModeSticky != 0,
+			Perms:  mode.Perm(),
+		}
+
+		pi := &PathInfo{
+			Mode: pm,
+			Size: uint64(info.Size()),
+			Path: p,
+		}
+
+		// Get UID/GID from the underlying syscall stat
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			pi.Uid = uint64(stat.Uid)
+			pi.Gid = uint64(stat.Gid)
+		}
+
+		// Resolve symlink target
+		if typeStr == "l" {
+			target, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			pi.Link = target
+		}
+
+		pis = append(pis, pi)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return pis, nil
+}
 
 // DevicesSettle waits for udev events to settle.
 func DevicesSettle() {
