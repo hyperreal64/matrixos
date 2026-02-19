@@ -11,20 +11,21 @@ import (
 // Only the fields/methods relevant to each test need to be configured;
 // everything else returns safe zero values.
 type mockOstree struct {
-	root           string
-	rootErr        error
-	deployments    []cds.Deployment
-	deploymentsErr error
-	refs           []string
-	refsErr        error
-	switchRef      string
-	switchErr      error
-	lastCommit     string
-	lastCommitErr  error
-	upgradeErr     error
-	upgradeArgs    []string
-	packages       []string
-	packagesErr    error
+	root             string
+	rootErr          error
+	deployments      []cds.Deployment
+	deploymentsErr   error
+	refs             []string
+	refsErr          error
+	switchRef        string
+	switchErr        error
+	lastCommit       string
+	lastCommitErr    error
+	upgradeErr       error
+	upgradeArgs      []string
+	packages         []string
+	packagesErr      error
+	packagesByCommit map[string][]string
 }
 
 // Config accessors — return zero values (not used in branch/upgrade tests).
@@ -107,7 +108,12 @@ func (m *mockOstree) Upgrade(args []string, _ bool) error {
 	return m.upgradeErr
 }
 
-func (m *mockOstree) ListPackages(commit, sysroot string, _ bool) ([]string, error) {
+func (m *mockOstree) ListPackages(commit string, _ bool) ([]string, error) {
+	if m.packagesByCommit != nil {
+		if pkgs, ok := m.packagesByCommit[commit]; ok {
+			return pkgs, m.packagesErr
+		}
+	}
 	return m.packages, m.packagesErr
 }
 

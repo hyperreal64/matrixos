@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -81,11 +79,6 @@ func (c *UpgradeCommand) Run() error {
 		return fmt.Errorf("this command must be run as root")
 	}
 
-	root, err := c.ot.Root()
-	if err != nil {
-		return fmt.Errorf("failed to get ostree root: %w", err)
-	}
-
 	oldCommit, ref, err := c.getCurrentState()
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %w", err)
@@ -131,7 +124,7 @@ func (c *UpgradeCommand) Run() error {
 
 	fmt.Printf("\n%s%sAnalyzing package changes...%s\n",
 		c.cBold, c.iconPackage, c.cReset)
-	if err := c.analyzeDiff(root, oldCommit, newCommit); err != nil {
+	if err := c.analyzeDiff(oldCommit, newCommit); err != nil {
 		fmt.Printf("Warning: failed to analyze diff: %v\n", err)
 	}
 
@@ -376,14 +369,23 @@ func (c *UpgradeCommand) promptUser(prompt string) bool {
 	return response == "y" || response == "yes"
 }
 
-func (c *UpgradeCommand) analyzeDiff(root, oldSHA, newSHA string) error {
-	oldPkgs, err := c.listPackages(root, oldSHA)
+func (c *UpgradeCommand) analyzeDiff(oldSHA, newSHA string) error {
+	opkgs, err := c.ot.ListPackages(oldSHA, false)
 	if err != nil {
 		return err
 	}
-	newPkgs, err := c.listPackages(root, newSHA)
+	oldPkgs := make(map[string]bool)
+	for _, pkg := range opkgs {
+		oldPkgs[pkg] = true
+	}
+
+	npkgs, err := c.ot.ListPackages(newSHA, false)
 	if err != nil {
 		return err
+	}
+	newPkgs := make(map[string]bool)
+	for _, pkg := range npkgs {
+		newPkgs[pkg] = true
 	}
 
 	removed := make(map[string]bool)
@@ -448,58 +450,6 @@ func (c *UpgradeCommand) analyzeDiff(root, oldSHA, newSHA string) error {
 
 	fmt.Println(c.separator)
 	return nil
-}
-
-func (c *UpgradeCommand) listPackages(root, commit string) (map[string]bool, error) {
-	pkgs, err := c.listPackagesFromPath(root, commit, "/usr/var-db-pkg")
-	if err == nil && len(pkgs) > 0 {
-		return pkgs, nil
-	}
-	return c.listPackagesFromPath(root, commit, "/var/db/pkg")
-}
-
-func (c *UpgradeCommand) listPackagesFromPath(
-	root, commit, path string,
-) (map[string]bool, error) {
-	cmd := execCommand("ostree", getRepoFlag(root), "ls", "-R", commit, "--", path)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	pkgs := make(map[string]bool)
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-
-	prefix := path
-	if !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
-	}
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Fields(line)
-		if len(parts) < 5 {
-			continue
-		}
-
-		mode := parts[0]
-		fpath := parts[4]
-
-		if !strings.HasPrefix(mode, "d") {
-			continue
-		}
-		if !strings.HasPrefix(fpath, prefix) {
-			continue
-		}
-
-		relPath := strings.TrimPrefix(fpath, prefix)
-		relPath = strings.TrimSuffix(relPath, "/")
-
-		if strings.Count(relPath, "/") == 1 {
-			pkgs[relPath] = true
-		}
-	}
-	return pkgs, nil
 }
 
 func (c *UpgradeCommand) getPackageBaseName(pkg string) string {

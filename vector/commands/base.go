@@ -68,7 +68,7 @@ type IOstree interface {
 	Switch(ref string, verbose bool) error
 	Deploy(ref string, bootArgs []string, verbose bool) error
 	Upgrade(args []string, verbose bool) error
-	ListPackages(commit, sysroot string, verbose bool) ([]string, error)
+	ListPackages(commit string, verbose bool) ([]string, error)
 }
 
 type BaseCommand struct {

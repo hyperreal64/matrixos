@@ -104,6 +104,10 @@ func setupUpgradeHarness(t *testing.T, currentSHA, newSHA string) *upgradeHarnes
 			},
 		},
 		lastCommit: newSHA,
+		packagesByCommit: map[string][]string{
+			currentSHA: {"app-misc/foo-1.0"},
+			newSHA:     {"app-misc/foo-1.1"},
+		},
 	}
 
 	return &upgradeHarness{

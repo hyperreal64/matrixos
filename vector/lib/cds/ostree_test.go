@@ -208,21 +208,21 @@ func TestCommitAndListPackages(t *testing.T) {
 	}
 
 	// Create a fake sysroot structure because ListPackages expects sysroot/ostree/repo
-	sysroot := t.TempDir()
-	sysrootRepo := filepath.Join(sysroot, "ostree", "repo")
-	if err := os.MkdirAll(filepath.Dir(sysrootRepo), 0755); err != nil {
+	root := t.TempDir()
+	rootRepo := filepath.Join(root, "ostree", "repo")
+	if err := os.MkdirAll(filepath.Dir(rootRepo), 0755); err != nil {
 		t.Fatal(err)
 	}
 	// Symlink the repo we created to the sysroot location
-	if err := os.Symlink(repoDir, sysrootRepo); err != nil {
+	if err := os.Symlink(repoDir, rootRepo); err != nil {
 		t.Fatal(err)
 	}
 	// Also create the vdb dir in sysroot as ListPackages checks for existence
-	if err := os.MkdirAll(filepath.Join(sysroot, "var", "db", "pkg"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "var", "db", "pkg"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	pkgs, err := o.ListPackages(commit, sysroot, false)
+	pkgs, err := o.ListPackages(commit, false)
 	if err != nil {
 		t.Fatalf("ListPackages failed: %v", err)
 	}
@@ -1370,7 +1370,7 @@ func TestListPackagesErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
-	if _, err := o.ListPackages("commit", "/sysroot", false); err == nil {
+	if _, err := o.ListPackages("commit", false); err == nil {
 		t.Error("ListPackages should fail if ReadOnlyVdb is missing")
 	}
 
@@ -1381,7 +1381,7 @@ func TestListPackagesErrors(t *testing.T) {
 	}
 	o, _ = NewOstree(cfg)
 	// Sysroot does not exist
-	if _, err := o.ListPackages("commit", "/sysroot", false); err == nil {
+	if _, err := o.ListPackages("commit", false); err == nil {
 		t.Error("ListPackages should fail if sysroot/var/db/pkg does not exist")
 	}
 }
@@ -1569,6 +1569,7 @@ func TestListPackagesMocked(t *testing.T) {
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
+			"Ostree.Root":          {"/"},
 		},
 	}
 	o, err := NewOstree(cfg)
@@ -1591,7 +1592,7 @@ d00755 0 0 0 /var/db/pkg/cat/other
 	sysroot := t.TempDir()
 	os.MkdirAll(filepath.Join(sysroot, "var/db/pkg"), 0755)
 
-	pkgs, err := o.ListPackages("commit", sysroot, false)
+	pkgs, err := o.ListPackages("commit", false)
 	if err != nil {
 		t.Fatalf("ListPackages failed: %v", err)
 	}

@@ -2205,30 +2205,30 @@ func (o *Ostree) Upgrade(args []string, verbose bool) error {
 }
 
 // ListPackages lists the packages in a commit.
-func (o *Ostree) ListPackages(commit, sysroot string, verbose bool) ([]string, error) {
+func (o *Ostree) ListPackages(commit string, verbose bool) ([]string, error) {
 	if commit == "" {
 		return nil, errors.New("missing commit parameter")
 	}
-	if sysroot == "" {
-		return nil, errors.New("missing sysroot parameter")
+	root, err := o.Root()
+	if err != nil {
+		return nil, err
 	}
-
-	repoDir := filepath.Join(strings.TrimRight(sysroot, "/"), "ostree", "repo")
 
 	roVdb, err := o.cfg.GetItem("Releaser.ReadOnlyVdb")
 	if err != nil {
 		return nil, err
 	}
 
-	vdb := roVdb
-	vardbpkg := filepath.Join(strings.TrimRight(sysroot, "/"), roVdb)
-	if !directoryExists(vardbpkg) {
-		vardbpkg = filepath.Join(strings.TrimRight(sysroot, "/"), "var", "db", "pkg")
-		vdb = "/var/db/pkg"
+	pkgs, err := o.listPackagesFromPath(root, roVdb, commit, verbose)
+	if err == nil && len(pkgs) > 0 {
+		return pkgs, nil
 	}
-	if !directoryExists(vardbpkg) {
-		return nil, fmt.Errorf("%s does not exist", vardbpkg)
-	}
+	return o.listPackagesFromPath(root, "/var/db/pkg", commit, verbose)
+}
+
+func (o *Ostree) listPackagesFromPath(root, path, commit string, verbose bool) ([]string, error) {
+	repoDir := filepath.Join(root, "ostree", "repo")
+	vardbpkg := filepath.Join(root, path)
 
 	stdout, err := o.ostreeRunCapture(
 		verbose,
@@ -2237,33 +2237,42 @@ func (o *Ostree) ListPackages(commit, sysroot string, verbose bool) ([]string, e
 		"-R",
 		commit,
 		"--",
-		vdb,
+		vardbpkg,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	var packages []string
+	var pkgs []string
+
+	prefix := vardbpkg
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "d") {
+		parts := strings.Fields(line)
+		if len(parts) < 5 {
 			continue
 		}
 
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
+		mode := parts[0]
+		fpath := parts[4]
+
+		if !strings.HasPrefix(mode, "d") {
+			continue
+		}
+		if !strings.HasPrefix(fpath, prefix) {
 			continue
 		}
 
-		path := fields[4]
-		// ostree ls output paths are usually relative (no leading slash).
-		// vdb config usually has a leading slash. Normalize both.
-		path = strings.TrimPrefix(path, "/")
-		path = strings.TrimPrefix(path, strings.TrimPrefix(vdb, "/")+"/")
+		relPath := strings.TrimPrefix(fpath, prefix)
+		relPath = strings.TrimSuffix(relPath, "/")
 
-		if strings.Count(path, "/") == 1 {
-			packages = append(packages, path)
+		if strings.Count(relPath, "/") == 1 {
+			pkgs = append(pkgs, relPath)
 		}
 	}
 
@@ -2271,9 +2280,8 @@ func (o *Ostree) ListPackages(commit, sysroot string, verbose bool) ([]string, e
 		return nil, err
 	}
 
-	sort.Strings(packages)
-
-	return packages, nil
+	sort.Strings(pkgs)
+	return pkgs, nil
 }
 
 // ConfigDiff runs "ostree admin --sysroot=<root> config-diff" and returns a
