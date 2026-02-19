@@ -28,9 +28,11 @@ jobs:
           echo "::endgroup::"
 
           ASSET_NAME="matrixos-${{ github.ref_name }}-vendor.tar.gz"
-          echo "Creating archive: $ASSET_NAME"
 
-          tar --exclude='.git' --exclude='.github' -czf "$ASSET_NAME" .
+          echo "Creating archive: $ASSET_NAME"
+          tar --exclude='.git' --exclude='.github' -czf "/tmp/$ASSET_NAME" .
+
+          mv "/tmp/$ASSET_NAME" .
           echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_ENV
 
       - name: Upload Release Asset
