@@ -315,6 +315,112 @@ func TestMountpointToDevice(t *testing.T) {
 	})
 }
 
+func TestMountpointToUUID(t *testing.T) {
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
+
+	t.Run("Success", func(t *testing.T) {
+		expectedUUID := "abcd-1234-ef56-7890"
+		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedUUID+"\n")
+		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+
+		uuid, err := MountpointToUUID("/mnt")
+		if err != nil {
+			t.Fatalf("MountpointToUUID failed: %v", err)
+		}
+		if uuid != expectedUUID {
+			t.Errorf("Expected UUID %s, got %s", expectedUUID, uuid)
+		}
+	})
+
+	t.Run("NoMountpoint", func(t *testing.T) {
+		_, err := MountpointToUUID("")
+		if err == nil {
+			t.Error("Expected error for missing mountpoint, got nil")
+		}
+	})
+
+	t.Run("CommandFail", func(t *testing.T) {
+		os.Setenv("MOCK_FINDMNT_EXIT_CODE", "1")
+		defer os.Unsetenv("MOCK_FINDMNT_EXIT_CODE")
+
+		_, err := MountpointToUUID("/mnt")
+		if err == nil {
+			t.Error("Expected error from findmnt failure, got nil")
+		}
+	})
+
+	t.Run("NoOutput", func(t *testing.T) {
+		os.Setenv("MOCK_FINDMNT_OUTPUT", "")
+		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+
+		_, err := MountpointToUUID("/mnt")
+		if err == nil {
+			t.Error("Expected error for no UUID found, got nil")
+		}
+	})
+}
+
+func TestMountpointToFSType(t *testing.T) {
+	ExecCommand = fakeExecCommand
+	defer func() { ExecCommand = exec.Command }()
+
+	t.Run("Success", func(t *testing.T) {
+		expectedFSType := "ext4"
+		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedFSType+"\n")
+		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+
+		fstype, err := MountpointToFSType("/mnt")
+		if err != nil {
+			t.Fatalf("MountpointToFSType failed: %v", err)
+		}
+		if fstype != expectedFSType {
+			t.Errorf("Expected FSTYPE %s, got %s", expectedFSType, fstype)
+		}
+	})
+
+	t.Run("SuccessVfat", func(t *testing.T) {
+		expectedFSType := "vfat"
+		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedFSType+"\n")
+		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+
+		fstype, err := MountpointToFSType("/boot/efi")
+		if err != nil {
+			t.Fatalf("MountpointToFSType failed: %v", err)
+		}
+		if fstype != expectedFSType {
+			t.Errorf("Expected FSTYPE %s, got %s", expectedFSType, fstype)
+		}
+	})
+
+	t.Run("NoMountpoint", func(t *testing.T) {
+		_, err := MountpointToFSType("")
+		if err == nil {
+			t.Error("Expected error for missing mountpoint, got nil")
+		}
+	})
+
+	t.Run("CommandFail", func(t *testing.T) {
+		os.Setenv("MOCK_FINDMNT_EXIT_CODE", "1")
+		defer os.Unsetenv("MOCK_FINDMNT_EXIT_CODE")
+
+		_, err := MountpointToFSType("/mnt")
+		if err == nil {
+			t.Error("Expected error from findmnt failure, got nil")
+		}
+	})
+
+	t.Run("NoOutput", func(t *testing.T) {
+		os.Setenv("MOCK_FINDMNT_OUTPUT", "")
+		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+
+		_, err := MountpointToFSType("/mnt")
+		if err == nil {
+			t.Error("Expected error for no FSTYPE found, got nil")
+		}
+	})
+}
+
 func TestListSubmounts(t *testing.T) {
 	ExecCommand = fakeExecCommand
 	defer func() { ExecCommand = exec.Command }()
