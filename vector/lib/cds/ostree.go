@@ -89,7 +89,7 @@ type IOstree interface {
 	LocalRefs(verbose bool) ([]string, error)
 	RemoteRefs(verbose bool) ([]string, error)
 	ListRootRemoteRefs(verbose bool) ([]string, error)
-	ListRootDeployments(verbose bool) ([]Deployment, error)
+	ListDeployments(verbose bool) ([]Deployment, error)
 	DeployedRootfs(ref string, verbose bool) (string, error)
 	BootedRef(verbose bool) (string, error)
 	BootedHash(verbose bool) (string, error)
@@ -1745,8 +1745,8 @@ func (o *Ostree) ListRootRemoteRefs(verbose bool) ([]string, error) {
 	return o.listRemoteRefsFromRepo(repoDir, remote, verbose)
 }
 
-// ListRootDeployments lists the deployments in the / filesystem.
-func (o *Ostree) ListRootDeployments(verbose bool) ([]Deployment, error) {
+// ListDeployments lists the deployments in the / filesystem.
+func (o *Ostree) ListDeployments(verbose bool) ([]Deployment, error) {
 	root, err := o.Root()
 	if err != nil {
 		return nil, err

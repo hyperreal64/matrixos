@@ -60,7 +60,7 @@ func (c *BranchCommand) parseArgs(args []string) error {
 func (c *BranchCommand) Run() error {
 	switch c.sub {
 	case "show":
-		deployments, err := c.ot.ListRootDeployments(false)
+		deployments, err := c.ot.ListDeployments(false)
 		if err != nil {
 			return fmt.Errorf("failed to list deployments: %w", err)
 		}

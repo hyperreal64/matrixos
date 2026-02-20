@@ -85,7 +85,7 @@ func (m *mockOstree) Root() (string, error) {
 	return m.root, m.rootErr
 }
 
-func (m *mockOstree) ListRootDeployments(_ bool) ([]cds.Deployment, error) {
+func (m *mockOstree) ListDeployments(_ bool) ([]cds.Deployment, error) {
 	return m.deployments, m.deploymentsErr
 }
 
