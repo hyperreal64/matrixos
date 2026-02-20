@@ -66,7 +66,6 @@ func (m *mockOstree) UpdateSummary(bool) error                                  
 func (m *mockOstree) AddRemote(bool) error                                         { return nil }
 func (m *mockOstree) AddRemoteWithSysroot(string, bool) error                      { return nil }
 func (m *mockOstree) LocalRefs(bool) ([]string, error)                             { return nil, nil }
-func (m *mockOstree) RemoteRefs(bool) ([]string, error)                            { return nil, nil }
 func (m *mockOstree) ListContents(string, string, bool) (*[]fslib.PathInfo, error) { return nil, nil }
 func (m *mockOstree) ListEtcChanges(string, string) ([]cds.EtcChange, error)       { return nil, nil }
 func (m *mockOstree) DeployedRootfs(string, bool) (string, error)                  { return "", nil }
@@ -86,7 +85,7 @@ func (m *mockOstree) ListDeployments(_ bool) ([]cds.Deployment, error) {
 	return m.deployments, m.deploymentsErr
 }
 
-func (m *mockOstree) ListRootRemoteRefs(_ bool) ([]string, error) {
+func (m *mockOstree) RemoteRefs(_ bool) ([]string, error) {
 	return m.refs, m.refsErr
 }
 

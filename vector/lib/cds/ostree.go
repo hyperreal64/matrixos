@@ -88,7 +88,6 @@ type IOstree interface {
 	AddRemoteWithSysroot(sysroot string, verbose bool) error
 	LocalRefs(verbose bool) ([]string, error)
 	RemoteRefs(verbose bool) ([]string, error)
-	ListRootRemoteRefs(verbose bool) ([]string, error)
 	ListDeployments(verbose bool) ([]Deployment, error)
 	DeployedRootfs(ref string, verbose bool) (string, error)
 	BootedRef(verbose bool) (string, error)
@@ -1723,20 +1722,6 @@ func (o *Ostree) RemoteRefs(verbose bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	remote, err := o.Remote()
-	if err != nil {
-		return nil, err
-	}
-	return o.listRemoteRefsFromRepo(repoDir, remote, verbose)
-}
-
-// ListRootRemoteRefs lists the remote available ostree refs in the root filesystem.
-func (o *Ostree) ListRootRemoteRefs(verbose bool) ([]string, error) {
-	root, err := o.Root()
-	if err != nil {
-		return nil, err
-	}
-	repoDir := filepath.Join(root, "ostree", "repo")
 	remote, err := o.Remote()
 	if err != nil {
 		return nil, err
