@@ -96,7 +96,7 @@ func (c *UpgradeCommand) Run() error {
 		return fmt.Errorf("failed to fetch updates: %w", err)
 	}
 
-	newCommit, err := c.ot.LastCommitWithRoot(ref, false)
+	newCommit, err := c.ot.LastCommit(ref, false)
 	if err != nil {
 		return fmt.Errorf("failed to get new commit: %w", err)
 	}
