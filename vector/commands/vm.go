@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"matrixos/vector/lib/config"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,8 +128,8 @@ func (vm *VMDriver) Wait() error {
 
 // VMCommand checks matrixOS images via QEMU
 type VMCommand struct {
+	BaseCommand
 	fs          *flag.FlagSet
-	cfg         config.IConfig
 	imagePath   string
 	memory      string
 	port        string
@@ -168,21 +167,9 @@ func (c *VMCommand) Name() string {
 	return c.fs.Name()
 }
 
-func (c *VMCommand) initConfig() error {
-	cfg, err := config.NewIniConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-	if err := cfg.Load(); err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-	c.cfg = cfg
-	return nil
-}
-
 // Init initializes the command
 func (c *VMCommand) Init(args []string) error {
-	if err := c.initConfig(); err != nil {
+	if err := c.initBaseConfig(); err != nil {
 		return err
 	}
 	c.fs.Usage = func() {
