@@ -90,7 +90,6 @@ type IOstree interface {
 	RemoteRefs(verbose bool) ([]string, error)
 	ListRootRemoteRefs(verbose bool) ([]string, error)
 	ListRootDeployments(verbose bool) ([]Deployment, error)
-	ListDeploymentsInRoot(root string, verbose bool) ([]Deployment, error)
 	DeployedRootfs(ref string, verbose bool) (string, error)
 	BootedRef(verbose bool) (string, error)
 	BootedHash(verbose bool) (string, error)
@@ -1752,12 +1751,6 @@ func (o *Ostree) ListRootDeployments(verbose bool) ([]Deployment, error) {
 	if err != nil {
 		return nil, err
 	}
-	return o.listDeploymentsFromSysroot(root, verbose)
-}
-
-// ListDeploymentsInRoot lists the deployments in the given root,
-// which is usually used for chroot operations.
-func (o *Ostree) ListDeploymentsInRoot(root string, verbose bool) ([]Deployment, error) {
 	return o.listDeploymentsFromSysroot(root, verbose)
 }
 
