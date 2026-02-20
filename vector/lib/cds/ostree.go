@@ -73,7 +73,6 @@ type IOstree interface {
 	// Repo operations
 	BootCommit(sysroot string) (string, error)
 	ListRemotes(verbose bool) ([]string, error)
-	ListRootRemotes(verbose bool) ([]string, error)
 	LastCommit(ref string, verbose bool) (string, error)
 	LastCommitWithSysroot(ref string, verbose bool) (string, error)
 	LastCommitWithRoot(ref string, verbose bool) (string, error)
@@ -1182,16 +1181,6 @@ func (o *Ostree) ListRemotes(verbose bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return o.listRemotesFromRepo(repoDir, verbose)
-}
-
-// ListRootRemotes lists all the remote refs in the root filesystem's ostree repository.
-func (o *Ostree) ListRootRemotes(verbose bool) ([]string, error) {
-	root, err := o.Root()
-	if err != nil {
-		return nil, err
-	}
-	repoDir := filepath.Join(root, "ostree", "repo")
 	return o.listRemotesFromRepo(repoDir, verbose)
 }
 
