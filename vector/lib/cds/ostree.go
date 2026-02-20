@@ -968,7 +968,7 @@ func (o *Ostree) GpgEnabled() (bool, error) {
 	return o.cfg.GetBool("Ostree.Gpg")
 }
 
-// GpgPublicKeyPath returns the user defined /etc/matrixos-private placed
+// GpgPublicKeyPath returns the user defined private/ placed
 // GPG private key path.
 func (o *Ostree) GpgPrivateKeyPath() (string, error) {
 	pk, err := o.cfg.GetItem("Ostree.GpgPrivateKey")
@@ -981,7 +981,7 @@ func (o *Ostree) GpgPrivateKeyPath() (string, error) {
 	return pk, nil
 }
 
-// GpgPublicKeyPath returns the user defined /etc/matrixos-private placed
+// GpgPublicKeyPath returns the user defined private/ placed
 // GPG public key path.
 func (o *Ostree) GpgPublicKeyPath() (string, error) {
 	pk, err := o.cfg.GetItem("Ostree.GpgPublicKey")
@@ -1206,7 +1206,7 @@ func (o *Ostree) LastCommit(ref string, verbose bool) (string, error) {
 
 // LastCommitWithSysroot returns the last commit for a given ref in a sysroot.
 func (o *Ostree) LastCommitWithSysroot(ref string, verbose bool) (string, error) {
-	sysroot, err := o.cfg.GetItem("Ostree.Sysroot")
+	sysroot, err := o.Sysroot()
 	if err != nil {
 		return "", err
 	}
