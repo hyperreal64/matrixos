@@ -20,6 +20,24 @@ import (
 	"strings"
 )
 
+const (
+	// EtcActionAdd means the file was added upstream and will appear in /etc.
+	EtcActionAdd EtcChangeAction = "add"
+	// EtcActionUpdate means upstream modified the file and the user did not;
+	// the file in /etc will be replaced with the new version.
+	EtcActionUpdate EtcChangeAction = "update"
+	// EtcActionRemove means upstream removed the file and the user did not
+	// modify it; the file will be removed from /etc.
+	EtcActionRemove EtcChangeAction = "remove"
+	// EtcActionConflict means both upstream and the user changed the file
+	// (or one side added/removed while the other modified); manual
+	// resolution is required.
+	EtcActionConflict EtcChangeAction = "conflict"
+	// EtcActionUserOnly means the user made a change that upstream did not
+	// touch; the file in /etc stays as-is.
+	EtcActionUserOnly EtcChangeAction = "user-only"
+)
+
 // IOstree defines the interface for ostree operations.
 // It mirrors all public methods of Ostree for testability.
 type IOstree interface {
@@ -85,6 +103,7 @@ type IOstree interface {
 	ListPackages(commit string, verbose bool) ([]string, error)
 	ListContents(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
 	ListContentsInRoot(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
+	ListEtcChanges(oldSHA, newSHA string) ([]EtcChange, error)
 }
 
 // runCommand runs a generic binary with args and stdout/stderr handling.
@@ -2309,36 +2328,54 @@ func ParseModeString(input string) (*fslib.PathMode, error) {
 	return &mode, nil
 }
 
-// ParseOstreeLsLine parses a line from `ostree ls` output into a PathInfo struct.
-func ParseOstreeLsLine(line string) (*fslib.PathInfo, error) {
+// ParseOstreeLsChecksumLine parses a line from `ostree ls -C` output into a PathInfo struct.
+func ParseOstreeLsChecksumLine(line string) (*fslib.PathInfo, error) {
 	parts := strings.Fields(line)
-	if len(parts) < 5 {
+	if len(parts) < 6 {
 		return nil, fmt.Errorf("unexpected format for ostree ls line: %q", line)
 	}
+	idx := 0
 
 	pi := &fslib.PathInfo{}
-	mode, err := ParseModeString(parts[0])
+	mode, err := ParseModeString(parts[idx])
 	if err != nil {
 		return nil, err
 	}
 	pi.Mode = mode
+	idx++
 
-	uid, gid := parts[1], parts[2]
+	uid, gid := parts[idx], parts[idx+1]
+	idx += 2
+
 	pi.Uid, err = strconv.ParseUint(uid, 10, 32)
 	if err != nil {
 		return nil, err
 	}
+
 	pi.Gid, err = strconv.ParseUint(gid, 10, 32)
 	if err != nil {
 		return nil, err
 	}
-	pi.Size, err = strconv.ParseUint(parts[3], 10, 64)
+
+	pi.Size, err = strconv.ParseUint(parts[idx], 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	pi.Path = parts[4]
-	if pi.Mode.Type == "l" && len(parts) >= 6 {
-		pi.Link = parts[5]
+	idx++
+
+	if pi.Mode.Type == "d" {
+		// Directories have two checksums, use the second one.
+		idx++
+	}
+
+	pi.OSTreeChecksum = parts[idx]
+	idx++
+
+	pi.Path = parts[idx]
+	idx++
+	if pi.Mode.Type == "l" && len(parts) >= 8 {
+		idx++
+		pi.Link = parts[idx]
 	}
 	return pi, nil
 }
@@ -2380,6 +2417,7 @@ func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) 
 		verbose,
 		"--repo="+repoDir,
 		"ls",
+		"-C",
 		"-R",
 		commit,
 		"--",
@@ -2399,7 +2437,7 @@ func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) 
 			continue
 		}
 
-		pi, err := ParseOstreeLsLine(line)
+		pi, err := ParseOstreeLsChecksumLine(line)
 		if err != nil {
 			return nil, err
 		}
@@ -2410,6 +2448,196 @@ func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) 
 		return nil, err
 	}
 	return &pis, nil
+}
+
+// EtcChangeAction describes what will happen to a file in /etc during merge.
+type EtcChangeAction string
+
+// EtcChange describes a single change detected by the 3-way /etc diff.
+type EtcChange struct {
+	Path   string          // Relative path within /etc (e.g. "conf.d/foo")
+	Action EtcChangeAction // What will happen to this path
+	Old    *fslib.PathInfo // State in old commit (nil if absent)
+	New    *fslib.PathInfo // State in new commit (nil if absent)
+	User   *fslib.PathInfo // Current live state (nil if absent)
+}
+
+// indexPathInfoSlice builds a map from relative path to *PathInfo.
+// It strips the given prefix from each entry's Path and skips the root
+// directory itself (empty relative path after stripping).
+func indexPathInfoSlice(items *[]fslib.PathInfo, prefix string) map[string]*fslib.PathInfo {
+	if items == nil {
+		return map[string]*fslib.PathInfo{}
+	}
+	m := make(map[string]*fslib.PathInfo, len(*items))
+	for i := range *items {
+		pi := &(*items)[i]
+		rel := strings.TrimPrefix(pi.Path, prefix)
+		rel = strings.TrimPrefix(rel, "/")
+		if rel == "" {
+			continue
+		}
+		m[rel] = pi
+	}
+	return m
+}
+
+// indexPathInfoPtrSlice is like indexPathInfoSlice but for []*PathInfo.
+func indexPathInfoPtrSlice(items []*fslib.PathInfo, prefix string) map[string]*fslib.PathInfo {
+	m := make(map[string]*fslib.PathInfo, len(items))
+	for _, pi := range items {
+		rel := strings.TrimPrefix(pi.Path, prefix)
+		rel = strings.TrimPrefix(rel, "/")
+		if rel == "" {
+			continue
+		}
+		m[rel] = pi
+	}
+	return m
+}
+
+// computeEtcDiff performs a 3-way diff between the old pristine /usr/etc,
+// the new pristine /usr/etc, and the user's live /etc.
+//
+// The algorithm keys every entry by its relative path (e.g. "conf.d/foo")
+// and classifies each path into one of the EtcChangeAction categories.
+func computeEtcDiff(
+	oldContent *[]fslib.PathInfo,
+	newContent *[]fslib.PathInfo,
+	userContent []*fslib.PathInfo,
+) []EtcChange {
+	oldMap := indexPathInfoSlice(oldContent, "/usr/etc")
+	newMap := indexPathInfoSlice(newContent, "/usr/etc")
+	userMap := indexPathInfoPtrSlice(userContent, "/etc")
+
+	// Collect every unique relative path.
+	allPaths := make(map[string]struct{})
+	for k := range oldMap {
+		allPaths[k] = struct{}{}
+	}
+	for k := range newMap {
+		allPaths[k] = struct{}{}
+	}
+	for k := range userMap {
+		allPaths[k] = struct{}{}
+	}
+
+	var changes []EtcChange
+	for relPath := range allPaths {
+		change := classifyEtcChange(relPath, oldMap[relPath], newMap[relPath], userMap[relPath])
+		if change != nil {
+			changes = append(changes, *change)
+		}
+	}
+
+	sort.Slice(changes, func(i, j int) bool {
+		return changes[i].Path < changes[j].Path
+	})
+	return changes
+}
+
+// classifyEtcChange determines the action for a single path given its state
+// in the old commit, new commit, and user's live filesystem.
+//
+// Truth table (✓ = present, ✗ = absent):
+//
+//	old   new   user  | result
+//	───── ───── ───── | ─────────────────────────────────────────────
+//	 ✓     ✓     ✓   | old==new && old==user → skip (unchanged)
+//	                  | old==new && old!=user → user-only
+//	                  | old!=new && old==user → update
+//	                  | old!=new && old!=user → conflict (unless new==user → skip)
+//	 ✗     ✓     ✗   | add
+//	 ✗     ✓     ✓   | new==user → skip, else conflict
+//	 ✓     ✗     ✓   | old==user → remove, else conflict
+//	 ✓     ✗     ✗   | skip (both removed)
+//	 ✓     ✓     ✗   | old==new → user-only, else conflict
+//	 ✗     ✗     ✓   | user-only
+func classifyEtcChange(relPath string, old, new_, user *fslib.PathInfo) *EtcChange {
+	hasOld := old != nil
+	hasNew := new_ != nil
+	hasUser := user != nil
+
+	switch {
+	case hasOld && hasNew && hasUser:
+		oldEqNew := old.Equals(new_)
+		oldEqUser := old.Equals(user)
+
+		switch {
+		case oldEqNew && oldEqUser:
+			return nil // unchanged everywhere
+		case oldEqNew:
+			// upstream unchanged, user modified
+			return &EtcChange{Path: relPath, Action: EtcActionUserOnly, Old: old, New: new_, User: user}
+		case oldEqUser:
+			// upstream modified, user unchanged
+			return &EtcChange{Path: relPath, Action: EtcActionUpdate, Old: old, New: new_, User: user}
+		default:
+			// both modified
+			if new_.Equals(user) {
+				return nil // converged to the same state
+			}
+			return &EtcChange{Path: relPath, Action: EtcActionConflict, Old: old, New: new_, User: user}
+		}
+
+	case !hasOld && hasNew && !hasUser:
+		// upstream added, user doesn't have it
+		return &EtcChange{Path: relPath, Action: EtcActionAdd, New: new_}
+
+	case !hasOld && hasNew && hasUser:
+		// upstream added AND user has it
+		if new_.Equals(user) {
+			return nil
+		}
+		return &EtcChange{Path: relPath, Action: EtcActionConflict, New: new_, User: user}
+
+	case hasOld && !hasNew && hasUser:
+		// upstream removed, user still has it
+		if old.Equals(user) {
+			return &EtcChange{Path: relPath, Action: EtcActionRemove, Old: old, User: user}
+		}
+		return &EtcChange{Path: relPath, Action: EtcActionConflict, Old: old, User: user}
+
+	case hasOld && !hasNew && !hasUser:
+		// both removed
+		return nil
+
+	case hasOld && hasNew && !hasUser:
+		// user removed it
+		if old.Equals(new_) {
+			return &EtcChange{Path: relPath, Action: EtcActionUserOnly, Old: old, New: new_}
+		}
+		// upstream changed, user removed → conflict
+		return &EtcChange{Path: relPath, Action: EtcActionConflict, Old: old, New: new_}
+
+	case !hasOld && !hasNew && hasUser:
+		// user added, not in old or new
+		return &EtcChange{Path: relPath, Action: EtcActionUserOnly, User: user}
+
+	default:
+		return nil
+	}
+}
+
+// ListEtcChanges performs a 3-way diff between the old pristine /usr/etc,
+// the new pristine /usr/etc, and the user's live /etc, and returns a list of
+// changes with their classification (add/update/remove/conflict/user-only).
+func (o *Ostree) ListEtcChanges(oldSHA, newSHA string) ([]EtcChange, error) {
+	oldEtcContent, err := o.ListContentsInRoot(oldSHA, "/usr/etc", false)
+	if err != nil {
+		return nil, err
+	}
+	newEtcContent, err := o.ListContentsInRoot(newSHA, "/usr/etc", false)
+	if err != nil {
+		return nil, err
+	}
+	userEtcContent, err := fslib.ListContents("/etc")
+	if err != nil {
+		return nil, err
+	}
+
+	changes := computeEtcDiff(oldEtcContent, newEtcContent, userEtcContent)
+	return changes, nil
 }
 
 // ListPackages lists the packages in a commit.
@@ -2445,6 +2673,7 @@ func (o *Ostree) listPackagesFromPath(root, path, commit string, verbose bool) (
 		verbose,
 		"--repo="+repoDir,
 		"ls",
+		"-C",
 		"-R",
 		commit,
 		"--",
@@ -2465,7 +2694,7 @@ func (o *Ostree) listPackagesFromPath(root, path, commit string, verbose bool) (
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		pi, err := ParseOstreeLsLine(line)
+		pi, err := ParseOstreeLsChecksumLine(line)
 		if err != nil {
 			return nil, err
 		}

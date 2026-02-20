@@ -11,7 +11,6 @@ import (
 	"unicode"
 
 	"matrixos/vector/lib/cds"
-	fslib "matrixos/vector/lib/filesystems"
 )
 
 var (
@@ -21,36 +20,6 @@ var (
 	}
 )
 
-// EtcChangeAction describes what will happen to a file in /etc during merge.
-type EtcChangeAction string
-
-const (
-	// EtcActionAdd means the file was added upstream and will appear in /etc.
-	EtcActionAdd EtcChangeAction = "add"
-	// EtcActionUpdate means upstream modified the file and the user did not;
-	// the file in /etc will be replaced with the new version.
-	EtcActionUpdate EtcChangeAction = "update"
-	// EtcActionRemove means upstream removed the file and the user did not
-	// modify it; the file will be removed from /etc.
-	EtcActionRemove EtcChangeAction = "remove"
-	// EtcActionConflict means both upstream and the user changed the file
-	// (or one side added/removed while the other modified); manual
-	// resolution is required.
-	EtcActionConflict EtcChangeAction = "conflict"
-	// EtcActionUserOnly means the user made a change that upstream did not
-	// touch; the file in /etc stays as-is.
-	EtcActionUserOnly EtcChangeAction = "user-only"
-)
-
-// EtcChange describes a single change detected by the 3-way /etc diff.
-type EtcChange struct {
-	Path   string          // Relative path within /etc (e.g. "conf.d/foo")
-	Action EtcChangeAction // What will happen to this path
-	Old    *fslib.PathInfo // State in old commit (nil if absent)
-	New    *fslib.PathInfo // State in new commit (nil if absent)
-	User   *fslib.PathInfo // Current live state (nil if absent)
-}
-
 // UpgradeCommand is a command for upgrading the system
 type UpgradeCommand struct {
 	BaseCommand
@@ -59,6 +28,7 @@ type UpgradeCommand struct {
 	assumeYes     bool
 	updBootloader bool
 	pretend       bool
+	verbose       bool
 	force         bool
 }
 
@@ -94,6 +64,7 @@ func (c *UpgradeCommand) parseArgs(args []string) error {
 		"Update bootloader binaries in /efi")
 	c.fs.BoolVar(&c.assumeYes, "y", false, "Assume yes to all prompts")
 	c.fs.BoolVar(&c.pretend, "pretend", false, "Only fetch updates and show diff without applying them")
+	c.fs.BoolVar(&c.verbose, "verbose", false, "Show detailed output")
 	c.fs.BoolVar(&c.force, "force", false, "Force upgrade even if up to date")
 	c.fs.Usage = func() {
 		fmt.Printf("Usage: vector %s [options]\n", c.Name())
@@ -488,7 +459,7 @@ func (c *UpgradeCommand) analyzeDiff(oldSHA, newSHA string) error {
 }
 
 func (c *UpgradeCommand) analyzeEtcChanges(oldSHA, newSHA string) error {
-	changes, err := c.generateEtcChanges(oldSHA, newSHA)
+	changes, err := c.ot.ListEtcChanges(oldSHA, newSHA)
 	if err != nil {
 		return err
 	}
@@ -518,28 +489,31 @@ var pagerBinary = "less"
 
 // formatEtcChanges renders the list of EtcChange entries into a
 // human-readable string using the UI icons and colours.
-func (c *UpgradeCommand) formatEtcChanges(changes []EtcChange) string {
+func (c *UpgradeCommand) formatEtcChanges(changes []cds.EtcChange) string {
 	var b strings.Builder
 
 	// Group changes by action for a structured summary.
-	var conflicts, updates, adds, removes, userOnly []EtcChange
+	var conflicts, updates, adds, removes, userOnly []cds.EtcChange
 	for _, ch := range changes {
 		switch ch.Action {
-		case EtcActionConflict:
+		case cds.EtcActionConflict:
 			conflicts = append(conflicts, ch)
-		case EtcActionUpdate:
+		case cds.EtcActionUpdate:
 			updates = append(updates, ch)
-		case EtcActionAdd:
+		case cds.EtcActionAdd:
 			adds = append(adds, ch)
-		case EtcActionRemove:
+		case cds.EtcActionRemove:
 			removes = append(removes, ch)
-		case EtcActionUserOnly:
+		case cds.EtcActionUserOnly:
 			userOnly = append(userOnly, ch)
 		}
 	}
 
+	somethingPrinted := false
+
 	// Conflicts first — they require attention.
 	if len(conflicts) > 0 {
+		somethingPrinted = true
 		fmt.Fprintf(&b, "\n   %s%s Conflicts (manual resolution required):%s\n",
 			c.cRed, c.iconWarn, c.cReset)
 		for _, ch := range conflicts {
@@ -551,6 +525,7 @@ func (c *UpgradeCommand) formatEtcChanges(changes []EtcChange) string {
 
 	// Updates — clean upstream changes that will be applied.
 	if len(updates) > 0 {
+		somethingPrinted = true
 		fmt.Fprintf(&b, "\n   %s%s Updated by upstream (will be applied):%s\n",
 			c.cGreen, c.iconUpdate, c.cReset)
 		for _, ch := range updates {
@@ -562,6 +537,7 @@ func (c *UpgradeCommand) formatEtcChanges(changes []EtcChange) string {
 
 	// Adds — new files from upstream.
 	if len(adds) > 0 {
+		somethingPrinted = true
 		fmt.Fprintf(&b, "\n   %s%s New files from upstream:%s\n",
 			c.cGreen, c.iconNew, c.cReset)
 		for _, ch := range adds {
@@ -573,6 +549,7 @@ func (c *UpgradeCommand) formatEtcChanges(changes []EtcChange) string {
 
 	// Removes — files removed upstream.
 	if len(removes) > 0 {
+		somethingPrinted = true
 		fmt.Fprintf(&b, "\n   %s%s Removed by upstream (will be deleted):%s\n",
 			c.cYellow, c.iconError, c.cReset)
 		for _, ch := range removes {
@@ -582,13 +559,19 @@ func (c *UpgradeCommand) formatEtcChanges(changes []EtcChange) string {
 	}
 
 	// User-only — local changes preserved as-is.
-	if len(userOnly) > 0 {
+	if len(userOnly) > 0 && c.verbose {
+		somethingPrinted = true
 		fmt.Fprintf(&b, "\n   %s%s User modifications (preserved):%s\n",
 			c.cBlue, c.iconDoc, c.cReset)
 		for _, ch := range userOnly {
 			fmt.Fprintf(&b, "      %s %s/etc/%s%s\n",
 				c.iconDoc, c.cBlue, ch.Path, c.cReset)
 		}
+	}
+
+	if !somethingPrinted {
+		fmt.Fprintf(&b, "\n   %s%s No changes worth highlighting.%s\n",
+			c.cBlue, c.iconPackage, c.cReset)
 	}
 
 	// Summary line
@@ -600,36 +583,20 @@ func (c *UpgradeCommand) formatEtcChanges(changes []EtcChange) string {
 }
 
 // writeChangeDetail appends detail lines about what changed for a path.
-func (c *UpgradeCommand) writeChangeDetail(b *strings.Builder, ch EtcChange) {
+func (c *UpgradeCommand) writeChangeDetail(b *strings.Builder, ch cds.EtcChange) {
 	if ch.Old != nil && ch.New != nil {
-		oldDesc := describePathInfo(ch.Old)
-		newDesc := describePathInfo(ch.New)
+		oldDesc := ch.Old.String()
+		newDesc := ch.New.String()
 		if oldDesc != newDesc {
 			fmt.Fprintf(b, "        %swas:%s %s\n", c.cBold, c.cReset, oldDesc)
 			fmt.Fprintf(b, "        %snow:%s %s\n", c.cBold, c.cReset, newDesc)
 		}
 	} else if ch.New != nil {
-		fmt.Fprintf(b, "        %snew:%s %s\n", c.cBold, c.cReset, describePathInfo(ch.New))
+		fmt.Fprintf(b, "        %snew:%s %s\n", c.cBold, c.cReset, ch.New.String())
 	}
-	if ch.User != nil && ch.Old != nil && !pathInfoMetaEqual(ch.User, ch.Old) {
-		fmt.Fprintf(b, "        %slocal:%s %s\n", c.cBold, c.cReset, describePathInfo(ch.User))
+	if ch.User != nil && ch.Old != nil && !ch.User.Equals(ch.Old) {
+		fmt.Fprintf(b, "        %slocal:%s %s\n", c.cBold, c.cReset, ch.User.String())
 	}
-}
-
-// describePathInfo returns a short human-readable description of a PathInfo.
-func describePathInfo(pi *fslib.PathInfo) string {
-	if pi == nil {
-		return "(absent)"
-	}
-	typ := "file"
-	switch pi.Mode.Type {
-	case "d":
-		typ = "dir"
-	case "l":
-		typ = fmt.Sprintf("link -> %s", pi.Link)
-	}
-	return fmt.Sprintf("%s %04o uid=%d gid=%d size=%d",
-		typ, pi.Mode.Perms, pi.Uid, pi.Gid, pi.Size)
 }
 
 // showWithPager pipes the given text through a pager (e.g. less).
@@ -643,208 +610,6 @@ func (c *UpgradeCommand) showWithPager(text string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
-}
-
-// generateEtcChanges performs a 3-way diff between the old pristine /usr/etc,
-// the new pristine /usr/etc, and the user's live /etc, and returns a list of
-// changes with their classification (add/update/remove/conflict/user-only).
-func (c *UpgradeCommand) generateEtcChanges(oldSHA, newSHA string) ([]EtcChange, error) {
-	oldEtcContent, err := c.ot.ListContentsInRoot(oldSHA, "/usr/etc", false)
-	if err != nil {
-		return nil, err
-	}
-	newEtcContent, err := c.ot.ListContentsInRoot(newSHA, "/usr/etc", false)
-	if err != nil {
-		return nil, err
-	}
-	userEtcContent, err := fslib.ListContents("/etc")
-	if err != nil {
-		return nil, err
-	}
-
-	changes := computeEtcDiff(oldEtcContent, newEtcContent, userEtcContent)
-	return changes, nil
-}
-
-// pathInfoMetaEqual compares two PathInfo entries for metadata equality:
-// type, permission bits, uid, gid, size, and symlink target.
-func pathInfoMetaEqual(a, b *fslib.PathInfo) bool {
-	if a.Mode.Type != b.Mode.Type {
-		return false
-	}
-	if a.Mode.Perms != b.Mode.Perms {
-		return false
-	}
-	if a.Mode.SetUID != b.Mode.SetUID || a.Mode.SetGID != b.Mode.SetGID || a.Mode.Sticky != b.Mode.Sticky {
-		return false
-	}
-	if a.Uid != b.Uid || a.Gid != b.Gid {
-		return false
-	}
-	if a.Size != b.Size {
-		return false
-	}
-	if a.Link != b.Link {
-		return false
-	}
-	return true
-}
-
-// indexPathInfoSlice builds a map from relative path to *PathInfo.
-// It strips the given prefix from each entry's Path and skips the root
-// directory itself (empty relative path after stripping).
-func indexPathInfoSlice(items *[]fslib.PathInfo, prefix string) map[string]*fslib.PathInfo {
-	if items == nil {
-		return map[string]*fslib.PathInfo{}
-	}
-	m := make(map[string]*fslib.PathInfo, len(*items))
-	for i := range *items {
-		pi := &(*items)[i]
-		rel := strings.TrimPrefix(pi.Path, prefix)
-		rel = strings.TrimPrefix(rel, "/")
-		if rel == "" {
-			continue
-		}
-		m[rel] = pi
-	}
-	return m
-}
-
-// indexPathInfoPtrSlice is like indexPathInfoSlice but for []*PathInfo.
-func indexPathInfoPtrSlice(items []*fslib.PathInfo, prefix string) map[string]*fslib.PathInfo {
-	m := make(map[string]*fslib.PathInfo, len(items))
-	for _, pi := range items {
-		rel := strings.TrimPrefix(pi.Path, prefix)
-		rel = strings.TrimPrefix(rel, "/")
-		if rel == "" {
-			continue
-		}
-		m[rel] = pi
-	}
-	return m
-}
-
-// computeEtcDiff performs a 3-way diff between the old pristine /usr/etc,
-// the new pristine /usr/etc, and the user's live /etc.
-//
-// The algorithm keys every entry by its relative path (e.g. "conf.d/foo")
-// and classifies each path into one of the EtcChangeAction categories.
-func computeEtcDiff(
-	oldContent *[]fslib.PathInfo,
-	newContent *[]fslib.PathInfo,
-	userContent []*fslib.PathInfo,
-) []EtcChange {
-	oldMap := indexPathInfoSlice(oldContent, "/usr/etc")
-	newMap := indexPathInfoSlice(newContent, "/usr/etc")
-	userMap := indexPathInfoPtrSlice(userContent, "/etc")
-
-	// Collect every unique relative path.
-	allPaths := make(map[string]struct{})
-	for k := range oldMap {
-		allPaths[k] = struct{}{}
-	}
-	for k := range newMap {
-		allPaths[k] = struct{}{}
-	}
-	for k := range userMap {
-		allPaths[k] = struct{}{}
-	}
-
-	var changes []EtcChange
-	for relPath := range allPaths {
-		change := classifyEtcChange(relPath, oldMap[relPath], newMap[relPath], userMap[relPath])
-		if change != nil {
-			changes = append(changes, *change)
-		}
-	}
-
-	sort.Slice(changes, func(i, j int) bool {
-		return changes[i].Path < changes[j].Path
-	})
-	return changes
-}
-
-// classifyEtcChange determines the action for a single path given its state
-// in the old commit, new commit, and user's live filesystem.
-//
-// Truth table (✓ = present, ✗ = absent):
-//
-//	old   new   user  | result
-//	───── ───── ───── | ─────────────────────────────────────────────
-//	 ✓     ✓     ✓   | old==new && old==user → skip (unchanged)
-//	                  | old==new && old!=user → user-only
-//	                  | old!=new && old==user → update
-//	                  | old!=new && old!=user → conflict (unless new==user → skip)
-//	 ✗     ✓     ✗   | add
-//	 ✗     ✓     ✓   | new==user → skip, else conflict
-//	 ✓     ✗     ✓   | old==user → remove, else conflict
-//	 ✓     ✗     ✗   | skip (both removed)
-//	 ✓     ✓     ✗   | old==new → user-only, else conflict
-//	 ✗     ✗     ✓   | user-only
-func classifyEtcChange(relPath string, old, new_, user *fslib.PathInfo) *EtcChange {
-	hasOld := old != nil
-	hasNew := new_ != nil
-	hasUser := user != nil
-
-	switch {
-	case hasOld && hasNew && hasUser:
-		oldEqNew := pathInfoMetaEqual(old, new_)
-		oldEqUser := pathInfoMetaEqual(old, user)
-
-		switch {
-		case oldEqNew && oldEqUser:
-			return nil // unchanged everywhere
-		case oldEqNew:
-			// upstream unchanged, user modified
-			return &EtcChange{Path: relPath, Action: EtcActionUserOnly, Old: old, New: new_, User: user}
-		case oldEqUser:
-			// upstream modified, user unchanged
-			return &EtcChange{Path: relPath, Action: EtcActionUpdate, Old: old, New: new_, User: user}
-		default:
-			// both modified
-			if pathInfoMetaEqual(new_, user) {
-				return nil // converged to the same state
-			}
-			return &EtcChange{Path: relPath, Action: EtcActionConflict, Old: old, New: new_, User: user}
-		}
-
-	case !hasOld && hasNew && !hasUser:
-		// upstream added, user doesn't have it
-		return &EtcChange{Path: relPath, Action: EtcActionAdd, New: new_}
-
-	case !hasOld && hasNew && hasUser:
-		// upstream added AND user has it
-		if pathInfoMetaEqual(new_, user) {
-			return nil
-		}
-		return &EtcChange{Path: relPath, Action: EtcActionConflict, New: new_, User: user}
-
-	case hasOld && !hasNew && hasUser:
-		// upstream removed, user still has it
-		if pathInfoMetaEqual(old, user) {
-			return &EtcChange{Path: relPath, Action: EtcActionRemove, Old: old, User: user}
-		}
-		return &EtcChange{Path: relPath, Action: EtcActionConflict, Old: old, User: user}
-
-	case hasOld && !hasNew && !hasUser:
-		// both removed
-		return nil
-
-	case hasOld && hasNew && !hasUser:
-		// user removed it
-		if pathInfoMetaEqual(old, new_) {
-			return &EtcChange{Path: relPath, Action: EtcActionUserOnly, Old: old, New: new_}
-		}
-		// upstream changed, user removed → conflict
-		return &EtcChange{Path: relPath, Action: EtcActionConflict, Old: old, New: new_}
-
-	case !hasOld && !hasNew && hasUser:
-		// user added, not in old or new
-		return &EtcChange{Path: relPath, Action: EtcActionUserOnly, User: user}
-
-	default:
-		return nil
-	}
 }
 
 func (c *UpgradeCommand) getPackageBaseName(pkg string) string {
