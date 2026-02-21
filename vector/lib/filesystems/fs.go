@@ -269,6 +269,44 @@ func MountpointToDevice(mnt string) (string, error) {
 	return strings.Split(trimmedOut, "\n")[0], nil
 }
 
+// MountpointToUUID returns the UUID for a given mountpoint.
+func MountpointToUUID(mnt string) (string, error) {
+	if mnt == "" {
+		return "", fmt.Errorf("missing mnt parameter")
+	}
+
+	cmd := ExecCommand("findmnt", "-n", "-o", "UUID", "-T", mnt)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	trimmedOut := strings.TrimSpace(string(out))
+	if trimmedOut == "" {
+		return "", fmt.Errorf("no UUID found for mountpoint %s", mnt)
+	}
+	return trimmedOut, nil
+}
+
+// MountpointToFSType returns the filesystem type for a given mountpoint.
+func MountpointToFSType(mnt string) (string, error) {
+	if mnt == "" {
+		return "", fmt.Errorf("missing mnt parameter")
+	}
+
+	cmd := ExecCommand("findmnt", "-n", "-o", "FSTYPE", "-T", mnt)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	trimmedOut := strings.TrimSpace(string(out))
+	if trimmedOut == "" {
+		return "", fmt.Errorf("no FSTYPE found for mountpoint %s", mnt)
+	}
+	return trimmedOut, nil
+}
+
 // CleanupMounts unmounts a list of mounts in reverse order.
 func CleanupMounts(mounts []string) {
 	DevicesSettle()
