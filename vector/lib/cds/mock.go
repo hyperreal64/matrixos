@@ -1,6 +1,8 @@
 package cds
 
 import (
+	"strings"
+
 	fslib "matrixos/vector/lib/filesystems"
 )
 
@@ -23,34 +25,58 @@ type MockOstree struct {
 	Packages         []string
 	PackagesErr      error
 	PackagesByCommit map[string][]string
+
+	RemoveFullResult    string
+	RemoveFullResultSet bool // when true, return RemoveFullResult even if empty
+	RemoveFullErr       error
+
+	BootCommitResult string
+	BootCommitErr    error
 }
 
 // Config accessors — return zero values (not used in branch/upgrade tests).
-func (m *MockOstree) FullBranchSuffix() (string, error)                            { return "", nil }
-func (m *MockOstree) IsBranchFullSuffixed(string) (bool, error)                    { return false, nil }
-func (m *MockOstree) BranchShortnameToFull(_, _, _, _ string) (string, error)      { return "", nil }
-func (m *MockOstree) BranchToFull(string) (string, error)                          { return "", nil }
-func (m *MockOstree) RemoveFullFromBranch(string) (string, error)                  { return "", nil }
-func (m *MockOstree) GpgEnabled() (bool, error)                                    { return false, nil }
-func (m *MockOstree) GpgPrivateKeyPath() (string, error)                           { return "", nil }
-func (m *MockOstree) GpgPublicKeyPath() (string, error)                            { return "", nil }
-func (m *MockOstree) GpgOfficialPubKeyPath() (string, error)                       { return "", nil }
-func (m *MockOstree) OsName() (string, error)                                      { return "", nil }
-func (m *MockOstree) Arch() (string, error)                                        { return "", nil }
-func (m *MockOstree) RepoDir() (string, error)                                     { return "", nil }
-func (m *MockOstree) Sysroot() (string, error)                                     { return "", nil }
-func (m *MockOstree) Remote() (string, error)                                      { return "", nil }
-func (m *MockOstree) RemoteURL() (string, error)                                   { return "", nil }
-func (m *MockOstree) AvailableGpgPubKeyPaths() ([]string, error)                   { return nil, nil }
-func (m *MockOstree) GpgBestPubKeyPath() (string, error)                           { return "", nil }
-func (m *MockOstree) ClientSideGpgArgs() ([]string, error)                         { return nil, nil }
-func (m *MockOstree) GpgHomeDir() (string, error)                                  { return "", nil }
-func (m *MockOstree) GpgKeyID() (string, error)                                    { return "", nil }
-func (m *MockOstree) GpgArgs() ([]string, error)                                   { return nil, nil }
-func (m *MockOstree) SetupEtc(string) error                                        { return nil }
-func (m *MockOstree) PrepareFilesystemHierarchy(string) error                      { return nil }
-func (m *MockOstree) ValidateFilesystemHierarchy(string) error                     { return nil }
-func (m *MockOstree) BootCommit(string) (string, error)                            { return "", nil }
+func (m *MockOstree) FullBranchSuffix() (string, error)                       { return "-full", nil }
+func (m *MockOstree) IsBranchFullSuffixed(string) (bool, error)               { return false, nil }
+func (m *MockOstree) BranchShortnameToFull(_, _, _, _ string) (string, error) { return "", nil }
+func (m *MockOstree) BranchToFull(string) (string, error)                     { return "", nil }
+func (m *MockOstree) RemoveFullFromBranch(ref string) (string, error) {
+	if m.RemoveFullErr != nil {
+		return "", m.RemoveFullErr
+	}
+	if m.RemoveFullResultSet {
+		return m.RemoveFullResult, nil
+	}
+	// Default: strip -full suffix if present.
+	return strings.TrimSuffix(ref, "-full"), nil
+}
+func (m *MockOstree) GpgEnabled() (bool, error)                  { return false, nil }
+func (m *MockOstree) GpgPrivateKeyPath() (string, error)         { return "", nil }
+func (m *MockOstree) GpgPublicKeyPath() (string, error)          { return "", nil }
+func (m *MockOstree) GpgOfficialPubKeyPath() (string, error)     { return "", nil }
+func (m *MockOstree) OsName() (string, error)                    { return "", nil }
+func (m *MockOstree) Arch() (string, error)                      { return "", nil }
+func (m *MockOstree) RepoDir() (string, error)                   { return "", nil }
+func (m *MockOstree) Sysroot() (string, error)                   { return "", nil }
+func (m *MockOstree) Remote() (string, error)                    { return "", nil }
+func (m *MockOstree) RemoteURL() (string, error)                 { return "", nil }
+func (m *MockOstree) AvailableGpgPubKeyPaths() ([]string, error) { return nil, nil }
+func (m *MockOstree) GpgBestPubKeyPath() (string, error)         { return "", nil }
+func (m *MockOstree) ClientSideGpgArgs() ([]string, error)       { return nil, nil }
+func (m *MockOstree) GpgHomeDir() (string, error)                { return "", nil }
+func (m *MockOstree) GpgKeyID() (string, error)                  { return "", nil }
+func (m *MockOstree) GpgArgs() ([]string, error)                 { return nil, nil }
+func (m *MockOstree) SetupEtc(string) error                      { return nil }
+func (m *MockOstree) PrepareFilesystemHierarchy(string) error    { return nil }
+func (m *MockOstree) ValidateFilesystemHierarchy(string) error   { return nil }
+func (m *MockOstree) BootCommit(string) (string, error) {
+	if m.BootCommitErr != nil {
+		return "", m.BootCommitErr
+	}
+	if m.BootCommitResult != "" {
+		return m.BootCommitResult, nil
+	}
+	return "abc123commit", nil
+}
 func (m *MockOstree) ListRemotes(bool) ([]string, error)                           { return nil, nil }
 func (m *MockOstree) ImportGpgKey(string) error                                    { return nil }
 func (m *MockOstree) GpgSignFile(string) error                                     { return nil }
