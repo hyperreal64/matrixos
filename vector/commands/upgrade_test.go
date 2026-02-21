@@ -69,7 +69,7 @@ func (c *testConfig) GetItems(key string) ([]string, error) {
 
 // upgradeHarness holds common test state for upgrade tests.
 type upgradeHarness struct {
-	mock    *mockOstree
+	mock    *cds.MockOstree
 	cleanup func()
 }
 
@@ -93,9 +93,9 @@ func setupUpgradeHarness(t *testing.T, currentSHA, newSHA string) *upgradeHarnes
 		return cmd
 	}
 
-	mock := &mockOstree{
-		root: "/",
-		deployments: []cds.Deployment{
+	mock := &cds.MockOstree{
+		Root_: "/",
+		Deployments: []cds.Deployment{
 			{
 				Booted:    true,
 				Checksum:  currentSHA,
@@ -103,8 +103,8 @@ func setupUpgradeHarness(t *testing.T, currentSHA, newSHA string) *upgradeHarnes
 				Refspec:   mockRefSpec,
 			},
 		},
-		lastCommit: newSHA,
-		packagesByCommit: map[string][]string{
+		LastCommit_: newSHA,
+		PackagesByCommit: map[string][]string{
 			currentSHA: {"app-misc/foo-1.0"},
 			newSHA:     {"app-misc/foo-1.1"},
 		},
@@ -242,7 +242,7 @@ func TestUpgradeNoUpdate(t *testing.T) {
 	defer h.cleanup()
 
 	// Both current and new are the same commit
-	h.mock.deployments[0].Checksum = mockNewSHA
+	h.mock.Deployments[0].Checksum = mockNewSHA
 
 	cmd, err := newTestUpgradeCommand(h.mock, nil)
 	if err != nil {
@@ -296,7 +296,7 @@ func TestUpgradeForce(t *testing.T) {
 	h := setupUpgradeHarness(t, mockNewSHA, mockNewSHA)
 	defer h.cleanup()
 
-	h.mock.deployments[0].Checksum = mockNewSHA
+	h.mock.Deployments[0].Checksum = mockNewSHA
 
 	cmd, err := newTestUpgradeCommand(h.mock, []string{"--force", "-y"})
 	if err != nil {
@@ -370,14 +370,14 @@ func TestUpgradeBootloaderSuccess(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Add a non-booted deployment for the new commit (bootloader update needs it)
-	h.mock.deployments = append(h.mock.deployments, cds.Deployment{
+	h.mock.Deployments = append(h.mock.Deployments, cds.Deployment{
 		Booted:    false,
 		Checksum:  mockNewSHA,
 		Stateroot: stateroot,
 		Refspec:   mockRefSpec,
 		Index:     0,
 	})
-	h.mock.root = tmpDir
+	h.mock.Root_ = tmpDir
 
 	// Create deployment rootfs with grub + shim files
 	newRoot := cds.BuildDeploymentRootfs(tmpDir, stateroot, mockNewSHA, 0)
@@ -503,7 +503,7 @@ func TestUpgradeNotRoot(t *testing.T) {
 	defer func() { getEuid = origEuid }()
 
 	cmd := &UpgradeCommand{}
-	cmd.ot = &mockOstree{}
+	cmd.ot = &cds.MockOstree{}
 	cmd.StartUI()
 	if err := cmd.parseArgs([]string{"-y"}); err != nil {
 		t.Fatalf("parseArgs failed: %v", err)
