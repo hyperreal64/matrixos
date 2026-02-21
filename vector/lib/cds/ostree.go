@@ -84,6 +84,7 @@ type IOstree interface {
 	Upgrade(args []string, verbose bool) error
 	ListPackages(commit string, verbose bool) ([]string, error)
 	ListContents(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
+	ListContentsInRoot(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
 }
 
 // runCommand runs a generic binary with args and stdout/stderr handling.
@@ -2354,6 +2355,23 @@ func (o *Ostree) ListContents(commit, path string, verbose bool) (*[]fslib.PathI
 	if err != nil {
 		return nil, err
 	}
+	return o.listContentsOfPath(commit, repoDir, path, verbose)
+}
+
+// ListContentsInRoot lists the contents of a path in a commit
+// using the ostree repo in the given root.
+func (o *Ostree) ListContentsInRoot(commit, path string, verbose bool) (*[]fslib.PathInfo, error) {
+	if commit == "" {
+		return nil, errors.New("missing commit parameter")
+	}
+	if path == "" {
+		return nil, errors.New("missing path parameter")
+	}
+	root, err := o.Root()
+	if err != nil {
+		return nil, err
+	}
+	repoDir := filepath.Join(root, "ostree", "repo")
 	return o.listContentsOfPath(commit, repoDir, path, verbose)
 }
 
