@@ -59,7 +59,11 @@ GpgOfficialPublicKey=pubkeys/ostree.gpg
 	}
 	tmpFile.Close()
 
-	cfg, err := NewIniConfigFromFile(tmpFile.Name(), rootPath)
+	params := ConfigFromPathParams{
+		ConfigPath:  tmpFile.Name(),
+		DefaultRoot: rootPath,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
 	if err != nil {
 		t.Fatalf("Failed to create config: %v", err)
 	}
@@ -124,7 +128,12 @@ func TestIniConfig_Defaults(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 	tmpFile.Close()
 
-	cfg, err := NewIniConfigFromFile(tmpFile.Name(), filepath.Dir(tmpFile.Name()))
+	params := ConfigFromPathParams{
+		ConfigPath:  tmpFile.Name(),
+		DefaultRoot: filepath.Dir(tmpFile.Name()),
+	}
+
+	cfg, err := NewIniConfigFromPath(&params)
 	if err != nil {
 		t.Fatalf("Failed to create config: %v", err)
 	}
@@ -216,8 +225,11 @@ Key3=OverrideValue3
 		t.Fatalf("Failed to write ignored file: %v", err)
 	}
 
-	// Create and load the config
-	cfg, err := NewIniConfigFromFile(configPath, tmpDir)
+	params := ConfigFromPathParams{
+		ConfigPath:  configPath,
+		DefaultRoot: tmpDir,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
 	if err != nil {
 		t.Fatalf("Failed to create config: %v", err)
 	}
@@ -249,6 +261,328 @@ Key3=OverrideValue3
 
 	// Check new value from subconfig
 	check("Section1.KeyNew", "ValueNew")
+}
+
+func TestIniConfig_GenerateParent(t *testing.T) {
+	// Create a temporary directory for the test
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-parent-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create the parent config file
+	parentContent := `
+[matrixOS]
+Root=/parent/root
+LogsDir=logs-from-parent
+
+[Seeder]
+DownloadsDir=parent-downloads
+BinpkgsDir=parent-binpkgs
+`
+	parentPath := filepath.Join(tmpDir, "parent.conf")
+	if err := os.WriteFile(parentPath, []byte(parentContent), 0644); err != nil {
+		t.Fatalf("Failed to write parent config: %v", err)
+	}
+
+	// Create the main config file that references the parent
+	mainContent := `
+[matrixOS]
+ParentConfig=parent.conf
+Root=/main/root
+LogsDir=logs-from-main
+
+[Seeder]
+DownloadsDir=main-downloads
+`
+	mainPath := filepath.Join(tmpDir, "matrixos.conf")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main config: %v", err)
+	}
+
+	params := ConfigFromPathParams{
+		ConfigPath:  mainPath,
+		DefaultRoot: tmpDir,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	check := func(key, expected string) {
+		t.Helper()
+		val, err := cfg.GetItem(key)
+		if err != nil {
+			t.Errorf("GetItem(%q) returned error: %v", key, err)
+			return
+		}
+		if val != expected {
+			t.Errorf("Key %q: expected %q, got %q", key, expected, val)
+		}
+	}
+
+	// Main config values should override parent values (last value wins).
+	check("matrixOS.Root", "/main/root")
+	check("matrixOS.LogsDir", "/main/root/logs-from-main")
+	check("Seeder.DownloadsDir", "/main/root/main-downloads")
+
+	// Values only present in the parent should still be accessible.
+	check("Seeder.BinpkgsDir", "/main/root/parent-binpkgs")
+}
+
+func TestIniConfig_GenerateParent_MissingParentFile(t *testing.T) {
+	// When ParentConfig references a file that doesn't exist, Load should
+	// succeed (generateParent silently skips missing files).
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-parent-missing-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	mainContent := `
+[matrixOS]
+ParentConfig=nonexistent.conf
+Root=/some/root
+`
+	mainPath := filepath.Join(tmpDir, "matrixos.conf")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main config: %v", err)
+	}
+
+	params := ConfigFromPathParams{
+		ConfigPath:  mainPath,
+		DefaultRoot: tmpDir,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load should succeed when parent file is missing, got: %v", err)
+	}
+
+	val, err := cfg.GetItem("matrixOS.Root")
+	if err != nil {
+		t.Fatalf("GetItem(matrixOS.Root) error: %v", err)
+	}
+	if val != "/some/root" {
+		t.Errorf("Expected /some/root, got %q", val)
+	}
+}
+
+func TestIniConfig_GenerateParent_NoParentConfig(t *testing.T) {
+	// When no ParentConfig key exists, generateParent is a no-op.
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-parent-nokey-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	mainContent := `
+[matrixOS]
+Root=/some/root
+LogsDir=logs
+`
+	mainPath := filepath.Join(tmpDir, "matrixos.conf")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main config: %v", err)
+	}
+
+	params := ConfigFromPathParams{
+		ConfigPath:  mainPath,
+		DefaultRoot: tmpDir,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	check := func(key, expected string) {
+		t.Helper()
+		val, err := cfg.GetItem(key)
+		if err != nil {
+			t.Errorf("GetItem(%q) error: %v", key, err)
+			return
+		}
+		if val != expected {
+			t.Errorf("Key %q: expected %q, got %q", key, expected, val)
+		}
+	}
+
+	check("matrixOS.Root", "/some/root")
+	check("matrixOS.LogsDir", "/some/root/logs")
+}
+
+func TestIniConfig_GenerateParent_WithSubConfigs(t *testing.T) {
+	// Test the full chain: parent → main → sub-configs.
+	// The priority order is: parent (lowest) < main < sub-configs (highest).
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-parent-sub-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Parent config: provides base values
+	parentContent := `
+[matrixOS]
+Root=/chain/root
+
+[Seeder]
+DownloadsDir=parent-downloads
+BinpkgsDir=parent-binpkgs
+DistfilesDir=parent-distfiles
+`
+	parentPath := filepath.Join(tmpDir, "parent.conf")
+	if err := os.WriteFile(parentPath, []byte(parentContent), 0644); err != nil {
+		t.Fatalf("Failed to write parent config: %v", err)
+	}
+
+	// Main config: overrides some parent values, references parent
+	mainContent := `
+[matrixOS]
+ParentConfig=parent.conf
+Root=/chain/root
+
+[Seeder]
+DownloadsDir=main-downloads
+`
+	mainPath := filepath.Join(tmpDir, "matrixos.conf")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main config: %v", err)
+	}
+
+	// Sub-config directory
+	subConfigDir := mainPath + ".d"
+	if err := os.Mkdir(subConfigDir, 0755); err != nil {
+		t.Fatalf("Failed to create subconfig dir: %v", err)
+	}
+
+	// Sub-config: overrides a value from main
+	subContent := `
+[Seeder]
+DownloadsDir=sub-downloads
+`
+	subPath := filepath.Join(subConfigDir, "00-override.conf")
+	if err := os.WriteFile(subPath, []byte(subContent), 0644); err != nil {
+		t.Fatalf("Failed to write sub config: %v", err)
+	}
+
+	params := ConfigFromPathParams{
+		ConfigPath:  mainPath,
+		DefaultRoot: tmpDir,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	check := func(key, expected string) {
+		t.Helper()
+		val, err := cfg.GetItem(key)
+		if err != nil {
+			t.Errorf("GetItem(%q) error: %v", key, err)
+			return
+		}
+		if val != expected {
+			t.Errorf("Key %q: expected %q, got %q", key, expected, val)
+		}
+	}
+
+	// Sub-config wins over main for DownloadsDir (last value wins via GetItem)
+	check("Seeder.DownloadsDir", "/chain/root/sub-downloads")
+
+	// Only in parent, inherited through the chain
+	check("Seeder.BinpkgsDir", "/chain/root/parent-binpkgs")
+	check("Seeder.DistfilesDir", "/chain/root/parent-distfiles")
+
+	// setVal preserves history: parent, main, and sub-config entries are all kept.
+	allDownloads, err := cfg.GetItems("Seeder.DownloadsDir")
+	if err != nil {
+		t.Fatalf("GetItems(Seeder.DownloadsDir) error: %v", err)
+	}
+	if len(allDownloads) != 3 {
+		t.Errorf("Expected 3 history entries for Seeder.DownloadsDir, got %d: %v",
+			len(allDownloads), allDownloads)
+	}
+}
+
+func TestIniConfig_GenerateParent_ParentOverrideOrder(t *testing.T) {
+	// Verify that the main config values take precedence over parent for
+	// the same keys: parent is loaded first, then main appends on top.
+	tmpDir, err := os.MkdirTemp("", "matrixos-test-parent-order-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	parentContent := `
+[matrixOS]
+Root=/parent/root
+
+[Seeder]
+DownloadsDir=from-parent
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "parent.conf"), []byte(parentContent), 0644); err != nil {
+		t.Fatalf("Failed to write parent config: %v", err)
+	}
+
+	mainContent := `
+[matrixOS]
+ParentConfig=parent.conf
+Root=/main/root
+
+[Seeder]
+DownloadsDir=from-main
+`
+	mainPath := filepath.Join(tmpDir, "main.conf")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to write main config: %v", err)
+	}
+
+	params := ConfigFromPathParams{
+		ConfigPath:  mainPath,
+		DefaultRoot: tmpDir,
+	}
+	cfg, err := NewIniConfigFromPath(&params)
+	if err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// GetItem should return the main config value (last appended wins)
+	val, err := cfg.GetItem("Seeder.DownloadsDir")
+	if err != nil {
+		t.Fatalf("GetItem error: %v", err)
+	}
+	expected := "/main/root/from-main"
+	if val != expected {
+		t.Errorf("Expected %q (main overrides parent), got %q", expected, val)
+	}
+
+	// setVal preserves history: both parent and main entries are kept.
+	allVals, err := cfg.GetItems("Seeder.DownloadsDir")
+	if err != nil {
+		t.Fatalf("GetItems error: %v", err)
+	}
+	if len(allVals) != 2 {
+		t.Fatalf("Expected 2 values (parent + main), got %d: %v", len(allVals), allVals)
+	}
+	// Last entry (main) should be expanded; first entry (parent) stays raw.
+	if allVals[1] != expected {
+		t.Errorf("Last value should be expanded main (%q), got %q", expected, allVals[1])
+	}
 }
 
 func TestSearchPaths(t *testing.T) {
@@ -295,7 +629,7 @@ func TestSearchPaths(t *testing.T) {
 	found := false
 	expectedPath, _ := filepath.EvalSymlinks(confDir)
 
-	paths := searchPaths()
+	paths := searchPaths(BaseConfigFileName)
 	for _, sp := range paths {
 		// Resolve symlinks just in case tmp dir has them
 		evalDirPath, err := filepath.EvalSymlinks(sp.dirPath)
@@ -305,8 +639,8 @@ func TestSearchPaths(t *testing.T) {
 
 		if evalDirPath == expectedPath {
 			found = true
-			if sp.fileName != configFileName {
-				t.Errorf("Expected fileName %q, got %q", configFileName, sp.fileName)
+			if sp.fileName != BaseConfigFileName {
+				t.Errorf("Expected fileName %q, got %q", BaseConfigFileName, sp.fileName)
 			}
 
 			// Evaluated comparison for root as well

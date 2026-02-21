@@ -9,8 +9,10 @@ import (
 )
 
 // setupJanitorTest creates a temp directory with a config file and test artifacts
-// for the Janitor command. Returns the config file path and paths to verify.
-func setupJanitorTest(t *testing.T) (configFile, imgOld, imgNew, dlFile, logFile string) {
+// for the Janitor command. It creates a .matrixos marker so that searchPaths
+// discovers the config, and changes the working directory into the temp tree.
+// Returns a cleanup function and paths to verify.
+func setupJanitorTest(t *testing.T) (cleanup func(), imgOld, imgNew, dlFile, logFile string) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -25,6 +27,12 @@ func setupJanitorTest(t *testing.T) (configFile, imgOld, imgNew, dlFile, logFile
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("failed to create dir %s: %v", dir, err)
 		}
+	}
+
+	// Create .matrixos marker so searchPaths finds the config.
+	markerPath := filepath.Join(tmpDir, ".matrixos")
+	if err := os.WriteFile(markerPath, []byte(""), 0644); err != nil {
+		t.Fatalf("failed to create .matrixos marker: %v", err)
 	}
 
 	imgOld = filepath.Join(imagesDir, "matrixos-20230101.img.xz")
@@ -47,7 +55,7 @@ func setupJanitorTest(t *testing.T) (configFile, imgOld, imgNew, dlFile, logFile
 		t.Fatalf("failed to set mtime on %s: %v", logFile, err)
 	}
 
-	configFile = filepath.Join(confDir, "matrixos.conf")
+	configFile := filepath.Join(confDir, "matrixos.conf")
 	configContent := fmt.Sprintf(`
 [Imager]
 ImagesDir = %s
@@ -56,6 +64,7 @@ ImagesDir = %s
 DownloadsDir = %s
 
 [matrixOS]
+Root = %s
 LogsDir = %s
 
 [ImagesCleaner]
@@ -67,10 +76,22 @@ DryRun = false
 
 [LogsCleaner]
 DryRun = false
-`, imagesDir, downloadsDir, logsDir)
+`, imagesDir, downloadsDir, tmpDir, logsDir)
 
 	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
+	}
+
+	// Change working directory so searchPaths discovers the config.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get cwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to chdir to %s: %v", tmpDir, err)
+	}
+	cleanup = func() {
+		_ = os.Chdir(origWd)
 	}
 	return
 }
@@ -80,10 +101,11 @@ func TestJanitorCommand(t *testing.T) {
 	getEuid = func() int { return 0 }
 	defer func() { getEuid = origGetEuid }()
 
-	configFile, imgOld, imgNew, dlFile, logFile := setupJanitorTest(t)
+	cleanup, imgOld, imgNew, dlFile, logFile := setupJanitorTest(t)
+	defer cleanup()
 
 	cmd := NewJanitorCommand()
-	if err := cmd.Init([]string{"--conf", configFile}); err != nil {
+	if err := cmd.Init([]string{}); err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
 
@@ -118,10 +140,11 @@ func TestJanitorNotRoot(t *testing.T) {
 	getEuid = func() int { return 1000 }
 	defer func() { getEuid = origGetEuid }()
 
-	configFile, _, _, _, _ := setupJanitorTest(t)
+	cleanup, _, _, _, _ := setupJanitorTest(t)
+	defer cleanup()
 
 	cmd := NewJanitorCommand()
-	if err := cmd.Init([]string{"--conf", configFile}); err != nil {
+	if err := cmd.Init([]string{}); err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
 

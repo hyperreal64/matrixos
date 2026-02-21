@@ -159,7 +159,7 @@ func (c *JailbreakCommand) Name() string {
 
 // Init initializes the command.
 func (c *JailbreakCommand) Init(args []string) error {
-	if err := c.initConfig(); err != nil {
+	if err := c.initClientConfig(); err != nil {
 		return err
 	}
 	if err := c.initOstree(); err != nil {

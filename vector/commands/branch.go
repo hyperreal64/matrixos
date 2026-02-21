@@ -25,7 +25,7 @@ func (c *BranchCommand) Name() string {
 
 // Init initializes the command
 func (c *BranchCommand) Init(args []string) error {
-	if err := c.initConfig(); err != nil {
+	if err := c.initClientConfig(); err != nil {
 		return err
 	}
 

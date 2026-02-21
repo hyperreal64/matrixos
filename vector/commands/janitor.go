@@ -4,23 +4,20 @@ import (
 	"flag"
 	"fmt"
 	"matrixos/vector/commands/cleaners"
-	"matrixos/vector/lib/config"
 	"os"
 )
 
 // JanitorCommand is a command for cleaning up development toolkit artifacts
 type JanitorCommand struct {
-	fs           *flag.FlagSet
-	confFilePath string
+	BaseCommand
+	fs *flag.FlagSet
 }
 
 // NewJanitorCommand creates a new JanitorCommand
 func NewJanitorCommand() ICommand {
-	c := &JanitorCommand{
-		fs: flag.NewFlagSet("janitor", flag.ExitOnError),
+	return &JanitorCommand{
+		fs: flag.NewFlagSet("janitor", flag.ContinueOnError),
 	}
-	c.fs.StringVar(&c.confFilePath, "conf", "", "Path to a custom config file")
-	return c
 }
 
 // Name returns the name of the command
@@ -45,36 +42,25 @@ func (c *JanitorCommand) Run() error {
 	}
 
 	// Load the matrixOS config.
-	var cfg config.IConfig
-	var err error
-	if c.confFilePath != "" {
-		cfg, err = config.NewIniConfigFromFile(c.confFilePath, ".")
-	} else {
-		cfg, err = config.NewIniConfig()
-	}
-
-	if err != nil {
-		return fmt.Errorf("error reading config: %w", err)
-	}
-	if err := cfg.Load(); err != nil {
+	if err := c.initBaseConfig(); err != nil {
 		return fmt.Errorf("error reading config: %w", err)
 	}
 
 	fmt.Println("Initializing images cleaner ...")
 	icln := &cleaners.ImagesCleaner{}
-	if err := icln.Init(cfg); err != nil {
+	if err := icln.Init(c.cfg); err != nil {
 		return fmt.Errorf("error initializing images cleaner: %w", err)
 	}
 
 	fmt.Println("Initializing downloads cleaner ...")
 	dcln := &cleaners.DownloadsCleaner{}
-	if err := dcln.Init(cfg); err != nil {
+	if err := dcln.Init(c.cfg); err != nil {
 		return fmt.Errorf("error initializing downloads cleaner: %w", err)
 	}
 
 	fmt.Println("Initializing logs cleaner ...")
 	lcln := &cleaners.LogsCleaner{}
-	if err := lcln.Init(cfg); err != nil {
+	if err := lcln.Init(c.cfg); err != nil {
 		return fmt.Errorf("error initializing logs cleaner: %w", err)
 	}
 

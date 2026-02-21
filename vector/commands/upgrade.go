@@ -44,7 +44,7 @@ func (c *UpgradeCommand) Name() string {
 
 // Init initializes the command
 func (c *UpgradeCommand) Init(args []string) error {
-	if err := c.initConfig(); err != nil {
+	if err := c.initClientConfig(); err != nil {
 		return err
 	}
 
