@@ -1,7 +1,6 @@
 package filesystems
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -221,90 +220,74 @@ func GetLuksRootfsDevicePath(luksName string) (string, error) {
 	return filepath.Join(devMapperPrefix, luksName), nil
 }
 
-// DeviceUUID returns the UUID of a given device path.
+// DeviceUUID returns the UUID of a given device path by looking up
+// the /dev/disk/by-uuid/ symlinks.
 func DeviceUUID(devPath string) (string, error) {
 	if devPath == "" {
 		return "", fmt.Errorf("missing argument devpath")
 	}
-	out, err := execOutput("blkid", "-s", "UUID", "-o", "value", devPath)
-	if err != nil {
-		return "", err
-	}
-	trimmedOut := strings.TrimSpace(string(out))
-	if trimmedOut == "" {
-		return "", fmt.Errorf("could not find UUID for %s", devPath)
-	}
-	return trimmedOut, nil
+	return resolveDeviceAttribute(devPath, devDiskByUUIDPath)
 }
 
-// DevicePartUUID returns the PARTUUID of a given device path.
+// DevicePartUUID returns the PARTUUID of a given device path by looking up
+// the /dev/disk/by-partuuid/ symlinks.
 func DevicePartUUID(devPath string) (string, error) {
 	if devPath == "" {
 		return "", fmt.Errorf("missing argument devpath")
 	}
-	out, err := execOutput("blkid", "-s", "PARTUUID", "-o", "value", devPath)
-	if err != nil {
-		return "", err
-	}
-	trimmedOut := strings.TrimSpace(string(out))
-	if trimmedOut == "" {
-		return "", fmt.Errorf("could not find PARTUUID for %s", devPath)
-	}
-	return trimmedOut, nil
+	return resolveDeviceAttribute(devPath, devDiskByPartUUIDPath)
 }
 
-// MountpointToDevice returns the device path for a given mountpoint.
+// MountpointToDevice returns the device path for a given mountpoint
+// by reading /proc/self/mountinfo.
 func MountpointToDevice(mnt string) (string, error) {
 	if mnt == "" {
 		return "", fmt.Errorf("missing mnt parameter")
 	}
 
-	out, err := execOutput("findmnt", "-no", "SOURCES", mnt)
+	entry, err := findMountByTarget(mnt)
 	if err != nil {
-		return "", err
-	}
-
-	trimmedOut := strings.TrimSpace(string(out))
-	if trimmedOut == "" {
 		return "", fmt.Errorf("no device found for mountpoint %s", mnt)
 	}
-	return strings.Split(trimmedOut, "\n")[0], nil
+	if entry.Source == "" {
+		return "", fmt.Errorf("no device found for mountpoint %s", mnt)
+	}
+	return entry.Source, nil
 }
 
-// MountpointToUUID returns the UUID for a given mountpoint.
+// MountpointToUUID returns the UUID for a given mountpoint by reading
+// /proc/self/mountinfo and resolving the device UUID from /dev/disk/by-uuid/.
 func MountpointToUUID(mnt string) (string, error) {
 	if mnt == "" {
 		return "", fmt.Errorf("missing mnt parameter")
 	}
 
-	out, err := execOutput("findmnt", "-n", "-o", "UUID", "-T", mnt)
+	entry, err := findMountContainingPath(mnt)
 	if err != nil {
-		return "", err
-	}
-
-	trimmedOut := strings.TrimSpace(string(out))
-	if trimmedOut == "" {
 		return "", fmt.Errorf("no UUID found for mountpoint %s", mnt)
 	}
-	return trimmedOut, nil
+	uuid, err := resolveDeviceAttribute(entry.Source, devDiskByUUIDPath)
+	if err != nil {
+		return "", fmt.Errorf("no UUID found for mountpoint %s: %w", mnt, err)
+	}
+	return uuid, nil
 }
 
-// MountpointToFSType returns the filesystem type for a given mountpoint.
+// MountpointToFSType returns the filesystem type for a given mountpoint
+// by reading /proc/self/mountinfo.
 func MountpointToFSType(mnt string) (string, error) {
 	if mnt == "" {
 		return "", fmt.Errorf("missing mnt parameter")
 	}
 
-	out, err := execOutput("findmnt", "-n", "-o", "FSTYPE", "-T", mnt)
+	entry, err := findMountContainingPath(mnt)
 	if err != nil {
-		return "", err
-	}
-
-	trimmedOut := strings.TrimSpace(string(out))
-	if trimmedOut == "" {
 		return "", fmt.Errorf("no FSTYPE found for mountpoint %s", mnt)
 	}
-	return trimmedOut, nil
+	if entry.FSType == "" {
+		return "", fmt.Errorf("no FSTYPE found for mountpoint %s", mnt)
+	}
+	return entry.FSType, nil
 }
 
 // CleanupMounts unmounts a list of mounts in reverse order.
@@ -312,16 +295,17 @@ func CleanupMounts(mounts []string) {
 	DevicesSettle()
 	for i := len(mounts) - 1; i >= 0; i-- {
 		mnt := mounts[i]
-		out, _ := execOutput("findmnt", "-n", mnt)
-		if len(out) == 0 {
+		mounted, _ := isMounted(mnt)
+		if !mounted {
 			continue
 		}
 		log.Printf("Unmounting %s ...", mnt)
 		if err := sysUnmount(mnt, 0); err != nil {
 			FlushBlockDeviceBuffers(mnt)
 			log.Printf("Unable to umount %s: %v", mnt, err)
-			out, _ := execCombinedOutput("findmnt", mnt)
-			log.Println(string(out))
+			if entry, mntErr := findMountByTarget(mnt); mntErr == nil {
+				log.Println(entry.String())
+			}
 			log.Printf("For safety, calling umount -l %s", mnt)
 			sysUnmount(mnt, unix.MNT_DETACH)
 			continue
@@ -347,8 +331,9 @@ func CleanupCryptsetupDevices(devices []string) {
 		FlushBlockDeviceBuffers(cdpath)
 		if err := execRun(nil, nil, nil, "cryptsetup", "close", cd); err != nil {
 			log.Printf("Unable to cryptsetup close %s", cdpath)
-			out, _ := execCombinedOutput("findmnt", cdpath)
-			log.Println(string(out))
+			if entries, mntErr := findMountsBySource(cdpath); mntErr == nil {
+				log.Println(formatMountEntries(entries))
+			}
 			continue
 		}
 	}
@@ -372,8 +357,9 @@ func CleanupLoopDevices(devices []string) {
 		if err := execRun(nil, nil, nil, "losetup", "-d", ld); err != nil {
 			FlushBlockDeviceBuffers(ld)
 			log.Printf("Unable to close loop device %s", ld)
-			out, _ := execCombinedOutput("findmnt", ld)
-			log.Println(string(out))
+			if entries, mntErr := findMountsBySource(ld); mntErr == nil {
+				log.Println(formatMountEntries(entries))
+			}
 			continue
 		}
 	}
@@ -404,21 +390,20 @@ func DirectoryExists(path string) bool {
 	return info.IsDir()
 }
 
-// ListSubmounts returns a list of submounts for a given mountpoint.
+// ListSubmounts returns a list of submounts for a given mountpoint
+// by reading /proc/self/mountinfo and filtering by prefix.
 func ListSubmounts(mnt string) ([]string, error) {
 	if mnt == "" {
 		return nil, fmt.Errorf("missing argument")
 	}
-	out, err := execOutput("findmnt", "-rn", "-o", "TARGET", "--submounts", "--target", mnt)
+	entries, err := listMountsByPrefix(mnt)
 	if err != nil {
 		return nil, err
 	}
 
 	var submounts []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if strings.HasPrefix(line, mnt) {
-			submounts = append(submounts, line)
-		}
+	for _, e := range entries {
+		submounts = append(submounts, e.Mountpoint)
 	}
 	return submounts, nil
 }
@@ -826,43 +811,27 @@ func CheckDirsSameFilesystem(src, dst string) (bool, error) {
 	return srcStat.Sys().(*syscall.Stat_t).Dev == dstStat.Sys().(*syscall.Stat_t).Dev, nil
 }
 
-// CheckActiveMounts checks for active mounts under a given directory.
+// CheckActiveMounts checks for active mounts under a given directory
+// by reading /proc/self/mountinfo.
 func CheckActiveMounts(chrootDir string) error {
 	if chrootDir == "" {
 		return fmt.Errorf("missing chrootDir parameter")
 	}
-	out, _ /* ignore any errors */ := execOutput(
-		"findmnt", "-rn", "-o", "TARGET", "--submounts",
-		"--target", chrootDir,
-	)
 
-	// we do not expect weird chars in mount points.
-	if len(out) == 0 {
+	entries, _ := listMountsByPrefix(chrootDir)
+	if len(entries) == 0 {
 		return nil
 	}
 
 	var foundMounts []string
-	// Check if the output actually contains paths starting with chrootDir
-	for bl := range bytes.SplitSeq(out, []byte("\n")) {
-		if len(bl) == 0 {
-			continue
-		}
-
-		bl = bytes.ToValidUTF8(bl, []byte("?"))
-		line := string(bl)
-		if strings.HasPrefix(line, chrootDir) {
-			foundMounts = append(foundMounts, line)
-		}
+	for _, e := range entries {
+		foundMounts = append(foundMounts, e.Mountpoint)
 	}
 
-	if len(foundMounts) > 0 {
-		return fmt.Errorf(
-			"cannot operate sync to %s. Active mounts detected:\n- %s\nPlease umount manually.",
-			chrootDir, strings.Join(foundMounts, "\n- "),
-		)
-	}
-
-	return nil
+	return fmt.Errorf(
+		"cannot operate sync to %s. Active mounts detected:\n- %s\nPlease umount manually.",
+		chrootDir, strings.Join(foundMounts, "\n- "),
+	)
 }
 
 // CpReflinkCopyAllowed checks if a reflink copy is allowed.

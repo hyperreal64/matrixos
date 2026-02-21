@@ -194,18 +194,6 @@ func TestHelperProcess(t *testing.T) {
 
 	cmd, args := args[0], args[1:]
 	switch cmd {
-	case "findmnt":
-		if val := os.Getenv("MOCK_FINDMNT_OUTPUT"); val != "" {
-			fmt.Fprint(os.Stdout, val)
-		}
-		if os.Getenv("MOCK_FINDMNT_EXIT_CODE") == "1" {
-			os.Exit(1)
-		}
-	case "umount":
-		if os.Getenv("MOCK_UMOUNT_FAIL") == "1" {
-			fmt.Fprintln(os.Stderr, "umount failed")
-			os.Exit(1)
-		}
 	case "cryptsetup":
 		if os.Getenv("MOCK_CRYPTSETUP_FAIL") == "1" {
 			fmt.Fprintln(os.Stderr, "cryptsetup failed")
@@ -216,11 +204,6 @@ func TestHelperProcess(t *testing.T) {
 			fmt.Fprint(os.Stdout, val)
 		}
 		if os.Getenv("MOCK_LOSETUP_FAIL") == "1" {
-			os.Exit(1)
-		}
-	case "mount":
-		if os.Getenv("MOCK_MOUNT_FAIL") == "1" {
-			fmt.Fprintln(os.Stderr, "mount failed")
 			os.Exit(1)
 		}
 	case "setcap":
@@ -235,14 +218,6 @@ func TestHelperProcess(t *testing.T) {
 		}
 	case "getcap":
 		fmt.Println("/path/to/file = cap_net_raw+ep")
-	case "blkid":
-		// Mock blkid output based on environment variables
-		if val := os.Getenv("MOCK_BLKID_OUTPUT"); val != "" {
-			fmt.Fprint(os.Stdout, val)
-		}
-		if os.Getenv("MOCK_BLKID_EXIT_CODE") == "1" {
-			os.Exit(1)
-		}
 	case "udevadm", "blockdev":
 		// No-op success
 	case "unshare":
@@ -257,14 +232,18 @@ func TestHelperProcess(t *testing.T) {
 }
 
 func TestDeviceUUID(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
+		uuidDir, _ := setupMockDevDisk(t)
 		expectedUUID := "1234-5678"
-		os.Setenv("MOCK_BLKID_OUTPUT", expectedUUID)
-		defer os.Unsetenv("MOCK_BLKID_OUTPUT")
+		devFile := filepath.Join(t.TempDir(), "sda1")
+		if err := os.WriteFile(devFile, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(devFile, filepath.Join(uuidDir, expectedUUID)); err != nil {
+			t.Fatal(err)
+		}
 
-		uuid, err := DeviceUUID("/dev/sda1")
+		uuid, err := DeviceUUID(devFile)
 		if err != nil {
 			t.Fatalf("DeviceUUID failed: %v", err)
 		}
@@ -280,36 +259,40 @@ func TestDeviceUUID(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		os.Setenv("MOCK_BLKID_EXIT_CODE", "1")
-		defer os.Unsetenv("MOCK_BLKID_EXIT_CODE")
-
-		_, err := DeviceUUID("/dev/sda1")
+	t.Run("DeviceNotFound", func(t *testing.T) {
+		setupMockDevDisk(t)
+		devFile := filepath.Join(t.TempDir(), "sda1")
+		if err := os.WriteFile(devFile, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := DeviceUUID(devFile)
 		if err == nil {
-			t.Error("Expected error from blkid failure, got nil")
+			t.Error("Expected error for device not found in by-uuid, got nil")
 		}
 	})
 
-	t.Run("NoOutput", func(t *testing.T) {
-		os.Setenv("MOCK_BLKID_OUTPUT", "")
-		defer os.Unsetenv("MOCK_BLKID_OUTPUT")
-
-		_, err := DeviceUUID("/dev/sda1")
+	t.Run("NonexistentDevice", func(t *testing.T) {
+		setupMockDevDisk(t)
+		_, err := DeviceUUID("/dev/nonexistent_device_xyz")
 		if err == nil {
-			t.Error("Expected error for no output, got nil")
+			t.Error("Expected error for nonexistent device path, got nil")
 		}
 	})
 }
 
 func TestDevicePartUUID(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
+		_, partuuidDir := setupMockDevDisk(t)
 		expectedPartUUID := "abcdef-01"
-		os.Setenv("MOCK_BLKID_OUTPUT", expectedPartUUID)
-		defer os.Unsetenv("MOCK_BLKID_OUTPUT")
+		devFile := filepath.Join(t.TempDir(), "sda1")
+		if err := os.WriteFile(devFile, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(devFile, filepath.Join(partuuidDir, expectedPartUUID)); err != nil {
+			t.Fatal(err)
+		}
 
-		partuuid, err := DevicePartUUID("/dev/sda1")
+		partuuid, err := DevicePartUUID(devFile)
 		if err != nil {
 			t.Fatalf("DevicePartUUID failed: %v", err)
 		}
@@ -325,41 +308,39 @@ func TestDevicePartUUID(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		os.Setenv("MOCK_BLKID_EXIT_CODE", "1")
-		defer os.Unsetenv("MOCK_BLKID_EXIT_CODE")
-
-		_, err := DevicePartUUID("/dev/sda1")
+	t.Run("DeviceNotFound", func(t *testing.T) {
+		setupMockDevDisk(t)
+		devFile := filepath.Join(t.TempDir(), "sda1")
+		if err := os.WriteFile(devFile, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := DevicePartUUID(devFile)
 		if err == nil {
-			t.Error("Expected error from blkid failure, got nil")
+			t.Error("Expected error for device not found in by-partuuid, got nil")
 		}
 	})
 
-	t.Run("NoOutput", func(t *testing.T) {
-		os.Setenv("MOCK_BLKID_OUTPUT", "")
-		defer os.Unsetenv("MOCK_BLKID_OUTPUT")
-
-		_, err := DevicePartUUID("/dev/sda1")
+	t.Run("NonexistentDevice", func(t *testing.T) {
+		setupMockDevDisk(t)
+		_, err := DevicePartUUID("/dev/nonexistent_device_xyz")
 		if err == nil {
-			t.Error("Expected error for no output, got nil")
+			t.Error("Expected error for nonexistent device path, got nil")
 		}
 	})
 }
 
 func TestMountpointToDevice(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
-		expectedDevice := "/dev/sda1"
-		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedDevice+"\n")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt", Source: "/dev/sda1", FSType: "ext4"},
+		})
 
 		device, err := MountpointToDevice("/mnt")
 		if err != nil {
 			t.Fatalf("MountpointToDevice failed: %v", err)
 		}
-		if device != expectedDevice {
-			t.Errorf("Expected device %s, got %s", expectedDevice, device)
+		if device != "/dev/sda1" {
+			t.Errorf("Expected device /dev/sda1, got %s", device)
 		}
 	})
 
@@ -370,34 +351,43 @@ func TestMountpointToDevice(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_EXIT_CODE", "1")
-		defer os.Unsetenv("MOCK_FINDMNT_EXIT_CODE")
-
+	t.Run("NotFound", func(t *testing.T) {
+		setupMockMountInfo(t, []*MountInfoEntry{})
 		_, err := MountpointToDevice("/mnt")
 		if err == nil {
-			t.Error("Expected error from findmnt failure, got nil")
+			t.Error("Expected error when mount not found")
 		}
 	})
 
-	t.Run("NoDeviceFound", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_OUTPUT", "")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
-
-		_, err := MountpointToDevice("/mnt")
-		if err == nil {
-			t.Error("Expected error for no device found, got nil")
+	t.Run("MultipleOutputs", func(t *testing.T) {
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt", Source: "/dev/sda1", FSType: "ext4"},
+			{Mountpoint: "/mnt", Source: "/dev/sda2", FSType: "ext4"},
+		})
+		device, err := MountpointToDevice("/mnt")
+		if err != nil {
+			t.Fatalf("MountpointToDevice failed: %v", err)
+		}
+		if device != "/dev/sda2" {
+			t.Errorf("Expected most recent device /dev/sda2, got %s", device)
 		}
 	})
 }
 
 func TestMountpointToUUID(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
+		uuidDir, _ := setupMockDevDisk(t)
+		devFile := filepath.Join(t.TempDir(), "sda1")
+		if err := os.WriteFile(devFile, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
 		expectedUUID := "abcd-1234-ef56-7890"
-		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedUUID+"\n")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		if err := os.Symlink(devFile, filepath.Join(uuidDir, expectedUUID)); err != nil {
+			t.Fatal(err)
+		}
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt", Source: devFile, FSType: "ext4"},
+		})
 
 		uuid, err := MountpointToUUID("/mnt")
 		if err != nil {
@@ -415,20 +405,19 @@ func TestMountpointToUUID(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_EXIT_CODE", "1")
-		defer os.Unsetenv("MOCK_FINDMNT_EXIT_CODE")
-
+	t.Run("MountNotFound", func(t *testing.T) {
+		setupMockMountInfo(t, []*MountInfoEntry{})
 		_, err := MountpointToUUID("/mnt")
 		if err == nil {
-			t.Error("Expected error from findmnt failure, got nil")
+			t.Error("Expected error when mount not found")
 		}
 	})
 
-	t.Run("NoOutput", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_OUTPUT", "")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
-
+	t.Run("NoUUID", func(t *testing.T) {
+		setupMockDevDisk(t)
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt", Source: "tmpfs", FSType: "tmpfs"},
+		})
 		_, err := MountpointToUUID("/mnt")
 		if err == nil {
 			t.Error("Expected error for no UUID found, got nil")
@@ -437,33 +426,31 @@ func TestMountpointToUUID(t *testing.T) {
 }
 
 func TestMountpointToFSType(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
-		expectedFSType := "ext4"
-		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedFSType+"\n")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt", Source: "/dev/sda1", FSType: "ext4"},
+		})
 
 		fstype, err := MountpointToFSType("/mnt")
 		if err != nil {
 			t.Fatalf("MountpointToFSType failed: %v", err)
 		}
-		if fstype != expectedFSType {
-			t.Errorf("Expected FSTYPE %s, got %s", expectedFSType, fstype)
+		if fstype != "ext4" {
+			t.Errorf("Expected FSTYPE ext4, got %s", fstype)
 		}
 	})
 
 	t.Run("SuccessVfat", func(t *testing.T) {
-		expectedFSType := "vfat"
-		os.Setenv("MOCK_FINDMNT_OUTPUT", expectedFSType+"\n")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/boot/efi", Source: "/dev/sda2", FSType: "vfat"},
+		})
 
 		fstype, err := MountpointToFSType("/boot/efi")
 		if err != nil {
 			t.Fatalf("MountpointToFSType failed: %v", err)
 		}
-		if fstype != expectedFSType {
-			t.Errorf("Expected FSTYPE %s, got %s", expectedFSType, fstype)
+		if fstype != "vfat" {
+			t.Errorf("Expected FSTYPE vfat, got %s", fstype)
 		}
 	})
 
@@ -474,34 +461,21 @@ func TestMountpointToFSType(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_EXIT_CODE", "1")
-		defer os.Unsetenv("MOCK_FINDMNT_EXIT_CODE")
-
+	t.Run("MountNotFound", func(t *testing.T) {
+		setupMockMountInfo(t, []*MountInfoEntry{})
 		_, err := MountpointToFSType("/mnt")
 		if err == nil {
-			t.Error("Expected error from findmnt failure, got nil")
-		}
-	})
-
-	t.Run("NoOutput", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_OUTPUT", "")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
-
-		_, err := MountpointToFSType("/mnt")
-		if err == nil {
-			t.Error("Expected error for no FSTYPE found, got nil")
+			t.Error("Expected error when mount not found")
 		}
 	})
 }
 
 func TestListSubmounts(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
-		mounts := "/mnt/test\n/mnt/test/sub"
-		os.Setenv("MOCK_FINDMNT_OUTPUT", mounts)
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt/test"},
+			{Mountpoint: "/mnt/test/sub"},
+		})
 
 		submounts, err := ListSubmounts("/mnt/test")
 		if err != nil {
@@ -519,13 +493,11 @@ func TestListSubmounts(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_EXIT_CODE", "1")
-		defer os.Unsetenv("MOCK_FINDMNT_EXIT_CODE")
-
+	t.Run("ReadFail", func(t *testing.T) {
+		setupMockMountInfoFail(t)
 		_, err := ListSubmounts("/mnt")
 		if err == nil {
-			t.Error("Expected error from findmnt failure, got nil")
+			t.Error("Expected error from mountinfo read failure")
 		}
 	})
 }
@@ -708,19 +680,21 @@ func TestCleanupMounts(t *testing.T) {
 	setupMockSyscalls(t)
 
 	t.Run("SuccessfulUnmount", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_OUTPUT", "/mnt/test")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt/test", Source: "/dev/sda1"},
+		})
 		CleanupMounts([]string{"/mnt/test"})
 	})
 
 	t.Run("MountNotExist", func(t *testing.T) {
-		os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{})
 		CleanupMounts([]string{"/mnt/test"})
 	})
 
 	t.Run("UnmountFail", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_OUTPUT", "/mnt/fail")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt/fail", Source: "/dev/sda1"},
+		})
 		os.Setenv("MOCK_UMOUNT_FAIL", "1")
 		defer os.Unsetenv("MOCK_UMOUNT_FAIL")
 		// Should not panic or error out, just log
@@ -788,18 +762,17 @@ func TestCheckFsCapabilitySupport(t *testing.T) {
 }
 
 func TestCheckActiveMounts(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("NoActiveMounts", func(t *testing.T) {
-		os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{})
 		if err := CheckActiveMounts("/mnt/test"); err != nil {
 			t.Errorf("CheckActiveMounts failed: %v", err)
 		}
 	})
 
 	t.Run("ActiveMountsDetected", func(t *testing.T) {
-		os.Setenv("MOCK_FINDMNT_OUTPUT", "/mnt/test/proc")
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: "/mnt/test/proc", Source: "proc", FSType: "proc"},
+		})
 		if err := CheckActiveMounts("/mnt/test"); err == nil {
 			t.Error("CheckActiveMounts should fail when mounts are detected")
 		}
@@ -841,8 +814,14 @@ func TestUnsetupCommonRootfsMounts(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Mock that the mounts exist
-		os.Setenv("MOCK_FINDMNT_OUTPUT", tmpDir)
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: filepath.Join(tmpDir, "dev")},
+			{Mountpoint: filepath.Join(tmpDir, "dev", "pts")},
+			{Mountpoint: filepath.Join(tmpDir, "sys")},
+			{Mountpoint: filepath.Join(tmpDir, "dev", "shm")},
+			{Mountpoint: filepath.Join(tmpDir, "proc")},
+			{Mountpoint: filepath.Join(tmpDir, "run", "lock")},
+		})
 		if err := UnsetupCommonRootfsMounts(tmpDir); err != nil {
 			t.Errorf("UnsetupCommonRootfsMounts failed: %v", err)
 		}
@@ -867,8 +846,9 @@ func TestBindUmount(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		os.Setenv("MOCK_FINDMNT_OUTPUT", tmpDir)
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: tmpDir},
+		})
 		if err := BindUmount(tmpDir); err != nil {
 			t.Errorf("BindUmount failed: %v", err)
 		}
@@ -910,8 +890,9 @@ func TestBindUmountDistdir(t *testing.T) {
 		if err := os.MkdirAll(distfilesDir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		os.Setenv("MOCK_FINDMNT_OUTPUT", distfilesDir)
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: distfilesDir},
+		})
 
 		if err := BindUmountDistdir(rootfs); err != nil {
 			t.Errorf("BindUmountDistdir failed: %v", err)
@@ -942,8 +923,9 @@ func TestBindUmountBinpkgs(t *testing.T) {
 		if err := os.MkdirAll(binpkgsDir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		os.Setenv("MOCK_FINDMNT_OUTPUT", binpkgsDir)
-		defer os.Unsetenv("MOCK_FINDMNT_OUTPUT")
+		setupMockMountInfo(t, []*MountInfoEntry{
+			{Mountpoint: binpkgsDir},
+		})
 
 		if err := BindUmountBinpkgs(rootfs); err != nil {
 			t.Errorf("BindUmountBinpkgs failed: %v", err)
@@ -970,6 +952,7 @@ func TestCleanupCryptsetupDevices(t *testing.T) {
 	})
 
 	t.Run("CloseFail", func(t *testing.T) {
+		setupMockMountInfo(t, []*MountInfoEntry{})
 		os.Setenv("MOCK_CRYPTSETUP_FAIL", "1")
 		defer os.Unsetenv("MOCK_CRYPTSETUP_FAIL")
 		tmpDir := t.TempDir()
