@@ -919,31 +919,6 @@ func TestAddRemoteWithSysroot(t *testing.T) {
 	}
 }
 
-func TestLastCommitWithSysroot(t *testing.T) {
-	cfg := &MockConfig{
-		Items: map[string][]string{
-			"Ostree.Sysroot": {"/sysroot"},
-		},
-	}
-	o, err := NewOstree(cfg)
-	if err != nil {
-		t.Fatalf("NewOstree failed: %v", err)
-	}
-
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
-		fmt.Fprintln(stdout, "hash123")
-		return nil
-	}
-
-	hash, err := o.LastCommitWithSysroot("ref", false)
-	if err != nil {
-		t.Fatalf("LastCommitWithSysroot failed: %v", err)
-	}
-	if hash != "hash123" {
-		t.Errorf("LastCommitWithSysroot = %q, want hash123", hash)
-	}
-}
-
 func TestGpgSignFile(t *testing.T) {
 	var cmds []string
 	tmpDir := t.TempDir()

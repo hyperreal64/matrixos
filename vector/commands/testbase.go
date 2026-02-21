@@ -54,7 +54,6 @@ func (m *mockOstree) ValidateFilesystemHierarchy(string) error                  
 func (m *mockOstree) BootCommit(string) (string, error)                            { return "", nil }
 func (m *mockOstree) ListRemotes(bool) ([]string, error)                           { return nil, nil }
 func (m *mockOstree) LastCommit(string, bool) (string, error)                      { return "", nil }
-func (m *mockOstree) LastCommitWithSysroot(string, bool) (string, error)           { return "", nil }
 func (m *mockOstree) ImportGpgKey(string) error                                    { return nil }
 func (m *mockOstree) GpgSignFile(string) error                                     { return nil }
 func (m *mockOstree) MaybeInitializeGpg(bool) error                                { return nil }

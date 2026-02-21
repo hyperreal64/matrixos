@@ -74,7 +74,6 @@ type IOstree interface {
 	BootCommit(sysroot string) (string, error)
 	ListRemotes(verbose bool) ([]string, error)
 	LastCommit(ref string, verbose bool) (string, error)
-	LastCommitWithSysroot(ref string, verbose bool) (string, error)
 	LastCommitWithRoot(ref string, verbose bool) (string, error)
 	ImportGpgKey(keyPath string) error
 	GpgSignFile(file string) error
@@ -365,16 +364,6 @@ func LastCommit(repoDir, ref string, verbose bool) (string, error) {
 		return "", fmt.Errorf("no commit found for ref %s", ref)
 	}
 	return lines[0], nil
-}
-
-// LastCommitWithSysroot returns the last commit for a given ref in a sysroot.
-func LastCommitWithSysroot(sysroot, ref string, verbose bool) (string, error) {
-	if sysroot == "" {
-		return "", errors.New("invalid sysroot parameter")
-	}
-
-	repoDir := filepath.Join(strings.TrimRight(sysroot, "/"), "ostree", "repo")
-	return LastCommit(repoDir, ref, verbose)
 }
 
 // BuildDeploymentRootfs builds the path to the deployed rootfs given a sysroot, osName,
@@ -1190,16 +1179,6 @@ func (o *Ostree) LastCommit(ref string, verbose bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return o.lastCommitFromRepo(repoDir, ref, verbose)
-}
-
-// LastCommitWithSysroot returns the last commit for a given ref in a sysroot.
-func (o *Ostree) LastCommitWithSysroot(ref string, verbose bool) (string, error) {
-	sysroot, err := o.Sysroot()
-	if err != nil {
-		return "", err
-	}
-	repoDir := filepath.Join(sysroot, "ostree", "repo")
 	return o.lastCommitFromRepo(repoDir, ref, verbose)
 }
 
