@@ -174,6 +174,62 @@ func setupMockSyscalls(t *testing.T) {
 	})
 }
 
+// setupMockXattr swaps xattr syscall vars with an in-memory store.
+func setupMockXattr(t *testing.T) {
+	origLsetxattr := sysLsetxattr
+	origLgetxattr := sysLgetxattr
+	origLlistxattr := sysLlistxattr
+
+	xattrs := make(map[string]map[string][]byte)
+
+	sysLsetxattr = func(path, attr string, data []byte, flags int) error {
+		if _, ok := xattrs[path]; !ok {
+			xattrs[path] = make(map[string][]byte)
+		}
+		val := make([]byte, len(data))
+		copy(val, data)
+		xattrs[path][attr] = val
+		return nil
+	}
+
+	sysLgetxattr = func(path, attr string, dest []byte) (int, error) {
+		fileAttrs, ok := xattrs[path]
+		if !ok {
+			return 0, unix.ENODATA
+		}
+		val, ok := fileAttrs[attr]
+		if !ok {
+			return 0, unix.ENODATA
+		}
+		if dest == nil {
+			return len(val), nil
+		}
+		return copy(dest, val), nil
+	}
+
+	sysLlistxattr = func(path string, dest []byte) (int, error) {
+		fileAttrs, ok := xattrs[path]
+		if !ok {
+			return 0, nil
+		}
+		var packed []byte
+		for name := range fileAttrs {
+			packed = append(packed, []byte(name)...)
+			packed = append(packed, 0)
+		}
+		if dest == nil {
+			return len(packed), nil
+		}
+		return copy(dest, packed), nil
+	}
+
+	t.Cleanup(func() {
+		sysLsetxattr = origLsetxattr
+		sysLgetxattr = origLgetxattr
+		sysLlistxattr = origLlistxattr
+	})
+}
+
 // TestHelperProcess is the mock process that runs instead of the real commands.
 func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
@@ -206,10 +262,6 @@ func TestHelperProcess(t *testing.T) {
 		if os.Getenv("MOCK_LOSETUP_FAIL") == "1" {
 			os.Exit(1)
 		}
-	case "setcap":
-		// Success
-	case "getcap":
-		fmt.Println("/path/to/file = cap_net_raw+ep")
 	case "udevadm", "blockdev":
 		// No-op success
 	case "unshare":
@@ -869,7 +921,7 @@ func TestCopyFilePreserveXattrs(t *testing.T) {
 }
 
 func TestCheckFsCapabilitySupport(t *testing.T) {
-	setupMockExec(t)
+	setupMockXattr(t)
 
 	tmpDir := t.TempDir()
 	supported, err := CheckFsCapabilitySupport(tmpDir)
