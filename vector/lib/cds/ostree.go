@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"matrixos/vector/lib/config"
+	fslib "matrixos/vector/lib/filesystems"
 	"os"
 	"os/exec"
 	"os/user"
@@ -82,7 +83,7 @@ type IOstree interface {
 	Deploy(ref string, bootArgs []string, verbose bool) error
 	Upgrade(args []string, verbose bool) error
 	ListPackages(commit string, verbose bool) ([]string, error)
-	ListContents(commit, path string, verbose bool) ([]*PathInfo, error)
+	ListContents(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
 }
 
 // runCommand runs a generic binary with args and stdout/stderr handling.
@@ -2271,31 +2272,13 @@ func (o *Ostree) Upgrade(args []string, verbose bool) error {
 	return o.ostreeRun(verbose, cmdArgs...)
 }
 
-type PathMode struct {
-	Type   string      // E.g., "-", "d", "l"
-	SetUID bool        // Set-user-ID bit
-	SetGID bool        // Set-group-ID bit
-	Sticky bool        // Sticky bit
-	Perms  fs.FileMode // Stored as uint32, printed as octal
-}
-
-// PathInfo represents the information of a path in an ostree commit.
-type PathInfo struct {
-	Mode *PathMode // Mode information of the path
-	Uid  uint64    // User ID of the owner
-	Gid  uint64    // Group ID of the owner
-	Size uint64    // Size of the file in bytes
-	Path string    // Full path of the file
-	Link string    // Target of the symlink if Type is "l"
-}
-
 // ParseModeString takes a hybrid string like "-00644" and parses it.
-func ParseModeString(input string) (*PathMode, error) {
+func ParseModeString(input string) (*fslib.PathMode, error) {
 	if len(input) < 4 {
 		return nil, fmt.Errorf("input too short to be valid mode string: %q", input)
 	}
 
-	mode := PathMode{
+	mode := fslib.PathMode{
 		Type: string(input[0]),
 	}
 
@@ -2326,13 +2309,13 @@ func ParseModeString(input string) (*PathMode, error) {
 }
 
 // ParseOstreeLsLine parses a line from `ostree ls` output into a PathInfo struct.
-func ParseOstreeLsLine(line string) (*PathInfo, error) {
+func ParseOstreeLsLine(line string) (*fslib.PathInfo, error) {
 	parts := strings.Fields(line)
 	if len(parts) < 5 {
 		return nil, fmt.Errorf("unexpected format for ostree ls line: %q", line)
 	}
 
-	pi := &PathInfo{}
+	pi := &fslib.PathInfo{}
 	mode, err := ParseModeString(parts[0])
 	if err != nil {
 		return nil, err
@@ -2360,7 +2343,7 @@ func ParseOstreeLsLine(line string) (*PathInfo, error) {
 }
 
 // ListContents lists the contents of a path in a commit.
-func (o *Ostree) ListContents(commit, path string, verbose bool) ([]*PathInfo, error) {
+func (o *Ostree) ListContents(commit, path string, verbose bool) (*[]fslib.PathInfo, error) {
 	if commit == "" {
 		return nil, errors.New("missing commit parameter")
 	}
@@ -2374,7 +2357,7 @@ func (o *Ostree) ListContents(commit, path string, verbose bool) ([]*PathInfo, e
 	return o.listContentsOfPath(commit, repoDir, path, verbose)
 }
 
-func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) ([]*PathInfo, error) {
+func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) (*[]fslib.PathInfo, error) {
 	stdout, err := o.ostreeRunCapture(
 		verbose,
 		"--repo="+repoDir,
@@ -2388,7 +2371,7 @@ func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) 
 		return nil, err
 	}
 
-	var pis []*PathInfo
+	var pis []fslib.PathInfo
 
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
@@ -2402,13 +2385,13 @@ func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) 
 		if err != nil {
 			return nil, err
 		}
-		pis = append(pis, pi)
+		pis = append(pis, *pi)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	return pis, nil
+	return &pis, nil
 }
 
 // ListPackages lists the packages in a commit.

@@ -892,3 +892,291 @@ func TestChroot(t *testing.T) {
 		}
 	})
 }
+
+func TestListContents(t *testing.T) {
+	t.Run("EmptyPath", func(t *testing.T) {
+		_, err := ListContents("")
+		if err == nil {
+			t.Fatal("Expected error for empty path, got nil")
+		}
+	})
+
+	t.Run("NonExistentPath", func(t *testing.T) {
+		_, err := ListContents("/nonexistent/path/that/does/not/exist")
+		if err == nil {
+			t.Fatal("Expected error for non-existent path, got nil")
+		}
+	})
+
+	t.Run("EmptyDirectory", func(t *testing.T) {
+		dir := t.TempDir()
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+		// Should contain only the root directory itself
+		if len(pis) != 1 {
+			t.Fatalf("Expected 1 entry (root dir), got %d", len(pis))
+		}
+		if pis[0].Mode.Type != "d" {
+			t.Errorf("Expected type 'd', got %q", pis[0].Mode.Type)
+		}
+		if pis[0].Path != dir {
+			t.Errorf("Expected path %q, got %q", dir, pis[0].Path)
+		}
+	})
+
+	t.Run("RegularFiles", func(t *testing.T) {
+		dir := t.TempDir()
+
+		content := []byte("hello world")
+		filePath := filepath.Join(dir, "file.txt")
+		if err := os.WriteFile(filePath, content, 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		// root dir + file.txt
+		if len(pis) != 2 {
+			t.Fatalf("Expected 2 entries, got %d", len(pis))
+		}
+
+		// Find the file entry
+		var filePi *PathInfo
+		for _, pi := range pis {
+			if pi.Path == filePath {
+				filePi = pi
+				break
+			}
+		}
+		if filePi == nil {
+			t.Fatal("File entry not found in results")
+		}
+		if filePi.Mode.Type != "-" {
+			t.Errorf("Expected type '-', got %q", filePi.Mode.Type)
+		}
+		if filePi.Size != uint64(len(content)) {
+			t.Errorf("Expected size %d, got %d", len(content), filePi.Size)
+		}
+	})
+
+	t.Run("Subdirectories", func(t *testing.T) {
+		dir := t.TempDir()
+
+		subdir := filepath.Join(dir, "subdir")
+		if err := os.Mkdir(subdir, 0755); err != nil {
+			t.Fatalf("Mkdir failed: %v", err)
+		}
+		nestedFile := filepath.Join(subdir, "nested.txt")
+		if err := os.WriteFile(nestedFile, []byte("nested"), 0600); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		// root dir + subdir + nested.txt
+		if len(pis) != 3 {
+			t.Fatalf("Expected 3 entries, got %d", len(pis))
+		}
+
+		pathSet := make(map[string]string) // path -> type
+		for _, pi := range pis {
+			pathSet[pi.Path] = pi.Mode.Type
+		}
+		if typ, ok := pathSet[dir]; !ok || typ != "d" {
+			t.Errorf("Root dir missing or wrong type: ok=%v type=%q", ok, typ)
+		}
+		if typ, ok := pathSet[subdir]; !ok || typ != "d" {
+			t.Errorf("Subdir missing or wrong type: ok=%v type=%q", ok, typ)
+		}
+		if typ, ok := pathSet[nestedFile]; !ok || typ != "-" {
+			t.Errorf("Nested file missing or wrong type: ok=%v type=%q", ok, typ)
+		}
+	})
+
+	t.Run("Symlinks", func(t *testing.T) {
+		dir := t.TempDir()
+
+		target := filepath.Join(dir, "target.txt")
+		if err := os.WriteFile(target, []byte("target"), 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+		link := filepath.Join(dir, "link.txt")
+		if err := os.Symlink("target.txt", link); err != nil {
+			t.Fatalf("Symlink failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		// root dir + target.txt + link.txt
+		if len(pis) != 3 {
+			t.Fatalf("Expected 3 entries, got %d", len(pis))
+		}
+
+		var linkPi *PathInfo
+		for _, pi := range pis {
+			if pi.Path == link {
+				linkPi = pi
+				break
+			}
+		}
+		if linkPi == nil {
+			t.Fatal("Symlink entry not found in results")
+		}
+		if linkPi.Mode.Type != "l" {
+			t.Errorf("Expected type 'l', got %q", linkPi.Mode.Type)
+		}
+		if linkPi.Link != "target.txt" {
+			t.Errorf("Expected link target 'target.txt', got %q", linkPi.Link)
+		}
+	})
+
+	t.Run("SpecialFilesIgnored", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a regular file and a FIFO (named pipe)
+		regFile := filepath.Join(dir, "regular.txt")
+		if err := os.WriteFile(regFile, []byte("data"), 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+		fifoPath := filepath.Join(dir, "myfifo")
+		if err := unix.Mkfifo(fifoPath, 0644); err != nil {
+			t.Fatalf("Mkfifo failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		// root dir + regular.txt only; FIFO should be ignored
+		if len(pis) != 2 {
+			t.Fatalf("Expected 2 entries (fifo should be ignored), got %d", len(pis))
+		}
+		for _, pi := range pis {
+			if pi.Path == fifoPath {
+				t.Error("FIFO should have been ignored but was included")
+			}
+		}
+	})
+
+	t.Run("Permissions", func(t *testing.T) {
+		dir := t.TempDir()
+
+		filePath := filepath.Join(dir, "perms.txt")
+		if err := os.WriteFile(filePath, []byte("x"), 0755); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		var filePi *PathInfo
+		for _, pi := range pis {
+			if pi.Path == filePath {
+				filePi = pi
+				break
+			}
+		}
+		if filePi == nil {
+			t.Fatal("File entry not found")
+		}
+		if filePi.Mode.Perms != 0755 {
+			t.Errorf("Expected perms 0755, got %04o", filePi.Mode.Perms)
+		}
+	})
+
+	t.Run("UidGid", func(t *testing.T) {
+		dir := t.TempDir()
+
+		filePath := filepath.Join(dir, "owner.txt")
+		if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		var filePi *PathInfo
+		for _, pi := range pis {
+			if pi.Path == filePath {
+				filePi = pi
+				break
+			}
+		}
+		if filePi == nil {
+			t.Fatal("File entry not found")
+		}
+		// The file should be owned by the current user
+		if filePi.Uid != uint64(os.Getuid()) {
+			t.Errorf("Expected UID %d, got %d", os.Getuid(), filePi.Uid)
+		}
+		if filePi.Gid != uint64(os.Getgid()) {
+			t.Errorf("Expected GID %d, got %d", os.Getgid(), filePi.Gid)
+		}
+	})
+
+	t.Run("SymlinkToDirectoryNotFollowed", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Create a subdirectory with a file in it
+		subdir := filepath.Join(dir, "realdir")
+		if err := os.Mkdir(subdir, 0755); err != nil {
+			t.Fatalf("Mkdir failed: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(subdir, "inner.txt"), []byte("x"), 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		// Create a symlink pointing to the subdirectory
+		dirLink := filepath.Join(dir, "linkdir")
+		if err := os.Symlink("realdir", dirLink); err != nil {
+			t.Fatalf("Symlink failed: %v", err)
+		}
+
+		pis, err := ListContents(dir)
+		if err != nil {
+			t.Fatalf("ListContents failed: %v", err)
+		}
+
+		// root dir + realdir + inner.txt + linkdir (symlink, not followed)
+		if len(pis) != 4 {
+			for _, pi := range pis {
+				t.Logf("  %s %s (link=%q)", pi.Mode.Type, pi.Path, pi.Link)
+			}
+			t.Fatalf("Expected 4 entries, got %d", len(pis))
+		}
+
+		var linkPi *PathInfo
+		for _, pi := range pis {
+			if pi.Path == dirLink {
+				linkPi = pi
+				break
+			}
+		}
+		if linkPi == nil {
+			t.Fatal("Directory symlink entry not found")
+		}
+		if linkPi.Mode.Type != "l" {
+			t.Errorf("Expected symlink type 'l', got %q", linkPi.Mode.Type)
+		}
+		if linkPi.Link != "realdir" {
+			t.Errorf("Expected link target 'realdir', got %q", linkPi.Link)
+		}
+	})
+}

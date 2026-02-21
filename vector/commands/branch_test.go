@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"matrixos/vector/lib/cds"
+	fslib "matrixos/vector/lib/filesystems"
 	"os"
 	"testing"
 )
@@ -73,7 +74,7 @@ func (m *mockOstree) AddRemoteWithSysroot(string, bool) error                   
 func (m *mockOstree) LocalRefs(bool) ([]string, error)                             { return nil, nil }
 func (m *mockOstree) RemoteRefs(bool) ([]string, error)                            { return nil, nil }
 func (m *mockOstree) ListDeploymentsInRoot(string, bool) ([]cds.Deployment, error) { return nil, nil }
-func (m *mockOstree) ListContents(string, string, bool) ([]*cds.PathInfo, error)   { return nil, nil }
+func (m *mockOstree) ListContents(string, string, bool) (*[]fslib.PathInfo, error) { return nil, nil }
 func (m *mockOstree) DeployedRootfs(string, bool) (string, error)                  { return "", nil }
 func (m *mockOstree) BootedRef(bool) (string, error)                               { return "", nil }
 func (m *mockOstree) BootedHash(bool) (string, error)                              { return "", nil }
