@@ -27,15 +27,6 @@ You should run this script immediately after installing matrixOS and booting int
   * Regenerates SSH host keys for security.
 * **How to use:** Run `sudo /matrixos/install/setupOS`.
 
-## ⬆️ `upgrade`
-
-**The Updater.**
-
-This is the recommended way to update your system. It wraps the complex `ostree` commands into a simple utility.
-
-* **What it does:** It pulls the latest updates from the matrixOS servers, stages them, and prepares the system to boot into the new version on the next restart.
-* **How to use:** Run `sudo /matrixos/install/upgrade`.
-
 ## 🔓 `jailbreak`
 
 **The Escape Hatch.**
