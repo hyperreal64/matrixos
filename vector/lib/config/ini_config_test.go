@@ -737,7 +737,11 @@ func TestIniConfig_Clone(t *testing.T) {
 
 	// Values should match.
 	for _, key := range []string{"A.Key", "B.Key"} {
-		origVal, _ := original.GetItem(key)
+		origVal, err := original.GetItem(key)
+		if err != nil {
+			t.Errorf("Original missing key %q: %v", key, err)
+			continue
+		}
 		cloneVal, err := clone.GetItem(key)
 		if err != nil {
 			t.Errorf("Clone missing key %q: %v", key, err)
@@ -749,20 +753,33 @@ func TestIniConfig_Clone(t *testing.T) {
 	}
 
 	// Mutating the clone must not affect the original.
-	_ = clone.AddOverlay(map[string][]string{"A.Key": {"mutated"}})
+	if err := clone.AddOverlay(map[string][]string{"A.Key": {"mutated"}}); err != nil {
+		t.Fatalf("clone.AddOverlay error: %v", err)
+	}
 
-	cloneVal, _ := clone.GetItem("A.Key")
+	cloneVal, err := clone.GetItem("A.Key")
+	if err != nil {
+		t.Fatalf("clone.GetItem(A.Key) error: %v", err)
+	}
 	if cloneVal != "mutated" {
 		t.Errorf("Clone A.Key should be %q after overlay, got %q", "mutated", cloneVal)
 	}
-	origVal, _ := original.GetItem("A.Key")
+	origVal, err := original.GetItem("A.Key")
+	if err != nil {
+		t.Fatalf("original.GetItem(A.Key) error: %v", err)
+	}
 	if origVal != "v2" {
 		t.Errorf("Original A.Key should still be %q, got %q", "v2", origVal)
 	}
 
 	// Mutating original must not affect the clone.
-	_ = original.AddOverlay(map[string][]string{"B.Key": {"orig-mutated"}})
-	cloneBVal, _ := clone.GetItem("B.Key")
+	if err := original.AddOverlay(map[string][]string{"B.Key": {"orig-mutated"}}); err != nil {
+		t.Fatalf("original.AddOverlay error: %v", err)
+	}
+	cloneBVal, err := clone.GetItem("B.Key")
+	if err != nil {
+		t.Fatalf("clone.GetItem(B.Key) error: %v", err)
+	}
 	if cloneBVal != "x" {
 		t.Errorf("Clone B.Key should still be %q, got %q", "x", cloneBVal)
 	}
@@ -815,7 +832,10 @@ func TestIniConfig_AddOverlay(t *testing.T) {
 	}
 
 	// Full history should contain all three values.
-	all, _ := cfg.GetItems("Existing.Key")
+	all, err := cfg.GetItems("Existing.Key")
+	if err != nil {
+		t.Fatalf("GetItems(Existing.Key) error: %v", err)
+	}
 	if len(all) != 3 {
 		t.Errorf("Expected 3 values, got %d: %v", len(all), all)
 	}
@@ -854,15 +874,25 @@ func TestIniConfig_AddOverlay_Multiple(t *testing.T) {
 	}
 
 	// Apply two overlays in sequence.
-	_ = cfg.AddOverlay(map[string][]string{"S.A": {"layer1"}})
-	_ = cfg.AddOverlay(map[string][]string{"S.A": {"layer2"}})
+	if err := cfg.AddOverlay(map[string][]string{"S.A": {"layer1"}}); err != nil {
+		t.Fatalf("AddOverlay layer1 error: %v", err)
+	}
+	if err := cfg.AddOverlay(map[string][]string{"S.A": {"layer2"}}); err != nil {
+		t.Fatalf("AddOverlay layer2 error: %v", err)
+	}
 
-	val, _ := cfg.GetItem("S.A")
+	val, err := cfg.GetItem("S.A")
+	if err != nil {
+		t.Fatalf("GetItem(S.A) error: %v", err)
+	}
 	if val != "layer2" {
 		t.Errorf("Expected last overlay %q, got %q", "layer2", val)
 	}
 
-	all, _ := cfg.GetItems("S.A")
+	all, err := cfg.GetItems("S.A")
+	if err != nil {
+		t.Fatalf("GetItems(S.A) error: %v", err)
+	}
 	if len(all) != 3 {
 		t.Errorf("Expected 3 history entries, got %d: %v", len(all), all)
 	}
