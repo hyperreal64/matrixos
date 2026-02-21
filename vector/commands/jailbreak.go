@@ -284,7 +284,7 @@ func (c *JailbreakCommand) sanityChecks(sysroot, bootRoot, efiRoot, fullSuffix s
 	}
 
 	// Check we're on a -full branch.
-	deployments, err := c.ot.ListRootDeployments(false)
+	deployments, err := c.ot.ListDeployments(false)
 	if err != nil {
 		return fmt.Errorf("failed to list deployments: %w", err)
 	}
@@ -365,7 +365,7 @@ func (c *JailbreakCommand) remountSysroot(sysroot string) error {
 
 func (c *JailbreakCommand) cloneToSysroot(sysroot string) error {
 	// Find currently booted deployment.
-	deployments, err := c.ot.ListRootDeployments(false)
+	deployments, err := c.ot.ListDeployments(false)
 	if err != nil {
 		return fmt.Errorf("failed to list deployments: %w", err)
 	}

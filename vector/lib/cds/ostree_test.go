@@ -2045,7 +2045,7 @@ func TestListRootRemoteRefs(t *testing.T) {
 	})
 }
 
-func TestListRootDeployments(t *testing.T) {
+func TestListDeployments(t *testing.T) {
 	fakeJSON := `{
 		"deployments": [
 			{
@@ -2090,9 +2090,9 @@ func TestListRootDeployments(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	deployments, err := o.ListRootDeployments(false)
+	deployments, err := o.ListDeployments(false)
 	if err != nil {
-		t.Fatalf("ListRootDeployments failed: %v", err)
+		t.Fatalf("ListDeployments failed: %v", err)
 	}
 
 	if len(deployments) != 2 {
@@ -2139,7 +2139,7 @@ func TestListRootDeployments(t *testing.T) {
 	}
 }
 
-func TestListRootDeployments_EmptyRoot(t *testing.T) {
+func TestListDeployments_EmptyRoot(t *testing.T) {
 	cfg := &MockConfig{
 		Items: map[string][]string{},
 	}
@@ -2148,13 +2148,13 @@ func TestListRootDeployments_EmptyRoot(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	_, err = o.ListRootDeployments(false)
+	_, err = o.ListDeployments(false)
 	if err == nil {
 		t.Error("expected error for empty root, got nil")
 	}
 }
 
-func TestListRootDeployments_NoDeployments(t *testing.T) {
+func TestListDeployments_NoDeployments(t *testing.T) {
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2171,16 +2171,16 @@ func TestListRootDeployments_NoDeployments(t *testing.T) {
 		return nil
 	}
 
-	deployments, err := o.ListRootDeployments(false)
+	deployments, err := o.ListDeployments(false)
 	if err != nil {
-		t.Fatalf("ListRootDeployments failed: %v", err)
+		t.Fatalf("ListDeployments failed: %v", err)
 	}
 	if len(deployments) != 0 {
 		t.Errorf("expected 0 deployments, got %d", len(deployments))
 	}
 }
 
-func TestListRootDeployments_CommandError(t *testing.T) {
+func TestListDeployments_CommandError(t *testing.T) {
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2196,13 +2196,13 @@ func TestListRootDeployments_CommandError(t *testing.T) {
 		return fmt.Errorf("ostree command failed")
 	}
 
-	_, err = o.ListRootDeployments(false)
+	_, err = o.ListDeployments(false)
 	if err == nil {
 		t.Error("expected error when ostree command fails, got nil")
 	}
 }
 
-func TestListRootDeployments_InvalidJSON(t *testing.T) {
+func TestListDeployments_InvalidJSON(t *testing.T) {
 	root := t.TempDir()
 	cfg := &MockConfig{
 		Items: map[string][]string{
@@ -2219,7 +2219,7 @@ func TestListRootDeployments_InvalidJSON(t *testing.T) {
 		return nil
 	}
 
-	_, err = o.ListRootDeployments(false)
+	_, err = o.ListDeployments(false)
 	if err == nil {
 		t.Error("expected error for invalid JSON, got nil")
 	}
