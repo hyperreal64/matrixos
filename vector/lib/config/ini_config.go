@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
 )
 
 type searchPath struct {
@@ -111,6 +113,7 @@ func searchPaths(cfgName string) []searchPath {
 
 // IniConfig is a config reader that loads values from an INI file.
 type IniConfig struct {
+	mu  sync.RWMutex
 	sp  *searchPath
 	cfg map[string][]string
 }
@@ -129,17 +132,17 @@ func cfgNameToSearchPath(cfgName string) *searchPath {
 }
 
 // NewBaseConfig creates a new IniConfig instance for the base configuration.
-func NewBaseConfig() (IConfig, error) {
+func NewBaseConfig() (*IniConfig, error) {
 	return NewIniConfig(BaseConfigFileName)
 }
 
 // NewClientConfig creates a new IniConfig instance for the client configuration.
-func NewClientConfig() (IConfig, error) {
+func NewClientConfig() (*IniConfig, error) {
 	return NewIniConfig(ClientConfigFileName)
 }
 
 // NewIniConfig creates a new IniConfig instance.
-func NewIniConfig(configName string) (IConfig, error) {
+func NewIniConfig(configName string) (*IniConfig, error) {
 	sp := cfgNameToSearchPath(configName)
 	if sp == nil {
 		return nil, fmt.Errorf(
@@ -159,7 +162,7 @@ type ConfigFromPathParams struct {
 }
 
 // NewIniConfigFromPath creates a new IniConfig instance with the specified file path.
-func NewIniConfigFromPath(params *ConfigFromPathParams) (IConfig, error) {
+func NewIniConfigFromPath(params *ConfigFromPathParams) (*IniConfig, error) {
 	if params == nil {
 		return nil, fmt.Errorf("params is nil")
 	}
@@ -177,6 +180,55 @@ func NewIniConfigFromPath(params *ConfigFromPathParams) (IConfig, error) {
 	return &IniConfig{
 		sp: &sp,
 	}, nil
+}
+
+// Clone creates a deep copy of the IniConfig instance.
+// This is useful for forking off configs with overlays,
+// without mutating the original config.
+func (c *IniConfig) Clone() *IniConfig {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var sp searchPath
+	if c.sp != nil {
+		sp = *(c.sp) // copy.
+	}
+	clone := &IniConfig{
+		sp:  &sp,
+		cfg: make(map[string][]string),
+	}
+	for k, v := range c.cfg {
+		clone.cfg[k] = slices.Clone(v)
+	}
+	return clone
+}
+
+// AddOverlay adds the provided overlay to the config.
+// The overlay is a map where keys are config keys and values
+// are slices of config values.
+func (c *IniConfig) AddOverlay(overlay map[string][]string) error {
+	if c == nil {
+		return fmt.Errorf("config is nil")
+	}
+	if overlay == nil {
+		return fmt.Errorf("overlay is nil")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for k, v := range overlay {
+		vals, ok := c.cfg[k]
+		if !ok {
+			c.cfg[k] = v
+			continue
+		}
+		vals = append(vals, v...)
+		c.cfg[k] = vals
+	}
+	return nil
 }
 
 func (c *IniConfig) loadAndGenerateConfig(configPath string) error {
@@ -275,6 +327,9 @@ func (c *IniConfig) Load() error {
 	if c == nil {
 		return fmt.Errorf("config is nil")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.sp == nil {
 		return fmt.Errorf("no configuration found in any of the search paths.")
 	}
@@ -362,6 +417,8 @@ func (c *IniConfig) GetItem(key string) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("config is nil")
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	lst, ok := c.cfg[key]
 	if !ok {
@@ -388,6 +445,8 @@ func (c *IniConfig) GetItems(key string) ([]string, error) {
 	if c == nil {
 		return vals, fmt.Errorf("config is nil")
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	lst, ok := c.cfg[key]
 	if !ok {
