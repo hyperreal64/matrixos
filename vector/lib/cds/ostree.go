@@ -98,7 +98,6 @@ type IOstree interface {
 	Upgrade(args []string, verbose bool) error
 	ListPackages(commit string, verbose bool) ([]string, error)
 	ListContents(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
-	ListContentsInRoot(commit, path string, verbose bool) (*[]fslib.PathInfo, error)
 	ListEtcChanges(oldSHA, newSHA string) ([]EtcChange, error)
 }
 
@@ -2345,23 +2344,6 @@ func (o *Ostree) ListContents(commit, path string, verbose bool) (*[]fslib.PathI
 	return o.listContentsOfPath(commit, repoDir, path, verbose)
 }
 
-// ListContentsInRoot lists the contents of a path in a commit
-// using the ostree repo in the given root.
-func (o *Ostree) ListContentsInRoot(commit, path string, verbose bool) (*[]fslib.PathInfo, error) {
-	if commit == "" {
-		return nil, errors.New("missing commit parameter")
-	}
-	if path == "" {
-		return nil, errors.New("missing path parameter")
-	}
-	root, err := o.Root()
-	if err != nil {
-		return nil, err
-	}
-	repoDir := filepath.Join(root, "ostree", "repo")
-	return o.listContentsOfPath(commit, repoDir, path, verbose)
-}
-
 func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) (*[]fslib.PathInfo, error) {
 	stdout, err := o.ostreeRunCapture(
 		verbose,
@@ -2573,11 +2555,11 @@ func classifyEtcChange(relPath string, old, new_, user *fslib.PathInfo) *EtcChan
 // the new pristine /usr/etc, and the user's live /etc, and returns a list of
 // changes with their classification (add/update/remove/conflict/user-only).
 func (o *Ostree) ListEtcChanges(oldSHA, newSHA string) ([]EtcChange, error) {
-	oldEtcContent, err := o.ListContentsInRoot(oldSHA, "/usr/etc", false)
+	oldEtcContent, err := o.ListContents(oldSHA, "/usr/etc", false)
 	if err != nil {
 		return nil, err
 	}
-	newEtcContent, err := o.ListContentsInRoot(newSHA, "/usr/etc", false)
+	newEtcContent, err := o.ListContents(newSHA, "/usr/etc", false)
 	if err != nil {
 		return nil, err
 	}
