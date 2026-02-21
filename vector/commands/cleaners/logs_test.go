@@ -1,6 +1,7 @@
 package cleaners
 
 import (
+	"matrixos/vector/lib/config"
 	"os"
 	"path"
 	"testing"
@@ -16,12 +17,12 @@ func TestLogsCleaner_Name(t *testing.T) {
 
 func TestLogsCleaner_Init(t *testing.T) {
 	cleaner := &LogsCleaner{}
-	mockConfig := &MockConfig{values: make(map[string]interface{})}
-	err := cleaner.Init(mockConfig)
+	mockCfg := &config.MockConfig{Items: map[string][]string{}}
+	err := cleaner.Init(mockCfg)
 	if err != nil {
 		t.Errorf("Init should not return an error, but got: %v", err)
 	}
-	if cleaner.cfg != mockConfig {
+	if cleaner.cfg != mockCfg {
 		t.Error("cfg should be initialized with the provided config")
 	}
 }
@@ -35,16 +36,16 @@ func TestLogsCleaner_isDryRun(t *testing.T) {
 	}{
 		{"DryRunTrue", "true", true, false},
 		{"DryRunFalse", "false", false, false},
-		{"DryRunNotSet", "", false, true},
+		{"DryRunNotSet", "", false, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			if !tt.wantErr {
-				mockConfig.values["LogsCleaner.DryRun"] = tt.dryRun
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			if tt.dryRun != "" {
+				mockCfg.Items["LogsCleaner.DryRun"] = []string{tt.dryRun}
 			}
-			cleaner := &LogsCleaner{cfg: mockConfig}
+			cleaner := &LogsCleaner{cfg: mockCfg}
 			got, err := cleaner.isDryRun()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("isDryRun() error = %v, wantErr %v", err, tt.wantErr)
@@ -70,11 +71,11 @@ func TestLogsCleaner_getLogsDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			if !tt.wantErr {
-				mockConfig.values["matrixOS.LogsDir"] = tt.logsDir
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			if tt.logsDir != "" {
+				mockCfg.Items["matrixOS.LogsDir"] = []string{tt.logsDir}
 			}
-			cleaner := &LogsCleaner{cfg: mockConfig}
+			cleaner := &LogsCleaner{cfg: mockCfg}
 			got, err := cleaner.getLogsDir()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getLogsDir() error = %v, wantErr %v", err, tt.wantErr)
@@ -136,12 +137,16 @@ func TestLogsCleaner_Run(t *testing.T) {
 			}
 			defer newFile.Close()
 
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			mockConfig.values["LogsCleaner.DryRun"] = tt.dryRun
-			mockConfig.values["matrixOS.LogsDir"] = tt.logsDir
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			if tt.dryRun != "" {
+				mockCfg.Items["LogsCleaner.DryRun"] = []string{tt.dryRun}
+			}
+			if tt.logsDir != "" {
+				mockCfg.Items["matrixOS.LogsDir"] = []string{tt.logsDir}
+			}
 
 			cleaner := &LogsCleaner{}
-			err = cleaner.Init(mockConfig)
+			err = cleaner.Init(mockCfg)
 			if err != nil {
 				t.Fatalf("Init failed: %v", err)
 			}

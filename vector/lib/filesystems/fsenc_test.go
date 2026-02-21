@@ -4,56 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"matrixos/vector/lib/config"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// mockConfig implements config.IConfig for fsenc testing.
-type mockConfig struct {
-	Items map[string][]string
-	Bools map[string]bool
-}
-
-func (m *mockConfig) Load() error {
-	return nil
-}
-
-func (m *mockConfig) GetItem(key string) (string, error) {
-	if lst, ok := m.Items[key]; ok {
-		var val string
-		if len(lst) > 0 {
-			val = lst[len(lst)-1]
-		}
-		return val, nil
-	}
-	return "", nil
-}
-
-func (m *mockConfig) GetItems(key string) ([]string, error) {
-	if val, ok := m.Items[key]; ok {
-		return val, nil
-	}
-	return nil, nil
-}
-
-func (m *mockConfig) GetBool(key string) (bool, error) {
-	if val, ok := m.Bools[key]; ok {
-		return val, nil
-	}
-	return false, nil
-}
-
-// errConfig returns errors for every call, useful for testing error paths.
-type errConfig struct {
-	err error
-}
-
-func (e *errConfig) Load() error                       { return e.err }
-func (e *errConfig) GetItem(string) (string, error)    { return "", e.err }
-func (e *errConfig) GetItems(string) ([]string, error) { return nil, e.err }
-func (e *errConfig) GetBool(string) (bool, error)      { return false, e.err }
 
 // mockRunner records calls and returns a configurable error.
 type mockRunner struct {
@@ -87,8 +43,8 @@ func newMockRunnerFailOnCall(n int, err error) *mockRunner {
 	return &mockRunner{failOn: n, err: err}
 }
 
-func baseFsencConfig() *mockConfig {
-	return &mockConfig{
+func baseFsencConfig() *config.MockConfig {
+	return &config.MockConfig{
 		Items: map[string][]string{
 			"Imager.EncryptionKey":       {"superSecret123"},
 			"Imager.EncryptedRootFsName": {"matrixosroot"},
@@ -151,7 +107,7 @@ func TestEncryptionEnabled(t *testing.T) {
 	})
 
 	t.Run("ConfigError", func(t *testing.T) {
-		ec := &errConfig{err: errors.New("cfg error")}
+		ec := &config.ErrConfig{Err: errors.New("cfg error")}
 		f, _ := NewFsenc(ec)
 		_, err := f.EncryptionEnabled()
 		if err == nil {
@@ -174,7 +130,7 @@ func TestEncryptionKey(t *testing.T) {
 	})
 
 	t.Run("ConfigError", func(t *testing.T) {
-		ec := &errConfig{err: errors.New("cfg error")}
+		ec := &config.ErrConfig{Err: errors.New("cfg error")}
 		f, _ := NewFsenc(ec)
 		_, err := f.EncryptionKey()
 		if err == nil {
@@ -207,7 +163,7 @@ func TestEncryptedRootFsName(t *testing.T) {
 	})
 
 	t.Run("ConfigError", func(t *testing.T) {
-		ec := &errConfig{err: errors.New("cfg error")}
+		ec := &config.ErrConfig{Err: errors.New("cfg error")}
 		f, _ := NewFsenc(ec)
 		_, err := f.EncryptedRootFsName()
 		if err == nil {
@@ -240,7 +196,7 @@ func TestFsencOsName(t *testing.T) {
 	})
 
 	t.Run("ConfigError", func(t *testing.T) {
-		ec := &errConfig{err: errors.New("cfg error")}
+		ec := &config.ErrConfig{Err: errors.New("cfg error")}
 		f, _ := NewFsenc(ec)
 		_, err := f.OsName()
 		if err == nil {
@@ -332,7 +288,7 @@ func TestLuksEncrypt(t *testing.T) {
 	})
 
 	t.Run("EncryptionKeyError", func(t *testing.T) {
-		ec := &errConfig{err: errors.New("key error")}
+		ec := &config.ErrConfig{Err: errors.New("key error")}
 		f, _ := NewFsenc(ec)
 		var dm []string
 		err := f.LuksEncrypt("/dev/loop0p3", "/dev/mapper/root", &dm)
@@ -598,7 +554,7 @@ func TestValidateLuksVariables(t *testing.T) {
 	})
 
 	t.Run("EncryptionCheckConfigError", func(t *testing.T) {
-		ec := &errConfig{err: errors.New("cfg broken")}
+		ec := &config.ErrConfig{Err: errors.New("cfg broken")}
 		f, _ := NewFsenc(ec)
 		err := f.ValidateLuksVariables()
 		if err == nil {

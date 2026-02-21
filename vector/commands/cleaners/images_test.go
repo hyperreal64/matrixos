@@ -1,6 +1,7 @@
 package cleaners
 
 import (
+	"matrixos/vector/lib/config"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,12 +16,12 @@ func TestImagesCleaner_Name(t *testing.T) {
 
 func TestImagesCleaner_Init(t *testing.T) {
 	cleaner := &ImagesCleaner{}
-	mockConfig := &MockConfig{values: make(map[string]interface{})}
-	err := cleaner.Init(mockConfig)
+	mockCfg := &config.MockConfig{Items: map[string][]string{}}
+	err := cleaner.Init(mockCfg)
 	if err != nil {
 		t.Errorf("Init should not return an error, but got: %v", err)
 	}
-	if cleaner.cfg != mockConfig {
+	if cleaner.cfg != mockCfg {
 		t.Error("cfg should be initialized with the provided config")
 	}
 }
@@ -34,16 +35,16 @@ func TestImagesCleaner_isDryRun(t *testing.T) {
 	}{
 		{"DryRunTrue", "true", true, false},
 		{"DryRunFalse", "false", false, false},
-		{"DryRunNotSet", "", false, true},
+		{"DryRunNotSet", "", false, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			if !tt.wantErr {
-				mockConfig.values["ImagesCleaner.DryRun"] = tt.dryRun
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			if tt.dryRun != "" {
+				mockCfg.Items["ImagesCleaner.DryRun"] = []string{tt.dryRun}
 			}
-			cleaner := &ImagesCleaner{cfg: mockConfig}
+			cleaner := &ImagesCleaner{cfg: mockCfg}
 			got, err := cleaner.isDryRun()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("isDryRun() error = %v, wantErr %v", err, tt.wantErr)
@@ -70,11 +71,11 @@ func TestImagesCleaner_MinAmountOfImages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
 			if tt.name != "NotSet" {
-				mockConfig.values["ImagesCleaner.MinAmountOfImages"] = tt.val
+				mockCfg.Items["ImagesCleaner.MinAmountOfImages"] = []string{tt.val}
 			}
-			cleaner := &ImagesCleaner{cfg: mockConfig}
+			cleaner := &ImagesCleaner{cfg: mockCfg}
 			got, err := cleaner.MinAmountOfImages()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MinAmountOfImages() error = %v, wantErr %v", err, tt.wantErr)
@@ -168,13 +169,13 @@ func TestImagesCleaner_Run(t *testing.T) {
 				t.Fatalf("Failed to create subdir: %v", err)
 			}
 
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			mockConfig.values["ImagesCleaner.DryRun"] = tt.dryRun
-			mockConfig.values["ImagesCleaner.MinAmountOfImages"] = tt.minImages
-			mockConfig.values["Imager.ImagesDir"] = subTempDir
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			mockCfg.Items["ImagesCleaner.DryRun"] = []string{tt.dryRun}
+			mockCfg.Items["ImagesCleaner.MinAmountOfImages"] = []string{tt.minImages}
+			mockCfg.Items["Imager.ImagesDir"] = []string{subTempDir}
 
 			cleaner := &ImagesCleaner{}
-			err = cleaner.Init(mockConfig)
+			err = cleaner.Init(mockCfg)
 			if err != nil {
 				t.Fatalf("Init failed: %v", err)
 			}
