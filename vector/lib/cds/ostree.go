@@ -19,6 +19,72 @@ import (
 	"strings"
 )
 
+// IOstree defines the interface for ostree operations.
+// It mirrors all public methods of Ostree for testability.
+type IOstree interface {
+	// Config accessors
+	FullBranchSuffix() (string, error)
+	IsBranchFullSuffixed(ref string) (bool, error)
+	BranchShortnameToFull(shortName, relStage, osName, arch string) (string, error)
+	BranchToFull(ref string) (string, error)
+	RemoveFullFromBranch(ref string) (string, error)
+	GpgEnabled() (bool, error)
+	GpgPrivateKeyPath() (string, error)
+	GpgPublicKeyPath() (string, error)
+	GpgOfficialPubKeyPath() (string, error)
+	OsName() (string, error)
+	Arch() (string, error)
+	RepoDir() (string, error)
+	Sysroot() (string, error)
+	Root() (string, error)
+	Remote() (string, error)
+	RemoteURL() (string, error)
+	AvailableGpgPubKeyPaths() ([]string, error)
+	GpgBestPubKeyPath() (string, error)
+	ClientSideGpgArgs() ([]string, error)
+	GpgHomeDir() (string, error)
+	GpgKeyID() (string, error)
+	GpgArgs() ([]string, error)
+
+	// Filesystem operations
+	SetupEtc(imageDir string) error
+	PrepareFilesystemHierarchy(imageDir string) error
+	ValidateFilesystemHierarchy(imageDir string) error
+
+	// Repo operations
+	BootCommit(sysroot string) (string, error)
+	ListRemotes(verbose bool) ([]string, error)
+	ListRootRemotes(verbose bool) ([]string, error)
+	LastCommit(ref string, verbose bool) (string, error)
+	LastCommitWithSysroot(ref string, verbose bool) (string, error)
+	LastCommitWithRoot(ref string, verbose bool) (string, error)
+	ImportGpgKey(keyPath string) error
+	GpgSignFile(file string) error
+	MaybeInitializeGpg(verbose bool) error
+	MaybeInitializeGpgForRepo(remote, repoDir string, verbose bool) error
+	MaybeInitializeRemote(verbose bool) error
+	Pull(ref string, verbose bool) error
+	PullWithRemote(remote, ref string, verbose bool) error
+	Prune(ref string, verbose bool) error
+	GenerateStaticDelta(ref string, verbose bool) error
+	UpdateSummary(verbose bool) error
+	AddRemote(verbose bool) error
+	AddRemoteWithSysroot(sysroot string, verbose bool) error
+	LocalRefs(verbose bool) ([]string, error)
+	RemoteRefs(verbose bool) ([]string, error)
+	ListRootRemoteRefs(verbose bool) ([]string, error)
+	ListRootDeployments(verbose bool) ([]Deployment, error)
+	ListDeploymentsInRoot(root string, verbose bool) ([]Deployment, error)
+	DeployedRootfs(ref string, verbose bool) (string, error)
+	BootedRef(verbose bool) (string, error)
+	BootedHash(verbose bool) (string, error)
+	Switch(ref string, verbose bool) error
+	Deploy(ref string, bootArgs []string, verbose bool) error
+	Upgrade(args []string, verbose bool) error
+	ListPackages(commit string, verbose bool) ([]string, error)
+	ListContents(commit, path string, verbose bool) ([]*PathInfo, error)
+}
+
 // runCommand runs a generic binary with args and stdout/stderr handling.
 var runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
