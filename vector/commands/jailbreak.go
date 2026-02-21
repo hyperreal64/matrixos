@@ -301,7 +301,7 @@ func (c *JailbreakCommand) sanityChecks(sysroot, bootRoot, efiRoot, fullSuffix s
 			fullSuffix)
 		// Show available full branches.
 		fmt.Fprintln(c.run.stderr, "Showing available full ostree branches:")
-		refs, err := c.ot.ListRootRemoteRefs(false)
+		refs, err := c.ot.RemoteRefs(false)
 		if err == nil {
 			for _, ref := range refs {
 				if strings.HasSuffix(ref, "-"+fullSuffix) {

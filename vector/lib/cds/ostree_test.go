@@ -852,37 +852,6 @@ func TestMaybeInitializeRemote(t *testing.T) {
 	}
 }
 
-func TestRemoteRefs(t *testing.T) {
-	cfg := &MockConfig{
-		Items: map[string][]string{
-			"Ostree.RepoDir": {"/repo"},
-			"Ostree.Remote":  {"origin"},
-		},
-	}
-	o, err := NewOstree(cfg)
-	if err != nil {
-		t.Fatalf("NewOstree failed: %v", err)
-	}
-
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
-		// Mock ostree remote refs output
-		fmt.Fprintln(stdout, "matrixos/dev/gnome")
-		fmt.Fprintln(stdout, "matrixos/prod/server")
-		return nil
-	}
-
-	refs, err := o.RemoteRefs(false)
-	if err != nil {
-		t.Fatalf("RemoteRefs failed: %v", err)
-	}
-	if len(refs) != 2 {
-		t.Errorf("Expected 2 refs, got %d", len(refs))
-	}
-	if refs[0] != "matrixos/dev/gnome" {
-		t.Errorf("Unexpected ref: %s", refs[0])
-	}
-}
-
 func TestAddRemoteWithSysroot(t *testing.T) {
 	var lastArgs []string
 	cfg := &MockConfig{
@@ -1880,13 +1849,13 @@ func TestValidateFilesystemHierarchy(t *testing.T) {
 	})
 }
 
-func TestListRootRemoteRefs(t *testing.T) {
+func TestRemoteRefs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		root := "/myroot"
 		cfg := &MockConfig{
 			Items: map[string][]string{
-				"Ostree.Root":   {root},
-				"Ostree.Remote": {"origin"},
+				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
+				"Ostree.Remote":  {"origin"},
 			},
 		}
 		o, err := NewOstree(cfg)
@@ -1899,9 +1868,9 @@ func TestListRootRemoteRefs(t *testing.T) {
 			return nil
 		}
 
-		refs, err := o.ListRootRemoteRefs(false)
+		refs, err := o.RemoteRefs(false)
 		if err != nil {
-			t.Fatalf("ListRootRemoteRefs failed: %v", err)
+			t.Fatalf("RemoteRefs failed: %v", err)
 		}
 		if len(refs) != 3 {
 			t.Fatalf("expected 3 refs, got %d", len(refs))
@@ -1928,8 +1897,8 @@ func TestListRootRemoteRefs(t *testing.T) {
 		root := "/custom/root"
 		cfg := &MockConfig{
 			Items: map[string][]string{
-				"Ostree.Root":   {root},
-				"Ostree.Remote": {"myremote"},
+				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
+				"Ostree.Remote":  {"myremote"},
 			},
 		}
 		o, err := NewOstree(cfg)
@@ -1937,9 +1906,9 @@ func TestListRootRemoteRefs(t *testing.T) {
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		_, err = o.ListRootRemoteRefs(false)
+		_, err = o.RemoteRefs(false)
 		if err != nil {
-			t.Fatalf("ListRootRemoteRefs failed: %v", err)
+			t.Fatalf("RemoteRefs failed: %v", err)
 		}
 
 		expectedRepoArg := "--repo=/custom/root/ostree/repo"
@@ -1961,7 +1930,7 @@ func TestListRootRemoteRefs(t *testing.T) {
 		}
 	})
 
-	t.Run("EmptyRoot", func(t *testing.T) {
+	t.Run("EmptyRepoDir", func(t *testing.T) {
 		cfg := &MockConfig{
 			Items: map[string][]string{
 				"Ostree.Remote": {"origin"},
@@ -1972,16 +1941,17 @@ func TestListRootRemoteRefs(t *testing.T) {
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		_, err = o.ListRootRemoteRefs(false)
+		_, err = o.RemoteRefs(false)
 		if err == nil {
-			t.Error("expected error for empty root, got nil")
+			t.Error("expected error for empty repoDir, got nil")
 		}
 	})
 
 	t.Run("EmptyRemote", func(t *testing.T) {
+		root := "/custom/root"
 		cfg := &MockConfig{
 			Items: map[string][]string{
-				"Ostree.Root": {"/some/root"},
+				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
 			},
 		}
 		o, err := NewOstree(cfg)
@@ -1989,7 +1959,7 @@ func TestListRootRemoteRefs(t *testing.T) {
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		_, err = o.ListRootRemoteRefs(false)
+		_, err = o.RemoteRefs(false)
 		if err == nil {
 			t.Error("expected error for empty remote, got nil")
 		}
@@ -2003,8 +1973,8 @@ func TestListRootRemoteRefs(t *testing.T) {
 		root := t.TempDir()
 		cfg := &MockConfig{
 			Items: map[string][]string{
-				"Ostree.Root":   {root},
-				"Ostree.Remote": {"origin"},
+				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
+				"Ostree.Remote":  {"origin"},
 			},
 		}
 		o, err := NewOstree(cfg)
@@ -2012,9 +1982,9 @@ func TestListRootRemoteRefs(t *testing.T) {
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		refs, err := o.ListRootRemoteRefs(false)
+		refs, err := o.RemoteRefs(false)
 		if err != nil {
-			t.Fatalf("ListRootRemoteRefs failed: %v", err)
+			t.Fatalf("RemoteRefs failed: %v", err)
 		}
 		if len(refs) != 0 {
 			t.Errorf("expected 0 refs, got %d", len(refs))
@@ -2029,8 +1999,8 @@ func TestListRootRemoteRefs(t *testing.T) {
 		root := t.TempDir()
 		cfg := &MockConfig{
 			Items: map[string][]string{
-				"Ostree.Root":   {root},
-				"Ostree.Remote": {"origin"},
+				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
+				"Ostree.Remote":  {"origin"},
 			},
 		}
 		o, err := NewOstree(cfg)
@@ -2038,7 +2008,7 @@ func TestListRootRemoteRefs(t *testing.T) {
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		_, err = o.ListRootRemoteRefs(false)
+		_, err = o.RemoteRefs(false)
 		if err == nil {
 			t.Error("expected error when ostree command fails, got nil")
 		}

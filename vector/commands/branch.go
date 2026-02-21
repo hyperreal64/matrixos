@@ -80,7 +80,7 @@ func (c *BranchCommand) Run() error {
 		return fmt.Errorf("could not find booted deployment")
 
 	case "list":
-		refs, err := c.ot.ListRootRemoteRefs(false)
+		refs, err := c.ot.RemoteRefs(false)
 		if err != nil {
 			return fmt.Errorf("failed to list remote refs: %w", err)
 		}
