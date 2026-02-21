@@ -75,10 +75,11 @@ func (m *mockOstree) ListContents(string, string, bool) (*[]fslib.PathInfo, erro
 func (m *mockOstree) ListContentsInRoot(string, string, bool) (*[]fslib.PathInfo, error) {
 	return nil, nil
 }
-func (m *mockOstree) DeployedRootfs(string, bool) (string, error) { return "", nil }
-func (m *mockOstree) BootedRef(bool) (string, error)              { return "", nil }
-func (m *mockOstree) BootedHash(bool) (string, error)             { return "", nil }
-func (m *mockOstree) Deploy(string, []string, bool) error         { return nil }
+func (m *mockOstree) ListEtcChanges(string, string) ([]cds.EtcChange, error) { return nil, nil }
+func (m *mockOstree) DeployedRootfs(string, bool) (string, error)            { return "", nil }
+func (m *mockOstree) BootedRef(bool) (string, error)                         { return "", nil }
+func (m *mockOstree) BootedHash(bool) (string, error)                        { return "", nil }
+func (m *mockOstree) Deploy(string, []string, bool) error                    { return nil }
 
 // Methods with configurable behavior for tests.
 func (m *mockOstree) Root() (string, error) {

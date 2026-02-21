@@ -38,12 +38,64 @@ type PathMode struct {
 
 // PathInfo represents the information of a path in an ostree commit.
 type PathInfo struct {
-	Mode *PathMode // Mode information of the path
-	Uid  uint64    // User ID of the owner
-	Gid  uint64    // Group ID of the owner
-	Size uint64    // Size of the file in bytes
-	Path string    // Full path of the file
-	Link string    // Target of the symlink if Type is "l"
+	Mode           *PathMode // Mode information of the path
+	Uid            uint64    // User ID of the owner
+	Gid            uint64    // Group ID of the owner
+	Size           uint64    // Size of the file in bytes
+	OSTreeChecksum string    // Checksum of the path if regular file
+	Path           string    // Full path of the file
+	Link           string    // Target of the symlink if Type is "l"
+}
+
+// Equals compares two PathInfo entries for metadata equality:
+// type, permission bits, uid, gid, size, symlink target and checksums.
+func (a *PathInfo) Equals(b *PathInfo) bool {
+	if a.Mode.Type != b.Mode.Type {
+		return false
+	}
+	if a.Mode.Perms != b.Mode.Perms {
+		return false
+	}
+	if a.Mode.SetUID != b.Mode.SetUID || a.Mode.SetGID != b.Mode.SetGID || a.Mode.Sticky != b.Mode.Sticky {
+		return false
+	}
+	if a.Uid != b.Uid || a.Gid != b.Gid {
+		return false
+	}
+	if a.Size != b.Size {
+		return false
+	}
+	if a.Link != b.Link {
+		return false
+	}
+	aCksum := "0"
+	bCksum := "0"
+	if a.Mode.Type == "-" {
+		aCksum = a.OSTreeChecksum
+	}
+	if b.Mode.Type == "-" {
+		bCksum = b.OSTreeChecksum
+	}
+	if aCksum != bCksum {
+		return false
+	}
+	return true
+}
+
+// String returns a short human-readable description of a PathInfo.
+func (pi *PathInfo) String() string {
+	if pi == nil {
+		return "(absent)"
+	}
+	typ := "file"
+	switch pi.Mode.Type {
+	case "d":
+		typ = "dir"
+	case "l":
+		typ = fmt.Sprintf("link -> %s", pi.Link)
+	}
+	return fmt.Sprintf("%s %04o uid=%d gid=%d size=%d, csum=%s",
+		typ, pi.Mode.Perms, pi.Uid, pi.Gid, pi.Size, pi.OSTreeChecksum)
 }
 
 // ListContents lists the contents of a path on the filesystem.
@@ -52,6 +104,15 @@ type PathInfo struct {
 func ListContents(path string) ([]*PathInfo, error) {
 	if path == "" {
 		return nil, fmt.Errorf("missing path parameter")
+	}
+
+	otRegFileChecksum := func(p string) string {
+		ck, err := OstreeChecksumFileAt(p, OstreeObjectTypeFile, OstreeChecksumFlagsNone)
+		if err != nil {
+			log.Printf("WARNING: failed to compute OSTree checksum for %s: %v. Using dummy checksum.\n", p, err)
+			return "0"
+		}
+		return ck
 	}
 
 	var pis []*PathInfo
@@ -70,9 +131,11 @@ func ListContents(path string) ([]*PathInfo, error) {
 		ft := mode.Type()
 
 		var typeStr string
+		var otChksum string
 		switch {
 		case ft.IsRegular():
 			typeStr = "-"
+			otChksum = otRegFileChecksum(p)
 		case ft.IsDir():
 			typeStr = "d"
 		case ft&fs.ModeSymlink != 0:
@@ -91,9 +154,10 @@ func ListContents(path string) ([]*PathInfo, error) {
 		}
 
 		pi := &PathInfo{
-			Mode: pm,
-			Size: uint64(info.Size()),
-			Path: p,
+			Mode:           pm,
+			Size:           uint64(info.Size()),
+			Path:           p,
+			OSTreeChecksum: otChksum,
 		}
 
 		// Get UID/GID from the underlying syscall stat

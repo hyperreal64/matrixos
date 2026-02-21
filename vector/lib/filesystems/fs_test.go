@@ -11,6 +11,47 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func mkPI(path, typ string, perms uint32, uid, gid, size uint64, link string) PathInfo {
+	return PathInfo{
+		Mode: &PathMode{Type: typ, Perms: os.FileMode(perms)},
+		Uid:  uid, Gid: gid, Size: size,
+		Path: path, Link: link,
+	}
+}
+
+func TestPathInfoMetaEqual(t *testing.T) {
+	a := mkPI("/usr/etc/foo", "-", 0644, 0, 0, 100, "")
+	b := mkPI("/etc/foo", "-", 0644, 0, 0, 100, "")
+	if !a.Equals(&b) {
+		t.Error("Expected equal (path is not compared)")
+	}
+
+	// Different perms
+	c := mkPI("/etc/foo", "-", 0755, 0, 0, 100, "")
+	if a.Equals(&c) {
+		t.Error("Expected not equal (different perms)")
+	}
+
+	// Different size
+	d := mkPI("/etc/foo", "-", 0644, 0, 0, 200, "")
+	if a.Equals(&d) {
+		t.Error("Expected not equal (different size)")
+	}
+
+	// Different type
+	e := mkPI("/etc/foo", "l", 0644, 0, 0, 100, "/bar")
+	if a.Equals(&e) {
+		t.Error("Expected not equal (different type)")
+	}
+
+	// Symlinks with different targets
+	f := mkPI("/etc/link", "l", 0777, 0, 0, 0, "target_a")
+	g := mkPI("/etc/link", "l", 0777, 0, 0, 0, "target_b")
+	if f.Equals(&g) {
+		t.Error("Expected not equal (different link target)")
+	}
+}
+
 // fakeExecCommand mocks exec.Command for testing purposes.
 func fakeExecCommand(command string, args ...string) *exec.Cmd {
 	cs := []string{"-test.run=TestHelperProcess", "--", command}
