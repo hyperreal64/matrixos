@@ -1,6 +1,7 @@
 package cleaners
 
 import (
+	"matrixos/vector/lib/config"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,12 +17,12 @@ func TestDownloadsCleaner_Name(t *testing.T) {
 
 func TestDownloadsCleaner_Init(t *testing.T) {
 	cleaner := &DownloadsCleaner{}
-	mockConfig := &MockConfig{values: make(map[string]interface{})}
-	err := cleaner.Init(mockConfig)
+	mockCfg := &config.MockConfig{Items: map[string][]string{}}
+	err := cleaner.Init(mockCfg)
 	if err != nil {
 		t.Errorf("Init should not return an error, but got: %v", err)
 	}
-	if cleaner.cfg != mockConfig {
+	if cleaner.cfg != mockCfg {
 		t.Error("cfg should be initialized with the provided config")
 	}
 }
@@ -35,16 +36,16 @@ func TestDownloadsCleaner_isDryRun(t *testing.T) {
 	}{
 		{"DryRunTrue", "true", true, false},
 		{"DryRunFalse", "false", false, false},
-		{"DryRunNotSet", "", false, true},
+		{"DryRunNotSet", "", false, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			if !tt.wantErr {
-				mockConfig.values["DownloadsCleaner.DryRun"] = tt.dryRun
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			if tt.dryRun != "" {
+				mockCfg.Items["DownloadsCleaner.DryRun"] = []string{tt.dryRun}
 			}
-			cleaner := &DownloadsCleaner{cfg: mockConfig}
+			cleaner := &DownloadsCleaner{cfg: mockCfg}
 			got, err := cleaner.isDryRun()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("isDryRun() error = %v, wantErr %v", err, tt.wantErr)
@@ -65,16 +66,16 @@ func TestDownloadsCleaner_getDownloadsDir(t *testing.T) {
 		wantErr  bool
 	}{
 		{"Valid", "/tmp/downloads", "/tmp/downloads", false},
-		{"NotSet", "", "", true},
+		{"NotSet", "", "", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			if !tt.wantErr {
-				mockConfig.values["Seeder.DownloadsDir"] = tt.dir
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			if tt.dir != "" {
+				mockCfg.Items["Seeder.DownloadsDir"] = []string{tt.dir}
 			}
-			cleaner := &DownloadsCleaner{cfg: mockConfig}
+			cleaner := &DownloadsCleaner{cfg: mockCfg}
 			got, err := cleaner.getDownloadsDir()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getDownloadsDir() error = %v, wantErr %v", err, tt.wantErr)
@@ -147,12 +148,12 @@ func TestDownloadsCleaner_Run(t *testing.T) {
 				t.Fatalf("Failed to chtimes new file: %v", err)
 			}
 
-			mockConfig := &MockConfig{values: make(map[string]interface{})}
-			mockConfig.values["DownloadsCleaner.DryRun"] = tt.dryRun
-			mockConfig.values["Seeder.DownloadsDir"] = tempDir
+			mockCfg := &config.MockConfig{Items: map[string][]string{}}
+			mockCfg.Items["DownloadsCleaner.DryRun"] = []string{tt.dryRun}
+			mockCfg.Items["Seeder.DownloadsDir"] = []string{tempDir}
 
 			cleaner := &DownloadsCleaner{}
-			err = cleaner.Init(mockConfig)
+			err = cleaner.Init(mockCfg)
 			if err != nil {
 				t.Fatalf("Init failed: %v", err)
 			}

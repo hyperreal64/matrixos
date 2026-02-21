@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"matrixos/vector/lib/config"
 	"matrixos/vector/lib/filesystems"
 	"os"
 	"os/exec"
@@ -14,20 +15,6 @@ import (
 	"strings"
 	"testing"
 )
-
-type MockConfig struct {
-	items map[string]string
-}
-
-func (m *MockConfig) Load() error { return nil }
-func (m *MockConfig) GetItem(key string) (string, error) {
-	if v, ok := m.items[key]; ok {
-		return v, nil
-	}
-	return "", fmt.Errorf("key not found: %s", key)
-}
-func (m *MockConfig) GetBool(key string) (bool, error)      { return false, nil }
-func (m *MockConfig) GetItems(key string) ([]string, error) { return nil, nil }
 
 // Mock helpers for command execution
 var mockCmdOutput map[string]string
@@ -84,7 +71,7 @@ func TestHelperProcess(t *testing.T) {
 
 func TestRootPrivs(t *testing.T) {
 	// Behavior depends on test runner (may be root in some CI); assert consistent result
-	q, _ := New(&MockConfig{})
+	q, _ := New(&config.MockConfig{})
 	err := q.RootPrivs()
 	if os.Geteuid() == 0 {
 		if err != nil {
@@ -99,8 +86,8 @@ func TestRootPrivs(t *testing.T) {
 
 func TestCheckMatrixOSPrivate(t *testing.T) {
 	tmp := t.TempDir()
-	cfg := &MockConfig{items: map[string]string{
-		"matrixOS.PrivateGitRepoPath": tmp,
+	cfg := &config.MockConfig{Items: map[string][]string{
+		"matrixOS.PrivateGitRepoPath": {tmp},
 	}}
 	q, _ := New(cfg)
 
@@ -109,7 +96,7 @@ func TestCheckMatrixOSPrivate(t *testing.T) {
 	}
 
 	// non-existent
-	cfg.items["matrixOS.PrivateGitRepoPath"] = filepath.Join(tmp, "nope")
+	cfg.Items["matrixOS.PrivateGitRepoPath"] = []string{filepath.Join(tmp, "nope")}
 	if err := q.CheckMatrixOSPrivate(); err == nil {
 		t.Fatalf("expected error for missing dir, got nil")
 	}
@@ -127,7 +114,7 @@ func TestCheckNumberOfKernels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	q, _ := New(&MockConfig{})
+	q, _ := New(&config.MockConfig{})
 	if err := q.CheckNumberOfKernels(tmp, 1); err != nil {
 		t.Fatalf("expected nil when count matches, got %v", err)
 	}
@@ -199,7 +186,7 @@ func TestCheckSecureBoot(t *testing.T) {
 	os.Setenv("MOCK_SIG_KEY", "01:e2:40")
 	defer os.Unsetenv("MOCK_SIG_KEY")
 
-	q, err := New(&MockConfig{})
+	q, err := New(&config.MockConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +227,7 @@ func TestCheckKernelAndExternalModule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	q, _ := New(&MockConfig{})
+	q, _ := New(&config.MockConfig{})
 	// Mock returns 5.15.0 which matches our dir structure
 	if err := q.CheckKernelAndExternalModule(tmp, "nvidia.ko*"); err != nil {
 		t.Fatalf("expected nil for valid module check, got %v", err)
@@ -249,8 +236,8 @@ func TestCheckKernelAndExternalModule(t *testing.T) {
 
 func TestVerifyWrappers(t *testing.T) {
 	tmp := t.TempDir()
-	cfg := &MockConfig{items: map[string]string{
-		"matrixOS.PrivateGitRepoPath": tmp,
+	cfg := &config.MockConfig{Items: map[string][]string{
+		"matrixOS.PrivateGitRepoPath": {tmp},
 	}}
 	q, _ := New(cfg)
 

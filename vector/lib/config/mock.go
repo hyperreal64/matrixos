@@ -1,0 +1,73 @@
+package config
+
+// MockConfig is a test-only implementation of IConfig backed by in-memory maps.
+// It is exported so that other packages can use it in their tests without
+// duplicating the mock.
+//
+// Usage:
+//
+//	cfg := &config.MockConfig{
+//	    Items: map[string][]string{
+//	        "Section.Key": {"value"},
+//	    },
+//	    Bools: map[string]bool{
+//	        "Section.Flag": true,
+//	    },
+//	}
+type MockConfig struct {
+	Items map[string][]string
+	Bools map[string]bool
+}
+
+// Load is a no-op for the mock.
+func (m *MockConfig) Load() error { return nil }
+
+// GetItem returns the last value from the Items map for the given key,
+// or "" if the key is absent. This matches the real config behavior where
+// the last value wins when multiple values exist.
+func (m *MockConfig) GetItem(key string) (string, error) {
+	if lst, ok := m.Items[key]; ok {
+		var val string
+		if len(lst) > 0 {
+			val = lst[len(lst)-1]
+		}
+		return val, nil
+	}
+	return "", nil
+}
+
+// GetItems returns the full value slice from the Items map for the given key.
+func (m *MockConfig) GetItems(key string) ([]string, error) {
+	if val, ok := m.Items[key]; ok {
+		return val, nil
+	}
+	return nil, nil
+}
+
+// GetBool returns the boolean value from the Bools map for the given key.
+func (m *MockConfig) GetBool(key string) (bool, error) {
+	if val, ok := m.Bools[key]; ok {
+		return val, nil
+	}
+	return false, nil
+}
+
+// ErrConfig is a test-only IConfig that returns the configured error for every
+// method call. Useful for testing error-propagation paths.
+//
+// Usage:
+//
+//	cfg := &config.ErrConfig{Err: errors.New("broken")}
+type ErrConfig struct{ Err error }
+
+// Load returns the configured error.
+func (e *ErrConfig) Load() error { return e.Err }
+
+// GetItem returns ("", Err).
+func (e *ErrConfig) GetItem(string) (string, error) { return "", e.Err }
+
+// GetItems returns (nil, Err).
+func (e *ErrConfig) GetItems(string) ([]string, error) { return nil, e.Err }
+
+// GetBool returns (false, Err).
+func (e *ErrConfig) GetBool(string) (bool, error) { return false, e.Err }

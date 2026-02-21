@@ -3,6 +3,7 @@ package cds
 import (
 	"fmt"
 	"io"
+	"matrixos/vector/lib/config"
 	fslib "matrixos/vector/lib/filesystems"
 	"os"
 	"os/exec"
@@ -10,41 +11,6 @@ import (
 	"strings"
 	"testing"
 )
-
-// MockConfig implements config.IConfig for testing
-type MockConfig struct {
-	Items map[string][]string
-	Bools map[string]bool
-}
-
-func (m *MockConfig) Load() error {
-	return nil
-}
-
-func (m *MockConfig) GetItem(key string) (string, error) {
-	if lst, ok := m.Items[key]; ok {
-		var val string
-		if len(lst) > 0 {
-			val = lst[len(lst)-1]
-		}
-		return val, nil
-	}
-	return "", nil // Return empty string for not found to simulate empty config
-}
-
-func (m *MockConfig) GetItems(key string) ([]string, error) {
-	if val, ok := m.Items[key]; ok {
-		return val, nil
-	}
-	return nil, nil // Return empty slice for not found to simulate empty config
-}
-
-func (m *MockConfig) GetBool(key string) (bool, error) {
-	if val, ok := m.Bools[key]; ok {
-		return val, nil
-	}
-	return false, nil
-}
 
 func TestBranchHelpers(t *testing.T) {
 	tests := []struct {
@@ -126,7 +92,7 @@ func TestRepoOperations(t *testing.T) {
 	}
 
 	// Test AddRemote
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":   {repoDir},
 			"Ostree.Remote":    {"origin"},
@@ -215,7 +181,7 @@ func TestCommitAndListPackages(t *testing.T) {
 	}
 
 	// Setup Ostree struct
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 			"Ostree.Root":          {root},
@@ -275,7 +241,7 @@ func TestPrepareFilesystemHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/usr/var/db/pkg"}, // Different to test move
 			"Imager.EfiRoot":       {"/efi"},
@@ -370,7 +336,7 @@ func TestDeploy(t *testing.T) {
 	bootArgs := []string{"arg1=val1", "arg2=val2"}
 
 	// Setup config
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":  {repoDir},
 			"Ostree.Sysroot":  {sysroot},
@@ -484,7 +450,7 @@ func TestDeployIntegration(t *testing.T) {
 	defer func() {
 		exec.Command("chattr", "-R", "-i", sysroot).Run()
 	}()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":  {repoDir},
 			"Ostree.Sysroot":  {sysroot},
@@ -527,7 +493,7 @@ func TestBranchContainsRemote(t *testing.T) {
 }
 
 func TestFullBranchHelpers(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.FullBranchSuffix": {"full"},
 		},
@@ -601,7 +567,7 @@ func TestCollectionIDArgs(t *testing.T) {
 func TestOstreeCommandsMocked(t *testing.T) {
 	var lastCmdArgs []string
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":                {"/repo"},
 			"Ostree.Root":                   {"/"},
@@ -670,7 +636,7 @@ func TestOstreeCommandsMocked(t *testing.T) {
 }
 
 func TestBootedStatus(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {"/"},
 		},
@@ -758,7 +724,7 @@ func TestGpgKeyID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
 			"Ostree.GpgPublicKey":  {pubKey},
@@ -790,7 +756,7 @@ func TestBootCommit(t *testing.T) {
 	sysroot := t.TempDir()
 	osName := "matrixos"
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"matrixOS.OsName": {osName},
 		},
@@ -823,7 +789,7 @@ func TestBootCommit(t *testing.T) {
 func TestMaybeInitializeRemote(t *testing.T) {
 	var cmds []string
 	repoDir := t.TempDir()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":   {repoDir},
 			"Ostree.Remote":    {"origin"},
@@ -854,7 +820,7 @@ func TestMaybeInitializeRemote(t *testing.T) {
 
 func TestAddRemoteWithSysroot(t *testing.T) {
 	var lastArgs []string
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Remote":    {"origin"},
 			"Ostree.RemoteUrl": {"http://url"},
@@ -900,7 +866,7 @@ func TestGpgSignFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
 			"Ostree.GpgPublicKey":  {pubKey},
@@ -950,7 +916,7 @@ func TestImportGpgKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
 		},
@@ -988,7 +954,7 @@ func TestGpgKeySelection(t *testing.T) {
 	offKey := filepath.Join(tmpDir, "off.key")
 
 	// Case 1: No keys exist
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.GpgPublicKey":         {privKey},
 			"Ostree.GpgOfficialPublicKey": {offKey},
@@ -1048,7 +1014,7 @@ func TestPrepareFilesystemHierarchySafety(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/usr/var-db-pkg"},
 			"Imager.EfiRoot":       {"/efi"},
@@ -1086,7 +1052,7 @@ func TestMaybeInitializeGpg(t *testing.T) {
 		}
 	}
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":              {"/repo"},
 			"Ostree.Remote":               {"origin"},
@@ -1148,7 +1114,7 @@ func TestMaybeInitializeGpg(t *testing.T) {
 
 func TestPullWithRemoteExplicit(t *testing.T) {
 	var lastArgs []string
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
 		},
@@ -1174,7 +1140,7 @@ func TestPullWithRemoteExplicit(t *testing.T) {
 }
 
 func TestConfigGettersErrors(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{},
 		Bools: map[string]bool{},
 	}
@@ -1221,7 +1187,7 @@ func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
 	// Create objects dir to simulate existing repo
 	os.MkdirAll(filepath.Join(repoDir, "objects"), 0755)
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir":   {repoDir},
 			"Ostree.Remote":    {"origin"},
@@ -1281,7 +1247,7 @@ func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
 		setupMinimalHierarchy(t, imageDir)
 		os.Mkdir(filepath.Join(imageDir, "home"), 0755)
 
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Releaser.ReadOnlyVdb": {"/usr/var-db-pkg"},
 				"Imager.EfiRoot":       {"/efi"},
@@ -1307,7 +1273,7 @@ func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
 		os.MkdirAll(filepath.Join(imageDir, "var", "home"), 0755)
 		os.Symlink("/invalid", filepath.Join(imageDir, "home"))
 
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 				"Imager.EfiRoot":       {"/efi"},
@@ -1324,7 +1290,7 @@ func TestPrepareFilesystemHierarchyEdgeCases(t *testing.T) {
 }
 
 func TestListPackagesErrors(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{}, // Missing ReadOnlyVdb
 	}
 	o, err := NewOstree(cfg)
@@ -1335,7 +1301,7 @@ func TestListPackagesErrors(t *testing.T) {
 		t.Error("ListPackages should fail if ReadOnlyVdb is missing")
 	}
 
-	cfg = &MockConfig{
+	cfg = &config.MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 		},
@@ -1348,7 +1314,7 @@ func TestListPackagesErrors(t *testing.T) {
 }
 
 func TestPullInvalidRef(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
 		},
@@ -1368,7 +1334,7 @@ func TestGpgArgsEnabled(t *testing.T) {
 	os.WriteFile(pubKey, []byte("key"), 0644)
 
 	// Mock GpgKeyID execution
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.DevGpgHomedir": {filepath.Join(tmpDir, "gpg")},
 			"Ostree.GpgPublicKey":  {pubKey},
@@ -1504,7 +1470,7 @@ func TestRunVerbose(t *testing.T) {
 }
 
 func TestOstreeWrappers(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
 		},
@@ -1527,7 +1493,7 @@ func TestOstreeWrappers(t *testing.T) {
 }
 
 func TestListPackagesMocked(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
 			"Ostree.Root":          {"/"},
@@ -1581,7 +1547,7 @@ func TestBranchHelpersErrors(t *testing.T) {
 }
 
 func TestOstreeBranchMethodsErrors(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.FullBranchSuffix": {"full"},
 		},
@@ -1635,7 +1601,7 @@ func TestDeploy_Errors(t *testing.T) {
 				return nil
 			}
 
-			cfg := &MockConfig{
+			cfg := &config.MockConfig{
 				Items: map[string][]string{
 					"Ostree.RepoDir":  {"/repo"},
 					"Ostree.Sysroot":  {"/sysroot"},
@@ -1680,7 +1646,7 @@ func TestBootedStatus_Errors(t *testing.T) {
 		},
 	}
 
-	cfg := &MockConfig{Items: map[string][]string{"Ostree.Root": {"/"}}}
+	cfg := &config.MockConfig{Items: map[string][]string{"Ostree.Root": {"/"}}}
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
@@ -1705,7 +1671,7 @@ func TestBootedStatus_Errors(t *testing.T) {
 }
 
 func TestMiscWrappers_Errors(t *testing.T) {
-	cfg := &MockConfig{Items: map[string][]string{"Ostree.RepoDir": {"/repo"}}}
+	cfg := &config.MockConfig{Items: map[string][]string{"Ostree.RepoDir": {"/repo"}}}
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
@@ -1759,7 +1725,7 @@ func TestListRemotes_Errors(t *testing.T) {
 }
 
 func TestAddRemote_Error(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.RepoDir": {"/repo"},
 			"Ostree.Remote":  {"origin"},
@@ -1781,7 +1747,7 @@ func TestAddRemote_Error(t *testing.T) {
 func TestValidateFilesystemHierarchy(t *testing.T) {
 	tempDir := t.TempDir()
 
-	cfg := &MockConfig{}
+	cfg := &config.MockConfig{}
 	o, err := NewOstree(cfg)
 	if err != nil {
 		t.Fatalf("NewOstree failed: %v", err)
@@ -1852,7 +1818,7 @@ func TestValidateFilesystemHierarchy(t *testing.T) {
 func TestRemoteRefs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		root := "/myroot"
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
 				"Ostree.Remote":  {"origin"},
@@ -1895,7 +1861,7 @@ func TestRemoteRefs(t *testing.T) {
 		}
 
 		root := "/custom/root"
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
 				"Ostree.Remote":  {"myremote"},
@@ -1931,7 +1897,7 @@ func TestRemoteRefs(t *testing.T) {
 	})
 
 	t.Run("EmptyRepoDir", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.Remote": {"origin"},
 			},
@@ -1949,7 +1915,7 @@ func TestRemoteRefs(t *testing.T) {
 
 	t.Run("EmptyRemote", func(t *testing.T) {
 		root := "/custom/root"
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
 			},
@@ -1971,7 +1937,7 @@ func TestRemoteRefs(t *testing.T) {
 		}
 
 		root := t.TempDir()
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
 				"Ostree.Remote":  {"origin"},
@@ -1997,7 +1963,7 @@ func TestRemoteRefs(t *testing.T) {
 		}
 
 		root := t.TempDir()
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {filepath.Join(root, "ostree/repo")},
 				"Ostree.Remote":  {"origin"},
@@ -2017,7 +1983,7 @@ func TestRemoteRefs(t *testing.T) {
 
 func TestListContents(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/repo"},
 			},
@@ -2088,7 +2054,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 	})
 
 	t.Run("EmptyCommit", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/repo"},
 			},
@@ -2105,7 +2071,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 	})
 
 	t.Run("EmptyPath", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/repo"},
 			},
@@ -2122,7 +2088,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 	})
 
 	t.Run("MissingRepoDir", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{},
 		}
 		o, err := NewOstree(cfg)
@@ -2137,7 +2103,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 	})
 
 	t.Run("CommandError", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/repo"},
 			},
@@ -2158,7 +2124,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 	})
 
 	t.Run("EmptyOutput", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/repo"},
 			},
@@ -2184,7 +2150,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 
 	t.Run("VerifiesCommandArgs", func(t *testing.T) {
 		var capturedArgs []string
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/my/repo"},
 			},
@@ -2242,7 +2208,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 	})
 
 	t.Run("MalformedLine", func(t *testing.T) {
-		cfg := &MockConfig{
+		cfg := &config.MockConfig{
 			Items: map[string][]string{
 				"Ostree.RepoDir": {"/repo"},
 			},
@@ -2299,7 +2265,7 @@ func TestListDeployments(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2359,7 +2325,7 @@ func TestListDeployments(t *testing.T) {
 }
 
 func TestListDeployments_EmptyRoot(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{},
 	}
 	o, err := NewOstree(cfg)
@@ -2375,7 +2341,7 @@ func TestListDeployments_EmptyRoot(t *testing.T) {
 
 func TestListDeployments_NoDeployments(t *testing.T) {
 	root := t.TempDir()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2401,7 +2367,7 @@ func TestListDeployments_NoDeployments(t *testing.T) {
 
 func TestListDeployments_CommandError(t *testing.T) {
 	root := t.TempDir()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2423,7 +2389,7 @@ func TestListDeployments_CommandError(t *testing.T) {
 
 func TestListDeployments_InvalidJSON(t *testing.T) {
 	root := t.TempDir()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2449,7 +2415,7 @@ func TestSwitch(t *testing.T) {
 	sysroot := t.TempDir()
 	ref := "origin:matrixos/amd64/gnome"
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Sysroot": {sysroot},
 		},
@@ -2477,7 +2443,7 @@ func TestSwitch(t *testing.T) {
 }
 
 func TestSwitch_MissingSysroot(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{},
 	}
 	o, err := NewOstree(cfg)
@@ -2497,7 +2463,7 @@ func TestSwitch_MissingSysroot(t *testing.T) {
 
 func TestSwitch_CommandError(t *testing.T) {
 	sysroot := t.TempDir()
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Sysroot": {sysroot},
 		},
@@ -2522,7 +2488,7 @@ func TestSwitch_Verbose(t *testing.T) {
 	sysroot := t.TempDir()
 	ref := "matrixos/amd64/gnome"
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Sysroot": {sysroot},
 		},
@@ -2552,7 +2518,7 @@ func TestSwitch_Verbose(t *testing.T) {
 func TestConfigDiff(t *testing.T) {
 	root := t.TempDir()
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2653,7 +2619,7 @@ func TestConfigDiff_CommandArgs(t *testing.T) {
 	root := t.TempDir()
 	var lastCmdArgs []string
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2684,7 +2650,7 @@ func TestConfigDiff_Verbose(t *testing.T) {
 	root := t.TempDir()
 	var lastCmdArgs []string
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2715,7 +2681,7 @@ func TestConfigDiff_Verbose(t *testing.T) {
 func TestConfigDiff_EmptyOutput(t *testing.T) {
 	root := t.TempDir()
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
@@ -2740,7 +2706,7 @@ func TestConfigDiff_EmptyOutput(t *testing.T) {
 }
 
 func TestConfigDiff_MissingRoot(t *testing.T) {
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{},
 	}
 	o, err := NewOstree(cfg)
@@ -2757,7 +2723,7 @@ func TestConfigDiff_MissingRoot(t *testing.T) {
 func TestConfigDiff_CommandError(t *testing.T) {
 	root := t.TempDir()
 
-	cfg := &MockConfig{
+	cfg := &config.MockConfig{
 		Items: map[string][]string{
 			"Ostree.Root": {root},
 		},
