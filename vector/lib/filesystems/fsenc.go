@@ -22,7 +22,7 @@ type IFsenc interface {
 	OsName() (string, error)
 
 	// Operations
-	MountImageAsLoopDevice(imagePath string) (string, error)
+	MountImageAsLoopDevice(imagePath string) (*Loop, error)
 	LuksEncrypt(devicePath, desiredLuksDevice string, deviceMappers *[]string) error
 	LuksBackupHeader(devicePath, mountEfifs string) error
 	ValidateLuksVariables() error
@@ -85,23 +85,19 @@ func (f *Fsenc) OsName() (string, error) {
 }
 
 // MountImageAsLoopDevice attaches an image file to a loop device and returns
-// the loop device path (e.g. "/dev/loop0").
-func (f *Fsenc) MountImageAsLoopDevice(imagePath string) (string, error) {
+// the Loop handle. Callers can read l.Device for the device path and call
+// l.Detach() when done.
+func (f *Fsenc) MountImageAsLoopDevice(imagePath string) (*Loop, error) {
 	if imagePath == "" {
-		return "", errors.New("missing imagePath parameter")
+		return nil, errors.New("missing imagePath parameter")
 	}
 
-	out, err := execOutput("losetup", "--show", "-fP", imagePath)
-	if err != nil {
-		return "", fmt.Errorf("unable to set up loop device for %s: %w", imagePath, err)
+	l := NewLoop(imagePath)
+	if err := l.Attach(); err != nil {
+		return nil, fmt.Errorf("unable to set up loop device for %s: %w", imagePath, err)
 	}
 
-	loopDevice := strings.TrimSpace(string(out))
-	if loopDevice == "" {
-		return "", fmt.Errorf("unable to set up loop device for %s", imagePath)
-	}
-
-	return loopDevice, nil
+	return l, nil
 }
 
 // LuksEncrypt formats a device with LUKS encryption and opens it.

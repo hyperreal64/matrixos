@@ -255,13 +255,6 @@ func TestHelperProcess(t *testing.T) {
 			fmt.Fprintln(os.Stderr, "cryptsetup failed")
 			os.Exit(1)
 		}
-	case "losetup":
-		if val := os.Getenv("MOCK_LOSETUP_OUTPUT"); val != "" {
-			fmt.Fprint(os.Stdout, val)
-		}
-		if os.Getenv("MOCK_LOSETUP_FAIL") == "1" {
-			os.Exit(1)
-		}
 	case "udevadm", "blockdev":
 		// No-op success
 	case "unshare":
@@ -786,8 +779,25 @@ func TestCleanupLoopDevices(t *testing.T) {
 	f.Close()
 	defer os.Remove(f.Name())
 
-	os.Setenv("MOCK_LOSETUP_OUTPUT", "/path/to/backing/file")
-	defer os.Unsetenv("MOCK_LOSETUP_OUTPUT")
+	// Mock sysfs backing_file read to make the device look attached.
+	setupMockLoop(t)
+	loopDir := filepath.Join(sysBlockPrefix, filepath.Base(f.Name()), "loop")
+	if err := os.MkdirAll(loopDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(loopDir, "backing_file"), []byte("/path/to/backing/file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// openFile for Detach returns a temp file, ioctl succeeds via setupMockLoop defaults.
+	tmp, err2 := os.CreateTemp("", "loopdev")
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+	defer os.Remove(tmp.Name())
+	openFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+		return tmp, nil
+	}
 
 	CleanupLoopDevices([]string{f.Name()})
 }

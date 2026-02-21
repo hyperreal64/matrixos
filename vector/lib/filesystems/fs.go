@@ -350,14 +350,14 @@ func CleanupLoopDevices(devices []string) {
 		if _, err := os.Stat(ld); os.IsNotExist(err) {
 			continue
 		}
-		out, _ := execOutput("losetup", "--raw", "-l", "-O", "BACK-FILE", ld)
-		if len(strings.TrimSpace(string(out))) == 0 {
+		l := NewLoopFromDevice(ld)
+		if l.BackingFile() == "" {
 			continue
 		}
 
 		log.Printf("Cleaning loop device %s ...", ld)
 
-		if err := execRun(nil, nil, nil, "losetup", "-d", ld); err != nil {
+		if err := l.Detach(); err != nil {
 			FlushBlockDeviceBuffers(ld)
 			log.Printf("Unable to close loop device %s", ld)
 			if entries, mntErr := findMountsBySource(ld); mntErr == nil {
