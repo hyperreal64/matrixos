@@ -2,7 +2,7 @@
 
 - [in progress] Rewrite codebase to Golang.
 - Test and consider migration to systemd-boot (while supporting GRUB).
-- Add UKI building to kernel build (make USE flag optional)
+- Add UKI building to kernel build (make USE flag optional).
 - Test bootc & migration to UKI.
 - Support Cloud Init (add VM tests).
 - Add more VM tests (test flatpak, test snap, test SecureBoot, etc).

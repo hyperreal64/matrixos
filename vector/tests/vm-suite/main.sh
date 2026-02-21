@@ -166,6 +166,13 @@ test.ostree_status() {
     fi
 }
 
+test.flatpak() {
+    if ! flatpak remotes -d | grep ^flathub; then
+        echo "flatpak remotes command failed"
+        return 1
+    fi
+}
+
 
 main() {
 
@@ -177,6 +184,7 @@ main() {
         test.os_release
         test.systemctl_status
         test.ostree_status
+        test.flatpak
     )
 
     local exit_st=0
