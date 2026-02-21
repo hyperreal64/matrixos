@@ -74,7 +74,6 @@ type IOstree interface {
 	BootCommit(sysroot string) (string, error)
 	ListRemotes(verbose bool) ([]string, error)
 	LastCommit(ref string, verbose bool) (string, error)
-	LastCommitWithRoot(ref string, verbose bool) (string, error)
 	ImportGpgKey(keyPath string) error
 	GpgSignFile(file string) error
 	MaybeInitializeGpg(verbose bool) error
@@ -1179,16 +1178,6 @@ func (o *Ostree) LastCommit(ref string, verbose bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return o.lastCommitFromRepo(repoDir, ref, verbose)
-}
-
-// LastCommitWithRoot returns the last commit for a given ref in the root filesystem.
-func (o *Ostree) LastCommitWithRoot(ref string, verbose bool) (string, error) {
-	root, err := o.Root()
-	if err != nil {
-		return "", err
-	}
-	repoDir := filepath.Join(root, "ostree", "repo")
 	return o.lastCommitFromRepo(repoDir, ref, verbose)
 }
 
