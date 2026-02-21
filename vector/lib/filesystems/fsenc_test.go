@@ -2,7 +2,6 @@ package filesystems
 
 import (
 	"errors"
-	"fmt"
 	"matrixos/vector/lib/config"
 	"matrixos/vector/lib/runner"
 	"os"
@@ -597,48 +596,4 @@ func containsArg(args []string, target string) bool {
 		}
 	}
 	return false
-}
-
-// TestHelperProcess is required for fakeExecCommand from fs_test.go.
-// Since fakeExecCommand is already defined in fs_test.go (same package),
-// it re-uses the TestHelperProcess defined there.
-// If this file is built standalone, we need the helper below.
-// We check GO_WANT_HELPER_PROCESS to avoid running as an actual test.
-func TestHelperProcessFsenc(t *testing.T) {
-	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
-		return
-	}
-	args := os.Args
-	for len(args) > 0 {
-		if args[0] == "--" {
-			args = args[1:]
-			break
-		}
-		args = args[1:]
-	}
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "No command\n")
-		os.Exit(2)
-	}
-
-	cmd := args[0]
-	switch cmd {
-	case "losetup":
-		if val := os.Getenv("MOCK_LOSETUP_OUTPUT"); val != "" {
-			fmt.Fprint(os.Stdout, val)
-		}
-		if os.Getenv("MOCK_LOSETUP_FAIL") == "1" {
-			os.Exit(1)
-		}
-	case "cryptsetup":
-		if os.Getenv("MOCK_CRYPTSETUP_FAIL") == "1" {
-			fmt.Fprintln(os.Stderr, "cryptsetup failed")
-			os.Exit(1)
-		}
-	case "udevadm":
-		// No-op success
-	default:
-		// Pass for other commands
-	}
-	os.Exit(0)
 }
