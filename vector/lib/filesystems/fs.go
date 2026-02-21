@@ -380,6 +380,30 @@ func CleanupLoopDevices(devices []string) {
 	DevicesSettle()
 }
 
+// PathExists returns true if the path exists (file, directory, or other).
+func PathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// FileExists returns true if path exists and is a regular file.
+func FileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// DirectoryExists returns true if path exists and is a directory.
+func DirectoryExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
 // ListSubmounts returns a list of submounts for a given mountpoint.
 func ListSubmounts(mnt string) ([]string, error) {
 	if mnt == "" {

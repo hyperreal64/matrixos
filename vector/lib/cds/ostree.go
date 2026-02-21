@@ -926,26 +926,9 @@ func CollectionIDArgs(collectionID string) ([]string, error) {
 	return args, nil
 }
 
-func pathExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return !info.IsDir()
-}
-
-func directoryExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
+var pathExists = fslib.PathExists
+var fileExists = fslib.FileExists
+var directoryExists = fslib.DirectoryExists
 
 // GpgEnabled returns whether GPG signing and verification is enabled.
 func (o *Ostree) GpgEnabled() (bool, error) {
