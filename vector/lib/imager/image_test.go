@@ -10,7 +10,7 @@ import (
 
 	"matrixos/vector/lib/cds"
 	"matrixos/vector/lib/config"
-	"matrixos/vector/lib/testutil"
+	"matrixos/vector/lib/runner"
 )
 
 // baseImageConfig returns a mock config with all keys needed by Image.
@@ -51,7 +51,7 @@ func newTestImage(cfg *config.MockConfig, ostree *cds.MockOstree) *Image {
 	return im
 }
 
-func newTestImageWithRunner(cfg *config.MockConfig, ostree *cds.MockOstree, runner *testutil.MockRunner) *Image {
+func newTestImageWithRunner(cfg *config.MockConfig, ostree *cds.MockOstree, runner *runner.MockRunner) *Image {
 	im := newTestImage(cfg, ostree)
 	im.runner = runner.Run
 	return im
@@ -168,7 +168,7 @@ func TestConfigAccessorsEmptyValue(t *testing.T) {
 func TestConfigAccessorsConfigError(t *testing.T) {
 	ec := &config.ErrConfig{Err: errors.New("cfg error")}
 	im, _ := NewImage(ec, &cds.MockOstree{})
-	im.runner = testutil.NewMockRunner().Run
+	im.runner = runner.NewMockRunner().Run
 
 	accessors := []struct {
 		name string
@@ -384,7 +384,7 @@ func TestCreateImage(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		imagePath := filepath.Join(tmpDir, "subdir", "test.img")
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.CreateImage(imagePath, "32G")
@@ -419,7 +419,7 @@ func TestCreateImage(t *testing.T) {
 	t.Run("TruncateFails", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		imagePath := filepath.Join(tmpDir, "test.img")
-		runner := testutil.NewMockRunnerFailOnCall(0, errors.New("truncate failed"))
+		runner := runner.NewMockRunnerFailOnCall(0, errors.New("truncate failed"))
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.CreateImage(imagePath, "32G")
@@ -433,7 +433,7 @@ func TestCreateImage(t *testing.T) {
 
 func TestCompressImage(t *testing.T) {
 	t.Run("EmptyPath", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 		err := im.CompressImage("", "xz -f")
 		if err == nil {
@@ -442,7 +442,7 @@ func TestCompressImage(t *testing.T) {
 	})
 
 	t.Run("EmptyCompressor", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 		err := im.CompressImage("/tmp/test.img", "")
 		if err == nil {
@@ -456,7 +456,7 @@ func TestCompressImage(t *testing.T) {
 		// Create the expected output file so the existence check passes.
 		os.WriteFile(imgPath+".xz", []byte("compressed"), 0644)
 
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.CompressImage(imgPath, "xz -f -0 -T0")
@@ -484,7 +484,7 @@ func TestCompressImage(t *testing.T) {
 
 func TestClearPartitionTable(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.ClearPartitionTable("/dev/sda")
@@ -511,7 +511,7 @@ func TestClearPartitionTable(t *testing.T) {
 	})
 
 	t.Run("FirstSgdiskFails", func(t *testing.T) {
-		runner := testutil.NewMockRunnerFailOnCall(0, errors.New("sgdisk error"))
+		runner := runner.NewMockRunnerFailOnCall(0, errors.New("sgdisk error"))
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.ClearPartitionTable("/dev/sda")
@@ -536,7 +536,7 @@ func TestDatedFsLabel(t *testing.T) {
 
 func TestPartitionDevices(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.PartitionDevices("200M", "1G", "32G", "/dev/loop0")
@@ -560,7 +560,7 @@ func TestPartitionDevices(t *testing.T) {
 	})
 
 	t.Run("EmptyParams", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		if err := im.PartitionDevices("", "1G", "32G", "/dev/x"); err == nil {
@@ -578,7 +578,7 @@ func TestPartitionDevices(t *testing.T) {
 	})
 
 	t.Run("SgdiskFails", func(t *testing.T) {
-		runner := testutil.NewMockRunnerFailOnCall(0, errors.New("sgdisk failed"))
+		runner := runner.NewMockRunnerFailOnCall(0, errors.New("sgdisk failed"))
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.PartitionDevices("200M", "1G", "32G", "/dev/loop0")
@@ -590,7 +590,7 @@ func TestPartitionDevices(t *testing.T) {
 	t.Run("ConfigError", func(t *testing.T) {
 		ec := &config.ErrConfig{Err: errors.New("cfg error")}
 		im, _ := NewImage(ec, &cds.MockOstree{})
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im.runner = runner.Run
 
 		err := im.PartitionDevices("200M", "1G", "32G", "/dev/loop0")
@@ -604,7 +604,7 @@ func TestPartitionDevices(t *testing.T) {
 
 func TestFormatEfifs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.FormatEfifs("/dev/loop0p1")
@@ -633,7 +633,7 @@ func TestMountEfifs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		mountPoint := filepath.Join(tmpDir, "efi")
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.MountEfifs("/dev/loop0p1", mountPoint)
@@ -660,7 +660,7 @@ func TestMountEfifs(t *testing.T) {
 
 func TestFormatBootfs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.FormatBootfs("/dev/loop0p2")
@@ -686,7 +686,7 @@ func TestMountBootfs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		mountPoint := filepath.Join(tmpDir, "boot")
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.MountBootfs("/dev/loop0p2", mountPoint)
@@ -712,7 +712,7 @@ func TestMountBootfs(t *testing.T) {
 // --- FormatRootfs Tests ---
 
 func TestFormatRootfs(t *testing.T) {
-	runner := testutil.NewMockRunner()
+	runner := runner.NewMockRunner()
 	im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 	err := im.FormatRootfs("/dev/loop0p3")
@@ -738,7 +738,7 @@ func TestRootfsKernelArgs(t *testing.T) {
 
 func TestMountRootfs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.MountRootfs("/dev/loop0p3", "/tmp/rootfs")
@@ -910,7 +910,7 @@ func TestQcow2ImagePath(t *testing.T) {
 
 func TestCreateQcow2Image(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.CreateQcow2Image("/tmp/images/test.img")
@@ -1041,7 +1041,7 @@ func TestImageLockPath(t *testing.T) {
 
 func TestFinalizeFilesystems(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.FinalizeFilesystems("/mnt/rootfs", "/mnt/boot", "/mnt/efi")
@@ -1076,7 +1076,7 @@ func TestFinalizeFilesystems(t *testing.T) {
 
 func TestShowFinalFilesystemInfo(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(baseImageConfig(), &cds.MockOstree{}, runner)
 
 		err := im.ShowFinalFilesystemInfo("/dev/loop0", "/mnt/boot", "/mnt/efi")
@@ -1228,7 +1228,7 @@ func TestTestImageMethod(t *testing.T) {
 		tmpDir := t.TempDir()
 		cfg := baseImageConfig()
 		cfg.Items["matrixOS.Root"] = []string{tmpDir}
-		runner := testutil.NewMockRunner()
+		runner := runner.NewMockRunner()
 		im := newTestImageWithRunner(cfg, &cds.MockOstree{}, runner)
 
 		err := im.TestImage("/tmp/test.img", "matrixos/amd64/gnome")

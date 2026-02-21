@@ -1,6 +1,9 @@
 # Overall TODO
 
 - [in progress] Rewrite codebase to Golang.
+    - Test imager/ lib or port imager at this point.
+    - Remove all remaining references of TestHelperProcess
+    - Consider if possible to implement unshare in code.
 - Test and consider migration to systemd-boot (while supporting GRUB).
 - Add UKI building to kernel build (make USE flag optional).
 - Test bootc & migration to UKI.

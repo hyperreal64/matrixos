@@ -3,45 +3,13 @@ package filesystems
 import (
 	"errors"
 	"fmt"
-	"io"
 	"matrixos/vector/lib/config"
+	"matrixos/vector/lib/runner"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// mockRunner records calls and returns a configurable error.
-type mockRunner struct {
-	calls []mockRunnerCall
-	err   error
-	// failOn allows failing on a specific call index (0-based).
-	failOn int
-}
-
-type mockRunnerCall struct {
-	Name string
-	Args []string
-}
-
-func (mr *mockRunner) run(stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
-	mr.calls = append(mr.calls, mockRunnerCall{Name: name, Args: args})
-	if mr.failOn >= 0 && len(mr.calls)-1 == mr.failOn {
-		return mr.err
-	}
-	if mr.failOn < 0 && mr.err != nil {
-		return mr.err
-	}
-	return nil
-}
-
-func newMockRunner() *mockRunner {
-	return &mockRunner{failOn: -1}
-}
-
-func newMockRunnerFailOnCall(n int, err error) *mockRunner {
-	return &mockRunner{failOn: n, err: err}
-}
 
 func baseFsencConfig() *config.MockConfig {
 	return &config.MockConfig{
@@ -208,9 +176,7 @@ func TestFsencOsName(t *testing.T) {
 // --- MountImageAsLoopDevice Tests ---
 
 func TestMountImageAsLoopDevice(t *testing.T) {
-	origExec := ExecCommand
-	defer func() { ExecCommand = origExec }()
-	ExecCommand = fakeExecCommand
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		t.Setenv("MOCK_LOSETUP_OUTPUT", "/dev/loop7\n")
@@ -300,8 +266,8 @@ func TestLuksEncrypt(t *testing.T) {
 	t.Run("LuksFormatFails", func(t *testing.T) {
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunnerFailOnCall(0, errors.New("luksFormat failed"))
-		f.runner = mr.run
+		mr := runner.NewMockRunnerFailOnCall(0, errors.New("luksFormat failed"))
+		f.runner = mr.Run
 
 		var dm []string
 		err := f.LuksEncrypt("/dev/loop0p3", "/dev/mapper/matrixosroot", &dm)
@@ -316,8 +282,8 @@ func TestLuksEncrypt(t *testing.T) {
 	t.Run("CryptsetupOpenFails", func(t *testing.T) {
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunnerFailOnCall(1, errors.New("open failed"))
-		f.runner = mr.run
+		mr := runner.NewMockRunnerFailOnCall(1, errors.New("open failed"))
+		f.runner = mr.Run
 
 		var dm []string
 		err := f.LuksEncrypt("/dev/loop0p3", "/dev/mapper/matrixosroot", &dm)
@@ -332,8 +298,8 @@ func TestLuksEncrypt(t *testing.T) {
 	t.Run("DesiredLuksDeviceDoesNotExist", func(t *testing.T) {
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunner()
-		f.runner = mr.run
+		mr := runner.NewMockRunner()
+		f.runner = mr.Run
 
 		var dm []string
 		// Use a path that won't exist.
@@ -358,8 +324,8 @@ func TestLuksEncrypt(t *testing.T) {
 
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunner()
-		f.runner = mr.run
+		mr := runner.NewMockRunner()
+		f.runner = mr.Run
 
 		var dm []string
 		err := f.LuksEncrypt("/dev/loop0p3", desiredDevice, &dm)
@@ -368,28 +334,28 @@ func TestLuksEncrypt(t *testing.T) {
 		}
 
 		// Should have made 2 runner calls: luksFormat + open.
-		if len(mr.calls) != 2 {
-			t.Fatalf("Expected 2 runner calls, got %d", len(mr.calls))
+		if len(mr.Calls) != 2 {
+			t.Fatalf("Expected 2 runner calls, got %d", len(mr.Calls))
 		}
 
 		// Verify luksFormat call.
-		if mr.calls[0].Name != "cryptsetup" {
-			t.Errorf("Call 0: expected 'cryptsetup', got %q", mr.calls[0].Name)
+		if mr.Calls[0].Name != "cryptsetup" {
+			t.Errorf("Call 0: expected 'cryptsetup', got %q", mr.Calls[0].Name)
 		}
-		if !containsArg(mr.calls[0].Args, "luksFormat") {
-			t.Errorf("Call 0 should contain 'luksFormat': %v", mr.calls[0].Args)
+		if !containsArg(mr.Calls[0].Args, "luksFormat") {
+			t.Errorf("Call 0 should contain 'luksFormat': %v", mr.Calls[0].Args)
 		}
 		// Key is a passphrase (not a file), so key-file should be "-".
-		if !containsArg(mr.calls[0].Args, "-") {
-			t.Errorf("Call 0 should use '-' as key file for passphrase mode: %v", mr.calls[0].Args)
+		if !containsArg(mr.Calls[0].Args, "-") {
+			t.Errorf("Call 0 should use '-' as key file for passphrase mode: %v", mr.Calls[0].Args)
 		}
 
 		// Verify open call.
-		if !containsArg(mr.calls[1].Args, "open") {
-			t.Errorf("Call 1 should contain 'open': %v", mr.calls[1].Args)
+		if !containsArg(mr.Calls[1].Args, "open") {
+			t.Errorf("Call 1 should contain 'open': %v", mr.Calls[1].Args)
 		}
-		if !containsArg(mr.calls[1].Args, "--allow-discards") {
-			t.Errorf("Call 1 should contain '--allow-discards': %v", mr.calls[1].Args)
+		if !containsArg(mr.Calls[1].Args, "--allow-discards") {
+			t.Errorf("Call 1 should contain '--allow-discards': %v", mr.Calls[1].Args)
 		}
 
 		// Verify device mapper tracking.
@@ -410,8 +376,8 @@ func TestLuksEncrypt(t *testing.T) {
 		cfg := baseFsencConfig()
 		cfg.Items["Imager.EncryptionKey"] = []string{keyFile}
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunner()
-		f.runner = mr.run
+		mr := runner.NewMockRunner()
+		f.runner = mr.Run
 
 		var dm []string
 		err := f.LuksEncrypt("/dev/loop0p3", desiredDevice, &dm)
@@ -420,13 +386,13 @@ func TestLuksEncrypt(t *testing.T) {
 		}
 
 		// luksFormat should use the actual key file path, not "-".
-		if !containsArg(mr.calls[0].Args, keyFile) {
-			t.Errorf("Call 0 should use key file path %q: %v", keyFile, mr.calls[0].Args)
+		if !containsArg(mr.Calls[0].Args, keyFile) {
+			t.Errorf("Call 0 should use key file path %q: %v", keyFile, mr.Calls[0].Args)
 		}
 		// open should reference the key file.
 		expectedKeyFileArg := "--key-file=" + keyFile
-		if !containsArg(mr.calls[1].Args, expectedKeyFileArg) {
-			t.Errorf("Call 1 should use %q: %v", expectedKeyFileArg, mr.calls[1].Args)
+		if !containsArg(mr.Calls[1].Args, expectedKeyFileArg) {
+			t.Errorf("Call 1 should use %q: %v", expectedKeyFileArg, mr.Calls[1].Args)
 		}
 	})
 }
@@ -465,8 +431,8 @@ func TestLuksBackupHeader(t *testing.T) {
 	t.Run("RunnerFails", func(t *testing.T) {
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunnerFailOnCall(0, errors.New("backup failed"))
-		f.runner = mr.run
+		mr := runner.NewMockRunnerFailOnCall(0, errors.New("backup failed"))
+		f.runner = mr.Run
 
 		err := f.LuksBackupHeader("/dev/loop0p3", "/mnt/efi")
 		if err == nil {
@@ -480,27 +446,27 @@ func TestLuksBackupHeader(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		mr := newMockRunner()
-		f.runner = mr.run
+		mr := runner.NewMockRunner()
+		f.runner = mr.Run
 
 		err := f.LuksBackupHeader("/dev/loop0p3", "/mnt/efi")
 		if err != nil {
 			t.Fatalf("LuksBackupHeader() error: %v", err)
 		}
 
-		if len(mr.calls) != 1 {
-			t.Fatalf("Expected 1 runner call, got %d", len(mr.calls))
+		if len(mr.Calls) != 1 {
+			t.Fatalf("Expected 1 runner call, got %d", len(mr.Calls))
 		}
-		if mr.calls[0].Name != "cryptsetup" {
-			t.Errorf("Expected 'cryptsetup', got %q", mr.calls[0].Name)
+		if mr.Calls[0].Name != "cryptsetup" {
+			t.Errorf("Expected 'cryptsetup', got %q", mr.Calls[0].Name)
 		}
-		if !containsArg(mr.calls[0].Args, "luksHeaderBackup") {
-			t.Errorf("Should contain 'luksHeaderBackup': %v", mr.calls[0].Args)
+		if !containsArg(mr.Calls[0].Args, "luksHeaderBackup") {
+			t.Errorf("Should contain 'luksHeaderBackup': %v", mr.Calls[0].Args)
 		}
 
 		expectedBackup := "/mnt/efi/matrixos-rootfs-luks-header-backup.img"
-		if !containsArg(mr.calls[0].Args, expectedBackup) {
-			t.Errorf("Should contain backup path %q: %v", expectedBackup, mr.calls[0].Args)
+		if !containsArg(mr.Calls[0].Args, expectedBackup) {
+			t.Errorf("Should contain backup path %q: %v", expectedBackup, mr.Calls[0].Args)
 		}
 	})
 }
@@ -631,37 +597,6 @@ func containsArg(args []string, target string) bool {
 		}
 	}
 	return false
-}
-
-// --- DefaultCommandRunner Integration (uses fakeExecCommand) ---
-
-func TestDefaultCommandRunner(t *testing.T) {
-	origExec := ExecCommand
-	defer func() { ExecCommand = origExec }()
-	ExecCommand = fakeExecCommand
-
-	t.Run("Success", func(t *testing.T) {
-		err := defaultCommandRunner(nil, os.Stdout, os.Stderr, "udevadm", "settle")
-		if err != nil {
-			t.Fatalf("defaultCommandRunner() error: %v", err)
-		}
-	})
-
-	t.Run("WithStdin", func(t *testing.T) {
-		stdin := strings.NewReader("input-data")
-		err := defaultCommandRunner(stdin, os.Stdout, os.Stderr, "udevadm", "settle")
-		if err != nil {
-			t.Fatalf("defaultCommandRunner() with stdin error: %v", err)
-		}
-	})
-
-	t.Run("CommandFail", func(t *testing.T) {
-		t.Setenv("MOCK_LOSETUP_FAIL", "1")
-		err := defaultCommandRunner(nil, os.Stdout, os.Stderr, "losetup", "-d", "/dev/loop99")
-		if err == nil {
-			t.Fatal("Expected error from failing command")
-		}
-	})
 }
 
 // TestHelperProcess is required for fakeExecCommand from fs_test.go.
