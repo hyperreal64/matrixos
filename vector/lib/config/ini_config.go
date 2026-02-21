@@ -111,9 +111,8 @@ func searchPaths(cfgName string) []searchPath {
 
 // IniConfig is a config reader that loads values from an INI file.
 type IniConfig struct {
-	parent IConfig
-	sp     *searchPath
-	cfg    map[string][]string
+	sp  *searchPath
+	cfg map[string][]string
 }
 
 func cfgNameToSearchPath(cfgName string) *searchPath {
