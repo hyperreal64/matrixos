@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -658,5 +659,211 @@ func TestSearchPaths(t *testing.T) {
 		for i, p := range paths {
 			t.Logf("Search path %d: %+v", i, p)
 		}
+	}
+}
+
+func TestIniConfig_ConcurrentReadWrite(t *testing.T) {
+	// Verify that concurrent GetItem, GetItems, Clone, and AddOverlay
+	// calls do not race. Run with -race to catch data races.
+	cfg := &IniConfig{
+		cfg: map[string][]string{
+			"A.Key": {"val1", "val2"},
+			"B.Key": {"x"},
+		},
+	}
+
+	const goroutines = 8
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	// Concurrent readers
+	for i := 0; i < goroutines/2; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				_, _ = cfg.GetItem("A.Key")
+				_, _ = cfg.GetItems("B.Key")
+				_ = cfg.Clone()
+			}
+		}()
+	}
+
+	// Concurrent writers (AddOverlay)
+	for i := 0; i < goroutines/2; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				_ = cfg.AddOverlay(map[string][]string{
+					"A.Key": {"new"},
+				})
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Sanity: the key should still be readable after all the mutations.
+	val, err := cfg.GetItem("A.Key")
+	if err != nil {
+		t.Fatalf("GetItem after concurrent access: %v", err)
+	}
+	if val != "new" {
+		t.Errorf("Expected last overlay value %q, got %q", "new", val)
+	}
+}
+
+func TestIniConfig_Clone(t *testing.T) {
+	original := &IniConfig{
+		sp: &searchPath{
+			fileName:    "test.conf",
+			dirPath:     "/etc/test",
+			defaultRoot: "/opt/test",
+		},
+		cfg: map[string][]string{
+			"A.Key": {"v1", "v2"},
+			"B.Key": {"x"},
+		},
+	}
+
+	clone := original.Clone()
+
+	// Clone must not be the same pointer.
+	if clone == original {
+		t.Fatal("Clone returned the same pointer")
+	}
+	if clone.sp == original.sp {
+		t.Fatal("Clone shares the same searchPath pointer")
+	}
+
+	// Values should match.
+	for _, key := range []string{"A.Key", "B.Key"} {
+		origVal, _ := original.GetItem(key)
+		cloneVal, err := clone.GetItem(key)
+		if err != nil {
+			t.Errorf("Clone missing key %q: %v", key, err)
+			continue
+		}
+		if origVal != cloneVal {
+			t.Errorf("Key %q: original=%q clone=%q", key, origVal, cloneVal)
+		}
+	}
+
+	// Mutating the clone must not affect the original.
+	_ = clone.AddOverlay(map[string][]string{"A.Key": {"mutated"}})
+
+	cloneVal, _ := clone.GetItem("A.Key")
+	if cloneVal != "mutated" {
+		t.Errorf("Clone A.Key should be %q after overlay, got %q", "mutated", cloneVal)
+	}
+	origVal, _ := original.GetItem("A.Key")
+	if origVal != "v2" {
+		t.Errorf("Original A.Key should still be %q, got %q", "v2", origVal)
+	}
+
+	// Mutating original must not affect the clone.
+	_ = original.AddOverlay(map[string][]string{"B.Key": {"orig-mutated"}})
+	cloneBVal, _ := clone.GetItem("B.Key")
+	if cloneBVal != "x" {
+		t.Errorf("Clone B.Key should still be %q, got %q", "x", cloneBVal)
+	}
+}
+
+func TestIniConfig_Clone_Nil(t *testing.T) {
+	var cfg *IniConfig
+	clone := cfg.Clone()
+	if clone != nil {
+		t.Errorf("Clone of nil should be nil, got %v", clone)
+	}
+}
+
+func TestIniConfig_Clone_Empty(t *testing.T) {
+	cfg := &IniConfig{
+		sp:  &searchPath{fileName: "a.conf", dirPath: "/d", defaultRoot: "/r"},
+		cfg: map[string][]string{},
+	}
+	clone := cfg.Clone()
+	if clone == nil {
+		t.Fatal("Clone of empty config should not be nil")
+	}
+	if len(clone.cfg) != 0 {
+		t.Errorf("Clone cfg should be empty, got %v", clone.cfg)
+	}
+}
+
+func TestIniConfig_AddOverlay(t *testing.T) {
+	cfg := &IniConfig{
+		cfg: map[string][]string{
+			"Existing.Key": {"old"},
+		},
+	}
+
+	err := cfg.AddOverlay(map[string][]string{
+		"Existing.Key": {"new1", "new2"},
+		"Brand.New":    {"fresh"},
+	})
+	if err != nil {
+		t.Fatalf("AddOverlay returned error: %v", err)
+	}
+
+	// Existing key should have appended values; last wins.
+	val, err := cfg.GetItem("Existing.Key")
+	if err != nil {
+		t.Fatalf("GetItem(Existing.Key) error: %v", err)
+	}
+	if val != "new2" {
+		t.Errorf("Expected %q, got %q", "new2", val)
+	}
+
+	// Full history should contain all three values.
+	all, _ := cfg.GetItems("Existing.Key")
+	if len(all) != 3 {
+		t.Errorf("Expected 3 values, got %d: %v", len(all), all)
+	}
+
+	// New key should be present.
+	val, err = cfg.GetItem("Brand.New")
+	if err != nil {
+		t.Fatalf("GetItem(Brand.New) error: %v", err)
+	}
+	if val != "fresh" {
+		t.Errorf("Expected %q, got %q", "fresh", val)
+	}
+}
+
+func TestIniConfig_AddOverlay_NilReceiver(t *testing.T) {
+	var cfg *IniConfig
+	err := cfg.AddOverlay(map[string][]string{"K": {"V"}})
+	if err == nil {
+		t.Fatal("Expected error for nil receiver")
+	}
+}
+
+func TestIniConfig_AddOverlay_NilOverlay(t *testing.T) {
+	cfg := &IniConfig{cfg: map[string][]string{}}
+	err := cfg.AddOverlay(nil)
+	if err == nil {
+		t.Fatal("Expected error for nil overlay")
+	}
+}
+
+func TestIniConfig_AddOverlay_Multiple(t *testing.T) {
+	cfg := &IniConfig{
+		cfg: map[string][]string{
+			"S.A": {"base"},
+		},
+	}
+
+	// Apply two overlays in sequence.
+	_ = cfg.AddOverlay(map[string][]string{"S.A": {"layer1"}})
+	_ = cfg.AddOverlay(map[string][]string{"S.A": {"layer2"}})
+
+	val, _ := cfg.GetItem("S.A")
+	if val != "layer2" {
+		t.Errorf("Expected last overlay %q, got %q", "layer2", val)
+	}
+
+	all, _ := cfg.GetItems("S.A")
+	if len(all) != 3 {
+		t.Errorf("Expected 3 history entries, got %d: %v", len(all), all)
 	}
 }
