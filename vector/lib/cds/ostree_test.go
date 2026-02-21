@@ -167,11 +167,28 @@ func TestRepoOperations(t *testing.T) {
 func TestCommitAndListPackages(t *testing.T) {
 	repoDir := setupTestRepo(t)
 
-	// Create content to commit
-	contentDir := t.TempDir()
+	// Create root first — we need its resolved path to lay out the commit content
+	// so that the in-commit paths match what ListPackages looks up via
+	// filepath.Join(root, "/var/db/pkg").
+	root := t.TempDir()
+	// Resolve symlinks (e.g. /tmp -> sysroot/tmp) so ostree can traverse the path.
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Create package structure: var/db/pkg/sys-apps/systemd
-	pkgDir := filepath.Join(contentDir, "var", "db", "pkg", "sys-apps", "systemd")
+	// Create content to commit.
+	// listPackagesFromPath runs: ostree ls -R commit -- <root>/var/db/pkg
+	// so the commit tree must contain the package data at that absolute path.
+	contentDir := t.TempDir()
+	contentDir, err = filepath.EvalSymlinks(contentDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Strip the leading separator so filepath.Join works correctly.
+	relRoot := strings.TrimPrefix(root, string(filepath.Separator))
+	pkgDir := filepath.Join(contentDir, relRoot, "var", "db", "pkg", "sys-apps", "systemd")
 	if err := os.MkdirAll(pkgDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +217,7 @@ func TestCommitAndListPackages(t *testing.T) {
 	cfg := &MockConfig{
 		Items: map[string][]string{
 			"Releaser.ReadOnlyVdb": {"/var/db/pkg"},
+			"Ostree.Root":          {root},
 		},
 	}
 	o, err := NewOstree(cfg)
@@ -207,8 +225,6 @@ func TestCommitAndListPackages(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	// Create a fake sysroot structure because ListPackages expects sysroot/ostree/repo
-	root := t.TempDir()
 	rootRepo := filepath.Join(root, "ostree", "repo")
 	if err := os.MkdirAll(filepath.Dir(rootRepo), 0755); err != nil {
 		t.Fatal(err)
@@ -2400,7 +2416,7 @@ func TestListDeploymentsInChroot(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	deployments, err := o.ListDeploymentsInChroot(root, false)
+	deployments, err := o.ListDeploymentsInRoot(root, false)
 	if err != nil {
 		t.Fatalf("ListDeploymentsInChroot failed: %v", err)
 	}
@@ -2446,7 +2462,7 @@ func TestListDeploymentsInChroot_EmptyRoot(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	_, err = o.ListDeploymentsInChroot("", false)
+	_, err = o.ListDeploymentsInRoot("", false)
 	if err == nil {
 		t.Error("expected error for empty root, got nil")
 	}
@@ -2466,7 +2482,7 @@ func TestListDeploymentsInChroot_CommandError(t *testing.T) {
 		return fmt.Errorf("chroot ostree failed")
 	}
 
-	_, err = o.ListDeploymentsInChroot(root, false)
+	_, err = o.ListDeploymentsInRoot(root, false)
 	if err == nil {
 		t.Error("expected error when ostree command fails, got nil")
 	}
@@ -2525,7 +2541,7 @@ func TestListDeploymentsInChroot_MultipleDeployments(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	deployments, err := o.ListDeploymentsInChroot(root, false)
+	deployments, err := o.ListDeploymentsInRoot(root, false)
 	if err != nil {
 		t.Fatalf("ListDeploymentsInChroot failed: %v", err)
 	}

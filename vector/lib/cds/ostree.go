@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"matrixos/vector/lib/config"
 	"os"
 	"os/exec"
@@ -1710,9 +1711,9 @@ func (o *Ostree) ListRootDeployments(verbose bool) ([]Deployment, error) {
 	return o.listDeploymentsFromSysroot(root, verbose)
 }
 
-// ListDeploymentsInChroot lists the deployments in the given root,
+// ListDeploymentsInRoot lists the deployments in the given root,
 // which is usually used for chroot operations.
-func (o *Ostree) ListDeploymentsInChroot(root string, verbose bool) ([]Deployment, error) {
+func (o *Ostree) ListDeploymentsInRoot(root string, verbose bool) ([]Deployment, error) {
 	return o.listDeploymentsFromSysroot(root, verbose)
 }
 
@@ -2204,6 +2205,146 @@ func (o *Ostree) Upgrade(args []string, verbose bool) error {
 	return o.ostreeRun(verbose, cmdArgs...)
 }
 
+type PathMode struct {
+	Type   string      // E.g., "-", "d", "l"
+	SetUID bool        // Set-user-ID bit
+	SetGID bool        // Set-group-ID bit
+	Sticky bool        // Sticky bit
+	Perms  fs.FileMode // Stored as uint32, printed as octal
+}
+
+// PathInfo represents the information of a path in an ostree commit.
+type PathInfo struct {
+	Mode *PathMode // Mode information of the path
+	Uid  uint64    // User ID of the owner
+	Gid  uint64    // Group ID of the owner
+	Size uint64    // Size of the file in bytes
+	Path string    // Full path of the file
+	Link string    // Target of the symlink if Type is "l"
+}
+
+// ParseModeString takes a hybrid string like "-00644" and parses it.
+func ParseModeString(input string) (*PathMode, error) {
+	if len(input) < 4 {
+		return nil, fmt.Errorf("input too short to be valid mode string: %q", input)
+	}
+
+	mode := PathMode{
+		Type: string(input[0]),
+	}
+
+	// Extract the octal portion.
+	// strconv.ParseUint inherently understands base 8 if we specify it.
+	rawPerms, err := strconv.ParseUint(input[1:], 8, 32)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse octal permissions: %w", err)
+	}
+
+	// Define POSIX bitmasks (using Go's 0o prefix for octal literals)
+	const (
+		posixSetUID = 0o4000
+		posixSetGID = 0o2000
+		posixSticky = 0o1000
+		posixPerms  = 0o0777 // Mask for standard rwxrwxrwx
+	)
+
+	// Extract special bits via bitwise AND
+	mode.SetUID = (rawPerms & posixSetUID) != 0
+	mode.SetGID = (rawPerms & posixSetGID) != 0
+	mode.Sticky = (rawPerms & posixSticky) != 0
+
+	// Extract standard permissions
+	mode.Perms = fs.FileMode(rawPerms & posixPerms)
+
+	return &mode, nil
+}
+
+// ParseOstreeLsLine parses a line from `ostree ls` output into a PathInfo struct.
+func ParseOstreeLsLine(line string) (*PathInfo, error) {
+	parts := strings.Fields(line)
+	if len(parts) < 5 {
+		return nil, fmt.Errorf("unexpected format for ostree ls line: %q", line)
+	}
+
+	pi := &PathInfo{}
+	mode, err := ParseModeString(parts[0])
+	if err != nil {
+		return nil, err
+	}
+	pi.Mode = mode
+
+	uid, gid := parts[1], parts[2]
+	pi.Uid, err = strconv.ParseUint(uid, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	pi.Gid, err = strconv.ParseUint(gid, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	pi.Size, err = strconv.ParseUint(parts[3], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	pi.Path = parts[4]
+	if pi.Mode.Type == "l" && len(parts) >= 6 {
+		pi.Link = parts[5]
+	}
+	return pi, nil
+}
+
+// ListContents lists the contents of a path in a commit.
+func (o *Ostree) ListContents(commit, path string, verbose bool) ([]*PathInfo, error) {
+	if commit == "" {
+		return nil, errors.New("missing commit parameter")
+	}
+	if path == "" {
+		return nil, errors.New("missing path parameter")
+	}
+	repoDir, err := o.RepoDir()
+	if err != nil {
+		return nil, err
+	}
+	return o.listContentsOfPath(commit, repoDir, path, verbose)
+}
+
+func (o *Ostree) listContentsOfPath(commit, repoDir, path string, verbose bool) ([]*PathInfo, error) {
+	stdout, err := o.ostreeRunCapture(
+		verbose,
+		"--repo="+repoDir,
+		"ls",
+		"-R",
+		commit,
+		"--",
+		path,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var pis []*PathInfo
+
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		pi, err := ParseOstreeLsLine(line)
+		if err != nil {
+			return nil, err
+		}
+		pis = append(pis, pi)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return pis, nil
+}
+
 // ListPackages lists the packages in a commit.
 func (o *Ostree) ListPackages(commit string, verbose bool) ([]string, error) {
 	if commit == "" {
@@ -2217,6 +2358,9 @@ func (o *Ostree) ListPackages(commit string, verbose bool) ([]string, error) {
 	roVdb, err := o.cfg.GetItem("Releaser.ReadOnlyVdb")
 	if err != nil {
 		return nil, err
+	}
+	if roVdb == "" {
+		return nil, fmt.Errorf("config item Releaser.ReadOnlyVdb is not set")
 	}
 
 	pkgs, err := o.listPackagesFromPath(root, roVdb, commit, verbose)
@@ -2253,22 +2397,20 @@ func (o *Ostree) listPackagesFromPath(root, path, commit string, verbose bool) (
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Text()
-		parts := strings.Fields(line)
-		if len(parts) < 5 {
+
+		pi, err := ParseOstreeLsLine(line)
+		if err != nil {
+			return nil, err
+		}
+
+		if pi.Mode.Type != "d" {
+			continue
+		}
+		if !strings.HasPrefix(pi.Path, prefix) {
 			continue
 		}
 
-		mode := parts[0]
-		fpath := parts[4]
-
-		if !strings.HasPrefix(mode, "d") {
-			continue
-		}
-		if !strings.HasPrefix(fpath, prefix) {
-			continue
-		}
-
-		relPath := strings.TrimPrefix(fpath, prefix)
+		relPath := strings.TrimPrefix(pi.Path, prefix)
 		relPath = strings.TrimSuffix(relPath, "/")
 
 		if strings.Count(relPath, "/") == 1 {

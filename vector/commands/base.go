@@ -61,7 +61,7 @@ type IOstree interface {
 	RemoteRefs(verbose bool) ([]string, error)
 	ListRootRemoteRefs(verbose bool) ([]string, error)
 	ListRootDeployments(verbose bool) ([]cds.Deployment, error)
-	ListDeploymentsInChroot(root string, verbose bool) ([]cds.Deployment, error)
+	ListDeploymentsInRoot(root string, verbose bool) ([]cds.Deployment, error)
 	DeployedRootfs(ref string, verbose bool) (string, error)
 	BootedRef(verbose bool) (string, error)
 	BootedHash(verbose bool) (string, error)
@@ -69,6 +69,7 @@ type IOstree interface {
 	Deploy(ref string, bootArgs []string, verbose bool) error
 	Upgrade(args []string, verbose bool) error
 	ListPackages(commit string, verbose bool) ([]string, error)
+	ListContents(commit, path string, verbose bool) ([]*cds.PathInfo, error)
 }
 
 type BaseCommand struct {
