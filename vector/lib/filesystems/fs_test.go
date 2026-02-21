@@ -208,14 +208,6 @@ func TestHelperProcess(t *testing.T) {
 		}
 	case "setcap":
 		// Success
-	case "cp":
-		// cp src dst
-		if len(args) >= 2 {
-			src := args[len(args)-2]
-			dst := args[len(args)-1]
-			data, _ := os.ReadFile(src)
-			os.WriteFile(dst, data, 0644)
-		}
 	case "getcap":
 		fmt.Println("/path/to/file = cap_net_raw+ep")
 	case "udevadm", "blockdev":
@@ -746,6 +738,134 @@ func TestCleanupLoopDevices(t *testing.T) {
 	defer os.Unsetenv("MOCK_LOSETUP_OUTPUT")
 
 	CleanupLoopDevices([]string{f.Name()})
+}
+
+func TestCopyFilePreserveXattrs(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("BasicCopy", func(t *testing.T) {
+		src := filepath.Join(dir, "src_basic")
+		dst := filepath.Join(dir, "dst_basic")
+		content := []byte("hello xattr world")
+		if err := os.WriteFile(src, content, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := copyFilePreserveXattrs(src, dst); err != nil {
+			t.Fatalf("copyFilePreserveXattrs failed: %v", err)
+		}
+
+		got, err := os.ReadFile(dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(content) {
+			t.Errorf("content mismatch: got %q, want %q", got, content)
+		}
+
+		info, err := os.Stat(dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0644 {
+			t.Errorf("permissions mismatch: got %04o, want 0644", info.Mode().Perm())
+		}
+	})
+
+	t.Run("PreservesXattrs", func(t *testing.T) {
+		src := filepath.Join(dir, "src_xattr")
+		dst := filepath.Join(dir, "dst_xattr")
+		if err := os.WriteFile(src, []byte("data"), 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		attrName := "user.test_attr"
+		attrVal := []byte("test_value_123")
+		if err := unix.Lsetxattr(src, attrName, attrVal, 0); err != nil {
+			t.Skipf("filesystem does not support user xattrs: %v", err)
+		}
+
+		if err := copyFilePreserveXattrs(src, dst); err != nil {
+			t.Fatalf("copyFilePreserveXattrs failed: %v", err)
+		}
+
+		// Verify xattr was copied
+		sz, err := unix.Lgetxattr(dst, attrName, nil)
+		if err != nil {
+			t.Fatalf("xattr not found on dst: %v", err)
+		}
+		buf := make([]byte, sz)
+		_, err = unix.Lgetxattr(dst, attrName, buf)
+		if err != nil {
+			t.Fatalf("failed to read xattr: %v", err)
+		}
+		if string(buf) != string(attrVal) {
+			t.Errorf("xattr value mismatch: got %q, want %q", buf, attrVal)
+		}
+	})
+
+	t.Run("MultipleXattrs", func(t *testing.T) {
+		src := filepath.Join(dir, "src_multi")
+		dst := filepath.Join(dir, "dst_multi")
+		if err := os.WriteFile(src, []byte("multi"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		attrs := map[string]string{
+			"user.attr_a": "value_a",
+			"user.attr_b": "value_b",
+			"user.attr_c": "value_c",
+		}
+		for k, v := range attrs {
+			if err := unix.Lsetxattr(src, k, []byte(v), 0); err != nil {
+				t.Skipf("filesystem does not support user xattrs: %v", err)
+			}
+		}
+
+		if err := copyFilePreserveXattrs(src, dst); err != nil {
+			t.Fatalf("copyFilePreserveXattrs failed: %v", err)
+		}
+
+		for k, want := range attrs {
+			sz, err := unix.Lgetxattr(dst, k, nil)
+			if err != nil {
+				t.Errorf("xattr %s not found on dst: %v", k, err)
+				continue
+			}
+			buf := make([]byte, sz)
+			unix.Lgetxattr(dst, k, buf)
+			if string(buf) != want {
+				t.Errorf("xattr %s: got %q, want %q", k, buf, want)
+			}
+		}
+	})
+
+	t.Run("EmptyFile", func(t *testing.T) {
+		src := filepath.Join(dir, "src_empty")
+		dst := filepath.Join(dir, "dst_empty")
+		if err := os.WriteFile(src, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := copyFilePreserveXattrs(src, dst); err != nil {
+			t.Fatalf("copyFilePreserveXattrs failed: %v", err)
+		}
+
+		info, err := os.Stat(dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Size() != 0 {
+			t.Errorf("expected empty file, got size %d", info.Size())
+		}
+	})
+
+	t.Run("SrcNotExist", func(t *testing.T) {
+		err := copyFilePreserveXattrs("/nonexistent/file", filepath.Join(dir, "dst_noexist"))
+		if err == nil {
+			t.Error("expected error for nonexistent source")
+		}
+	})
 }
 
 func TestCheckFsCapabilitySupport(t *testing.T) {

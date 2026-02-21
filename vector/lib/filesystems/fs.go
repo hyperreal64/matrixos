@@ -660,7 +660,7 @@ func checkFsCapabilitySupport(testDir string) (bool, error) {
 	tmpCopy := tmpBin.Name() + ".copy"
 	defer os.Remove(tmpCopy)
 
-	if err := execRun(nil, nil, nil, "cp", "-a", tmpBin.Name(), tmpCopy); err != nil {
+	if err := copyFilePreserveXattrs(tmpBin.Name(), tmpCopy); err != nil {
 		return false, err
 	}
 
@@ -676,6 +676,60 @@ func checkFsCapabilitySupport(testDir string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// copyFilePreserveXattrs copies a file from src to dst, preserving permissions
+// and extended attributes (xattrs). This is equivalent to "cp -a" for regular files.
+func copyFilePreserveXattrs(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+
+	// Copy extended attributes (includes security.capability)
+	attrs, err := unix.Llistxattr(src, nil)
+	if err != nil || attrs == 0 {
+		return nil // no xattrs or not supported
+	}
+	buf := make([]byte, attrs)
+	attrs, err = unix.Llistxattr(src, buf)
+	if err != nil {
+		return nil
+	}
+
+	// xattr names are null-terminated strings packed together
+	for _, name := range strings.Split(strings.TrimRight(string(buf[:attrs]), "\x00"), "\x00") {
+		if name == "" {
+			continue
+		}
+		sz, err := unix.Lgetxattr(src, name, nil)
+		if err != nil {
+			continue
+		}
+		val := make([]byte, sz)
+		_, err = unix.Lgetxattr(src, name, val)
+		if err != nil {
+			continue
+		}
+		unix.Lsetxattr(dst, name, val, 0)
+	}
+	return nil
 }
 
 // CheckHardlinkPreservation verifies that hardlinks are preserved between source and destination.
