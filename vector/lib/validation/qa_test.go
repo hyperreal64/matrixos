@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"matrixos/vector/lib/config"
 	"matrixos/vector/lib/filesystems"
+	"matrixos/vector/lib/runner"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,27 @@ func fakeExecCommand(command string, args ...string) *exec.Cmd {
 		"GO_HELPER_ARGS="+strings.Join(args, " "))
 	cmd.Env = env
 	return cmd
+}
+
+// fakeExecChrootOutput mocks filesystems.ExecChrootOutput for tests.
+func fakeExecChrootOutput(chrootDir, chrootExec string, args ...string) ([]byte, error) {
+	allArgs := strings.Join(args, " ")
+	if chrootExec == "modinfo" && strings.Contains(allArgs, "-F sig_key") {
+		return []byte(os.Getenv("MOCK_SIG_KEY")), nil
+	}
+	if chrootExec == "modinfo" && strings.Contains(allArgs, "-F vermagic") {
+		return []byte("5.15.0 SMP mod_unload"), nil
+	}
+	if chrootExec == "which" {
+		return []byte("/usr/bin/" + args[len(args)-1]), nil
+	}
+	return nil, fmt.Errorf("unknown mock chroot command: %s %s", chrootExec, allArgs)
+}
+
+func setupMockChrootOutput(t *testing.T) {
+	orig := filesystems.ExecChrootOutput
+	filesystems.ExecChrootOutput = runner.ChrootOutputFunc(fakeExecChrootOutput)
+	t.Cleanup(func() { filesystems.ExecChrootOutput = orig })
 }
 
 func TestHelperProcess(t *testing.T) {
@@ -154,8 +176,7 @@ func TestCheckSecureBoot(t *testing.T) {
 	// Setup overrides
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
-	filesystems.ExecCommand = fakeExecCommand
-	defer func() { filesystems.ExecCommand = exec.Command }()
+	setupMockChrootOutput(t)
 
 	tmp := t.TempDir()
 	// Create dummy usb-storage.ko
@@ -206,8 +227,7 @@ func TestCheckKernelAndExternalModule(t *testing.T) {
 	// Setup overrides
 	execCommand = fakeExecCommand
 	defer func() { execCommand = exec.Command }()
-	filesystems.ExecCommand = fakeExecCommand
-	defer func() { filesystems.ExecCommand = exec.Command }()
+	setupMockChrootOutput(t)
 
 	tmp := t.TempDir()
 	modVer := "5.15.0"

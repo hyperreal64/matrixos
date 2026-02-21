@@ -2,6 +2,7 @@ package filesystems
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,6 +66,84 @@ func fakeExecCommand(command string, args ...string) *exec.Cmd {
 		}
 	}
 	return cmd
+}
+
+// fakeExecRun wraps fakeExecCommand to implement runner.Func.
+func fakeExecRun(stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
+	cmd := fakeExecCommand(name, args...)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+// fakeExecOutput wraps fakeExecCommand to implement runner.OutputFunc.
+func fakeExecOutput(name string, args ...string) ([]byte, error) {
+	return fakeExecCommand(name, args...).Output()
+}
+
+// fakeExecCombinedOutput wraps fakeExecCommand to implement runner.CombinedOutputFunc.
+func fakeExecCombinedOutput(name string, args ...string) ([]byte, error) {
+	return fakeExecCommand(name, args...).CombinedOutput()
+}
+
+// fakeChrootRun wraps fakeExecCommand to implement runner.ChrootRunFunc.
+func fakeChrootRun(stdin io.Reader, stdout, stderr io.Writer, chrootDir, chrootExec string, args ...string) error {
+	if chrootDir == "" {
+		return fmt.Errorf("missing chrootDir parameter")
+	}
+	if chrootExec == "" {
+		return fmt.Errorf("missing chrootExec parameter")
+	}
+	// Build the same unshare args that runner.chrootArgs would build,
+	// then delegate to fakeExecRun so TestHelperProcess handles "unshare".
+	cmdArgs := []string{
+		"--pid", "--fork", "--kill-child", "--mount", "--uts", "--ipc",
+		fmt.Sprintf("--mount-proc=%s/proc", chrootDir),
+		"chroot", chrootDir, chrootExec,
+	}
+	cmdArgs = append(cmdArgs, args...)
+	return fakeExecRun(stdin, stdout, stderr, "unshare", cmdArgs...)
+}
+
+// fakeChrootOutput wraps fakeExecCommand to implement runner.ChrootOutputFunc.
+func fakeChrootOutput(chrootDir, chrootExec string, args ...string) ([]byte, error) {
+	if chrootDir == "" {
+		return nil, fmt.Errorf("missing chrootDir parameter")
+	}
+	if chrootExec == "" {
+		return nil, fmt.Errorf("missing chrootExec parameter")
+	}
+	cmdArgs := []string{
+		"--pid", "--fork", "--kill-child", "--mount", "--uts", "--ipc",
+		fmt.Sprintf("--mount-proc=%s/proc", chrootDir),
+		"chroot", chrootDir, chrootExec,
+	}
+	cmdArgs = append(cmdArgs, args...)
+	return fakeExecOutput("unshare", cmdArgs...)
+}
+
+// setupMockExec swaps all execution vars with fakes and registers cleanup.
+func setupMockExec(t *testing.T) {
+	origExecRun := execRun
+	origExecOutput := execOutput
+	origExecCombinedOutput := execCombinedOutput
+	origChrootRun := ExecChrootRun
+	origChrootOutput := ExecChrootOutput
+
+	execRun = fakeExecRun
+	execOutput = fakeExecOutput
+	execCombinedOutput = fakeExecCombinedOutput
+	ExecChrootRun = fakeChrootRun
+	ExecChrootOutput = fakeChrootOutput
+
+	t.Cleanup(func() {
+		execRun = origExecRun
+		execOutput = origExecOutput
+		execCombinedOutput = origExecCombinedOutput
+		ExecChrootRun = origChrootRun
+		ExecChrootOutput = origChrootOutput
+	})
 }
 
 func setupMockSyscalls(t *testing.T) {
@@ -178,8 +257,7 @@ func TestHelperProcess(t *testing.T) {
 }
 
 func TestDeviceUUID(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		expectedUUID := "1234-5678"
@@ -224,8 +302,7 @@ func TestDeviceUUID(t *testing.T) {
 }
 
 func TestDevicePartUUID(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		expectedPartUUID := "abcdef-01"
@@ -270,8 +347,7 @@ func TestDevicePartUUID(t *testing.T) {
 }
 
 func TestMountpointToDevice(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		expectedDevice := "/dev/sda1"
@@ -316,8 +392,7 @@ func TestMountpointToDevice(t *testing.T) {
 }
 
 func TestMountpointToUUID(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		expectedUUID := "abcd-1234-ef56-7890"
@@ -362,8 +437,7 @@ func TestMountpointToUUID(t *testing.T) {
 }
 
 func TestMountpointToFSType(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		expectedFSType := "ext4"
@@ -422,8 +496,7 @@ func TestMountpointToFSType(t *testing.T) {
 }
 
 func TestListSubmounts(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		mounts := "/mnt/test\n/mnt/test/sub"
@@ -631,8 +704,7 @@ func TestCheckHardlinkPreservation(t *testing.T) {
 }
 
 func TestCleanupMounts(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("SuccessfulUnmount", func(t *testing.T) {
@@ -657,8 +729,7 @@ func TestCleanupMounts(t *testing.T) {
 }
 
 func TestSetupCommonRootfsMounts(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	tmpDir := t.TempDir()
@@ -676,8 +747,7 @@ func TestSetupCommonRootfsMounts(t *testing.T) {
 }
 
 func TestBindMount(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	src := t.TempDir()
@@ -689,8 +759,7 @@ func TestBindMount(t *testing.T) {
 }
 
 func TestCleanupLoopDevices(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	f, err := os.CreateTemp("", "loop")
 	if err != nil {
@@ -706,8 +775,7 @@ func TestCleanupLoopDevices(t *testing.T) {
 }
 
 func TestCheckFsCapabilitySupport(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	tmpDir := t.TempDir()
 	supported, err := CheckFsCapabilitySupport(tmpDir)
@@ -720,8 +788,7 @@ func TestCheckFsCapabilitySupport(t *testing.T) {
 }
 
 func TestCheckActiveMounts(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("NoActiveMounts", func(t *testing.T) {
 		os.Unsetenv("MOCK_FINDMNT_OUTPUT")
@@ -740,15 +807,13 @@ func TestCheckActiveMounts(t *testing.T) {
 }
 
 func TestDevicesSettle(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	// Simple execution test to ensure it runs without error
 	DevicesSettle()
 }
 
 func TestFlushBlockDeviceBuffers(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -770,8 +835,7 @@ func TestFlushBlockDeviceBuffers(t *testing.T) {
 }
 
 func TestUnsetupCommonRootfsMounts(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -798,8 +862,7 @@ func TestUnsetupCommonRootfsMounts(t *testing.T) {
 }
 
 func TestBindUmount(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -825,8 +888,7 @@ func TestBindUmount(t *testing.T) {
 }
 
 func TestBindMountDistdir(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -839,8 +901,7 @@ func TestBindMountDistdir(t *testing.T) {
 }
 
 func TestBindUmountDistdir(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -859,8 +920,7 @@ func TestBindUmountDistdir(t *testing.T) {
 }
 
 func TestBindMountBinpkgs(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -873,8 +933,7 @@ func TestBindMountBinpkgs(t *testing.T) {
 }
 
 func TestBindUmountBinpkgs(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 	setupMockSyscalls(t)
 
 	t.Run("Success", func(t *testing.T) {
@@ -893,8 +952,7 @@ func TestBindUmountBinpkgs(t *testing.T) {
 }
 
 func TestCleanupCryptsetupDevices(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -932,8 +990,7 @@ func TestCleanupCryptsetupDevices(t *testing.T) {
 }
 
 func TestCpReflinkCopyAllowed(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+	setupMockExec(t)
 
 	src := t.TempDir()
 	dst := t.TempDir()
@@ -977,50 +1034,39 @@ func TestCpReflinkCopyAllowed(t *testing.T) {
 	})
 }
 
-func TestChrootCmd(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+func TestChrootOutput(t *testing.T) {
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
-		cmd, err := ChrootCmd("/target", "/bin/sh", "-c", "echo hello")
+		out, err := ChrootOutput("/target", "/bin/sh", "-c", "echo hello")
 		if err != nil {
-			t.Fatalf("ChrootCmd failed: %v", err)
+			t.Fatalf("ChrootOutput failed: %v", err)
 		}
-		if cmd == nil {
-			t.Fatal("Expected cmd to be non-nil")
-		}
-		// Basic check of arguments (implementation detail, but good for regression)
-		args := cmd.Args
-		if len(args) < 10 {
-			t.Fatalf("Expected at least 10 args, got %d", len(args))
-		}
-		if args[len(args)-1] != "echo hello" {
-			t.Errorf("Expected last arg to be 'echo hello', got %s", args[len(args)-1])
-		}
+		// The mock unshare handler exits 0 with no output by default
+		_ = out
 	})
 
 	t.Run("MissingChrootDir", func(t *testing.T) {
-		_, err := ChrootCmd("", "/bin/sh")
+		_, err := ChrootOutput("", "/bin/sh")
 		if err == nil {
 			t.Error("Expected error for missing chrootDir, got nil")
 		}
 	})
 
 	t.Run("MissingChrootExec", func(t *testing.T) {
-		_, err := ChrootCmd("/target", "")
+		_, err := ChrootOutput("/target", "")
 		if err == nil {
 			t.Error("Expected error for missing chrootExec, got nil")
 		}
 	})
 }
 
-func TestChroot(t *testing.T) {
-	ExecCommand = fakeExecCommand
-	defer func() { ExecCommand = exec.Command }()
+func TestChrootRun(t *testing.T) {
+	setupMockExec(t)
 
 	t.Run("Success", func(t *testing.T) {
-		if err := Chroot("/target", "/bin/true"); err != nil {
-			t.Errorf("Chroot failed: %v", err)
+		if err := ChrootRun("/target", "/bin/true"); err != nil {
+			t.Errorf("ChrootRun failed: %v", err)
 		}
 	})
 
@@ -1028,13 +1074,13 @@ func TestChroot(t *testing.T) {
 		os.Setenv("MOCK_UNSHARE_FAIL", "1")
 		defer os.Unsetenv("MOCK_UNSHARE_FAIL")
 
-		if err := Chroot("/target", "/bin/false"); err == nil {
+		if err := ChrootRun("/target", "/bin/false"); err == nil {
 			t.Error("Expected error from unshare failure, got nil")
 		}
 	})
 
 	t.Run("MissingArgs", func(t *testing.T) {
-		if err := Chroot("", "/bin/true"); err == nil {
+		if err := ChrootRun("", "/bin/true"); err == nil {
 			t.Error("Expected error for missing chrootDir, got nil")
 		}
 	})

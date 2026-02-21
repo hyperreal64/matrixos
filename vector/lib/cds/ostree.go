@@ -10,8 +10,8 @@ import (
 	"io/fs"
 	"matrixos/vector/lib/config"
 	fslib "matrixos/vector/lib/filesystems"
+	"matrixos/vector/lib/runner"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"slices"
@@ -101,17 +101,7 @@ type IOstree interface {
 }
 
 // runCommand runs a generic binary with args and stdout/stderr handling.
-var runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return err
-	}
-	return nil
-}
+var runCommand runner.Func = runner.Run
 
 func readerToList(reader io.Reader) ([]string, error) {
 	var elements []string
@@ -598,12 +588,9 @@ func Prune(repoDir, ref, keepObjectsYoungerThan string, verbose bool) error {
 	return err
 }
 
-// CommandRunnerFunc is the function type for executing shell commands.
-type CommandRunnerFunc func(stdout, stderr io.Writer, name string, args ...string) error
-
 type Ostree struct {
 	cfg    config.IConfig
-	runner CommandRunnerFunc
+	runner runner.Func
 }
 
 // NewOstree creates a new Ostree instance.
@@ -626,7 +613,7 @@ func (o *Ostree) runCmd(stdout, stderr io.Writer, verbose bool, args ...string) 
 		fmt.Fprintf(stderr, ">> Executing: ostree --verbose %s\n", strings.Join(args, " "))
 	}
 	finalArgs = append(finalArgs, args...)
-	return o.runner(stdout, stderr, "ostree", finalArgs...)
+	return o.runner(nil, stdout, stderr, "ostree", finalArgs...)
 }
 
 // ostreeRun runs an ostree command with stdout/stderr directed to os.Stdout/os.Stderr.
@@ -894,7 +881,7 @@ func run(stdout, stderr io.Writer, verbose bool, args ...string) error {
 		fmt.Fprintf(stderr, ">> Executing: ostree --verbose %s\n", strings.Join(args, " "))
 	}
 	finalArgs = append(finalArgs, args...)
-	return runCommand(stdout, stderr, "ostree", finalArgs...)
+	return runCommand(nil, stdout, stderr, "ostree", finalArgs...)
 }
 
 // Run runs an ostree command with --verbose if requested.
@@ -1197,6 +1184,7 @@ func (o *Ostree) GpgKeyID() (string, error) {
 
 	out := new(bytes.Buffer)
 	err = o.runner(
+		nil,
 		out,
 		os.Stderr,
 		"gpg",
@@ -1253,6 +1241,7 @@ func (o *Ostree) ImportGpgKey(keyPath string) error {
 	}
 
 	return o.runner(
+		nil,
 		os.Stdout,
 		os.Stderr,
 		"gpg",
@@ -1284,6 +1273,7 @@ func (o *Ostree) GpgSignFile(file string) error {
 	ascFile := GpgSignedFilePath(file)
 
 	err = o.runner(
+		nil,
 		os.Stdout,
 		os.Stderr,
 		"gpg",

@@ -349,7 +349,7 @@ func TestDeploy(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		cmdArgs := append([]string{name}, args...)
 		commands = append(commands, cmdArgs)
 
@@ -582,7 +582,7 @@ func TestOstreeCommandsMocked(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastCmdArgs = args
 		// Mock rev-parse for GenerateStaticDelta
 		if len(args) > 0 && args[0] == "rev-parse" {
@@ -646,7 +646,7 @@ func TestBootedStatus(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		// Mock ostree admin status --json
 		jsonOutput := `{
 			"deployments": [
@@ -736,7 +736,7 @@ func TestGpgKeyID(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		// Mock gpg output
 		// Format: pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:
 		fmt.Fprintln(stdout, "pub:u:4096:1:3260D9CC6D9275DD:1678752000:::u:::scESC:")
@@ -801,7 +801,7 @@ func TestMaybeInitializeRemote(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		cmds = append(cmds, strings.Join(args, " "))
 		return nil
 	}
@@ -832,7 +832,7 @@ func TestAddRemoteWithSysroot(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastArgs = args
 		return nil
 	}
@@ -877,7 +877,7 @@ func TestGpgSignFile(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		cmds = append(cmds, strings.Join(args, " "))
 		// Mock GpgKeyID call
 		if len(args) > 0 && args[0] == "--homedir" {
@@ -926,7 +926,7 @@ func TestImportGpgKey(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastArgs = args
 		return nil
 	}
@@ -1070,7 +1070,7 @@ func TestMaybeInitializeGpg(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		cmds = append(cmds, args)
 		return nil
 	}
@@ -1124,7 +1124,7 @@ func TestPullWithRemoteExplicit(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastArgs = args
 		return nil
 	}
@@ -1199,7 +1199,7 @@ func TestMaybeInitializeRemoteIdempotency(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		cmds = append(cmds, strings.Join(args, " "))
 		// Mock ListRemotes output
 		// args: --repo=... remote list
@@ -1348,7 +1348,7 @@ func TestGpgArgsEnabled(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		if len(args) > 0 && args[0] == "--homedir" {
 			fmt.Fprintln(stdout, "pub:u:4096:1:KEYID123:1678752000:::u:::scESC:")
 		}
@@ -1370,7 +1370,7 @@ func TestGpgArgsEnabled(t *testing.T) {
 func TestDeployedRootfsWithSysroot(t *testing.T) {
 	origRunCommand := runCommand
 	defer func() { runCommand = origRunCommand }()
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+	runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		fmt.Fprintln(stdout, "hash123")
 		return nil
 	}
@@ -1457,7 +1457,7 @@ func TestRunVerbose(t *testing.T) {
 	origRunCommand := runCommand
 	defer func() { runCommand = origRunCommand }()
 
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+	runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		if len(args) > 0 && args[0] == "--verbose" {
 			return nil
 		}
@@ -1480,7 +1480,7 @@ func TestOstreeWrappers(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return nil
 	}
 
@@ -1504,7 +1504,7 @@ func TestListPackagesMocked(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		// Mock ls -R output
 		output := `d00755 0 0 0 abc abc /
 d00755 0 0 0 abc abc /var/db/pkg/cat/pkg
@@ -1589,7 +1589,7 @@ func TestDeploy_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 				cmdStr := strings.Join(args, " ")
 				if strings.Contains(cmdStr, tt.failAtCmd) {
 					return fmt.Errorf("simulated error")
@@ -1654,7 +1654,7 @@ func TestBootedStatus_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+			runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 				if tt.mockErr != nil {
 					return tt.mockErr
 				}
@@ -1677,7 +1677,7 @@ func TestMiscWrappers_Errors(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("cmd error")
 	}
 
@@ -1702,7 +1702,7 @@ func TestLastCommit_Errors(t *testing.T) {
 	origRunCommand := runCommand
 	defer func() { runCommand = origRunCommand }()
 
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+	runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("not found")
 	}
 
@@ -1715,7 +1715,7 @@ func TestLastCommit_Errors(t *testing.T) {
 func TestListRemotes_Errors(t *testing.T) {
 	origRunCommand := runCommand
 	defer func() { runCommand = origRunCommand }()
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+	runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("error")
 	}
 
@@ -1736,7 +1736,7 @@ func TestAddRemote_Error(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("error")
 	}
 	if err := o.AddRemote(false); err == nil {
@@ -1829,7 +1829,7 @@ func TestRemoteRefs(t *testing.T) {
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			stdout.Write([]byte("matrixos/amd64/gnome\nmatrixos/amd64/server\nmatrixos/amd64/dev/gnome\n"))
 			return nil
 		}
@@ -1854,7 +1854,7 @@ func TestRemoteRefs(t *testing.T) {
 
 	t.Run("VerifiesRepoPathAndRemote", func(t *testing.T) {
 		var capturedArgs []string
-		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			capturedArgs = append([]string{name}, args...)
 			stdout.Write([]byte("ref1\n"))
 			return nil
@@ -1932,7 +1932,7 @@ func TestRemoteRefs(t *testing.T) {
 	})
 
 	t.Run("NoRefs", func(t *testing.T) {
-		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			return nil
 		}
 
@@ -1958,7 +1958,7 @@ func TestRemoteRefs(t *testing.T) {
 	})
 
 	t.Run("CommandError", func(t *testing.T) {
-		runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+		runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			return fmt.Errorf("remote refs failed")
 		}
 
@@ -2000,7 +2000,7 @@ l00777 0 0 0 ddd444 /etc/localtime -> /usr/share/zoneinfo/UTC
 d00755 0 0 0 eee555 fff666 /etc/conf.d
 -00644 0 0 100 ggg777 /etc/conf.d/net
 `
-		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			stdout.Write([]byte(mockOutput))
 			return nil
 		}
@@ -2113,7 +2113,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			return fmt.Errorf("ostree ls failed")
 		}
 
@@ -2134,7 +2134,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			// Write nothing
 			return nil
 		}
@@ -2160,7 +2160,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			capturedArgs = append([]string{name}, args...)
 			return nil
 		}
@@ -2218,7 +2218,7 @@ d00755 0 0 0 eee555 fff666 /etc/conf.d
 			t.Fatalf("NewOstree failed: %v", err)
 		}
 
-		o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+		o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 			stdout.Write([]byte("this is not valid ostree ls output\n"))
 			return nil
 		}
@@ -2258,7 +2258,7 @@ func TestListDeployments(t *testing.T) {
 		]
 	}`
 
-	runCommand = func(stdout, stderr io.Writer, name string, args ...string) error {
+	runCommand = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		// Expect ostree admin status --json
 		stdout.Write([]byte(fakeJSON))
 		return nil
@@ -2351,7 +2351,7 @@ func TestListDeployments_NoDeployments(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		stdout.Write([]byte(`{"deployments": []}`))
 		return nil
 	}
@@ -2377,7 +2377,7 @@ func TestListDeployments_CommandError(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("ostree command failed")
 	}
 
@@ -2399,7 +2399,7 @@ func TestListDeployments_InvalidJSON(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		stdout.Write([]byte(`{not valid json}`))
 		return nil
 	}
@@ -2425,7 +2425,7 @@ func TestSwitch(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastCmdArgs = append([]string{name}, args...)
 		return nil
 	}
@@ -2451,7 +2451,7 @@ func TestSwitch_MissingSysroot(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return nil
 	}
 
@@ -2473,7 +2473,7 @@ func TestSwitch_CommandError(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("ostree admin switch failed")
 	}
 
@@ -2498,7 +2498,7 @@ func TestSwitch_Verbose(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastCmdArgs = append([]string{name}, args...)
 		return nil
 	}
@@ -2538,7 +2538,7 @@ A    vconsole.conf
 A    ostree
 `
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		stdout.Write([]byte(mockOutput))
 		return nil
 	}
@@ -2629,7 +2629,7 @@ func TestConfigDiff_CommandArgs(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastCmdArgs = append([]string{name}, args...)
 		return nil
 	}
@@ -2660,7 +2660,7 @@ func TestConfigDiff_Verbose(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		lastCmdArgs = append([]string{name}, args...)
 		return nil
 	}
@@ -2691,7 +2691,7 @@ func TestConfigDiff_EmptyOutput(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return nil
 	}
 
@@ -2733,7 +2733,7 @@ func TestConfigDiff_CommandError(t *testing.T) {
 		t.Fatalf("NewOstree failed: %v", err)
 	}
 
-	o.runner = func(stdout, stderr io.Writer, name string, args ...string) error {
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 		return fmt.Errorf("command failed")
 	}
 

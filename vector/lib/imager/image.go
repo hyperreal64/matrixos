@@ -15,19 +15,8 @@ import (
 	"matrixos/vector/lib/cds"
 	"matrixos/vector/lib/config"
 	fslib "matrixos/vector/lib/filesystems"
+	"matrixos/vector/lib/runner"
 )
-
-// CommandRunnerFunc is the function type for executing shell commands.
-type CommandRunnerFunc func(stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error
-
-// defaultCommandRunner runs a shell command with optional stdin, stdout, and stderr.
-var defaultCommandRunner CommandRunnerFunc = func(stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
-}
 
 // IImage defines the interface for image operations.
 // It mirrors all public methods of Image for testability.
@@ -103,7 +92,7 @@ type IImage interface {
 type Image struct {
 	cfg    config.IConfig
 	ostree cds.IOstree
-	runner CommandRunnerFunc
+	runner runner.Func
 }
 
 // NewImage creates a new Image instance.
@@ -117,7 +106,7 @@ func NewImage(cfg config.IConfig, ostree cds.IOstree) (*Image, error) {
 	return &Image{
 		cfg:    cfg,
 		ostree: ostree,
-		runner: defaultCommandRunner,
+		runner: runner.Run,
 	}, nil
 }
 

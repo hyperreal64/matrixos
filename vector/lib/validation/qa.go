@@ -92,11 +92,7 @@ func (q *QA) CheckSecureBoot(imageDir, sbcertPath string) error {
 	for _, mod := range usbMods {
 		rel := strings.TrimPrefix(mod, strings.TrimRight(imageDir, "/"))
 
-		cmd, err := filesystems.ChrootCmd(imageDir, "modinfo", "-F", "sig_key", rel)
-		if err != nil {
-			return fmt.Errorf("chroot %s failed: %v", imageDir, err)
-		}
-		out, err := cmd.Output()
+		out, err := filesystems.ChrootOutput(imageDir, "modinfo", "-F", "sig_key", rel)
 		if err != nil {
 			return fmt.Errorf("chroot modinfo failed for %s: %w", rel, err)
 		}
@@ -200,15 +196,8 @@ func verifyEnvironmentSetup(imageDir string, executables, dirs []string) error {
 
 		if !found {
 			// fallback to chroot when available
-			cmd, err := filesystems.ChrootCmd(imageDir, "which", exe)
-			if err != nil {
-				retErrs = append(
-					retErrs,
-					fmt.Sprintf("chroot %s failed: %v", imageDir, err),
-				)
-				continue
-			}
-			if out, err := cmd.Output(); err != nil || len(bytes.TrimSpace(out)) == 0 {
+			out, err := filesystems.ChrootOutput(imageDir, "which", exe)
+			if err != nil || len(bytes.TrimSpace(out)) == 0 {
 				retErrs = append(
 					retErrs,
 					fmt.Sprintf("%s not found in chroot %s", exe, imageDir),
@@ -419,12 +408,7 @@ func (q *QA) CheckKernelAndExternalModule(imageDir, moduleName string) error {
 		rel := strings.TrimPrefix(kernelMod, strings.TrimRight(imageDir, "/"))
 		modCount++
 		fmt.Printf("Testing module: %s\n", rel)
-		cmd, err := filesystems.ChrootCmd(imageDir, "modinfo", "-F", "vermagic", rel)
-		if err != nil {
-			failure = true
-			continue
-		}
-		out, err := cmd.Output()
+		out, err := filesystems.ChrootOutput(imageDir, "modinfo", "-F", "vermagic", rel)
 		if err != nil {
 			failure = true
 			continue

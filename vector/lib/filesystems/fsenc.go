@@ -9,19 +9,8 @@ import (
 	"strings"
 
 	"matrixos/vector/lib/config"
+	"matrixos/vector/lib/runner"
 )
-
-// CommandRunnerFunc is the function type for executing shell commands.
-type CommandRunnerFunc func(stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error
-
-// defaultCommandRunner runs a command with optional stdin, stdout, and stderr.
-var defaultCommandRunner CommandRunnerFunc = func(stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
-	cmd := ExecCommand(name, args...)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
-}
 
 // IFsenc defines the interface for filesystem encryption operations.
 // It mirrors all public methods of Fsenc for testability.
@@ -42,7 +31,7 @@ type IFsenc interface {
 // Fsenc provides filesystem encryption operations backed by LUKS/cryptsetup.
 type Fsenc struct {
 	cfg    config.IConfig
-	runner CommandRunnerFunc
+	runner runner.Func
 }
 
 // NewFsenc creates a new Fsenc instance.
@@ -52,7 +41,7 @@ func NewFsenc(cfg config.IConfig) (*Fsenc, error) {
 	}
 	return &Fsenc{
 		cfg:    cfg,
-		runner: defaultCommandRunner,
+		runner: runner.Run,
 	}, nil
 }
 
@@ -102,8 +91,7 @@ func (f *Fsenc) MountImageAsLoopDevice(imagePath string) (string, error) {
 		return "", errors.New("missing imagePath parameter")
 	}
 
-	cmd := ExecCommand("losetup", "--show", "-fP", imagePath)
-	out, err := cmd.Output()
+	out, err := execOutput("losetup", "--show", "-fP", imagePath)
 	if err != nil {
 		return "", fmt.Errorf("unable to set up loop device for %s: %w", imagePath, err)
 	}
