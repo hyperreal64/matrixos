@@ -95,9 +95,9 @@ func defaultTestConfig() *testConfig {
 	}
 }
 
-func defaultTestMockOstree() *mockOstree {
-	return &mockOstree{
-		deployments: []cds.Deployment{
+func defaultTestMockOstree() *cds.MockOstree {
+	return &cds.MockOstree{
+		Deployments: []cds.Deployment{
 			{
 				Booted:    true,
 				Checksum:  "abc123def456",
@@ -107,7 +107,7 @@ func defaultTestMockOstree() *mockOstree {
 				Serial:    0,
 			},
 		},
-		refs: []string{
+		Refs: []string{
 			"origin:matrixos/amd64/gnome-full",
 			"origin:matrixos/amd64/server-full",
 		},
@@ -167,8 +167,8 @@ func TestJailbreakSanityChecksNotOnFullBranch(t *testing.T) {
 	defer func() { getEuid = origEuid }()
 
 	// Deployments on a non-full branch.
-	mock := &mockOstree{
-		deployments: []cds.Deployment{
+	mock := &cds.MockOstree{
+		Deployments: []cds.Deployment{
 			{
 				Booted:    true,
 				Checksum:  "abc123",
@@ -176,7 +176,7 @@ func TestJailbreakSanityChecksNotOnFullBranch(t *testing.T) {
 				Refspec:   "origin:matrixos/amd64/gnome", // no -full suffix
 			},
 		},
-		refs: []string{"origin:matrixos/amd64/gnome-full"},
+		Refs: []string{"origin:matrixos/amd64/gnome-full"},
 	}
 
 	runner := testRunner()

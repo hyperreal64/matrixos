@@ -35,8 +35,8 @@ func captureStdout(t *testing.T, fn func()) string {
 }
 
 func TestBranchShow(t *testing.T) {
-	mock := &mockOstree{
-		deployments: []cds.Deployment{
+	mock := &cds.MockOstree{
+		Deployments: []cds.Deployment{
 			{
 				Booted:    true,
 				Checksum:  "abc123",
@@ -70,8 +70,8 @@ func TestBranchShow(t *testing.T) {
 }
 
 func TestBranchShowNoBooted(t *testing.T) {
-	mock := &mockOstree{
-		deployments: []cds.Deployment{
+	mock := &cds.MockOstree{
+		Deployments: []cds.Deployment{
 			{Booted: false, Stateroot: "matrixos"},
 		},
 	}
@@ -90,8 +90,8 @@ func TestBranchShowNoBooted(t *testing.T) {
 }
 
 func TestBranchList(t *testing.T) {
-	mock := &mockOstree{
-		refs: []string{"origin:branch1", "origin:branch2"},
+	mock := &cds.MockOstree{
+		Refs: []string{"origin:branch1", "origin:branch2"},
 	}
 	cmd := newTestBranchCommand(mock)
 	if err := cmd.parseArgs([]string{"list"}); err != nil {
@@ -111,7 +111,7 @@ func TestBranchList(t *testing.T) {
 }
 
 func TestBranchSwitch(t *testing.T) {
-	mock := &mockOstree{}
+	mock := &cds.MockOstree{}
 	cmd := newTestBranchCommand(mock)
 	if err := cmd.parseArgs([]string{"switch", "new/branch"}); err != nil {
 		t.Fatalf("parseArgs failed: %v", err)
@@ -120,13 +120,13 @@ func TestBranchSwitch(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
-	if mock.switchRef != "new/branch" {
-		t.Errorf("expected switch ref %q, got %q", "new/branch", mock.switchRef)
+	if mock.SwitchRef != "new/branch" {
+		t.Errorf("expected switch ref %q, got %q", "new/branch", mock.SwitchRef)
 	}
 }
 
 func TestBranchSwitchMissingArg(t *testing.T) {
-	mock := &mockOstree{}
+	mock := &cds.MockOstree{}
 	cmd := newTestBranchCommand(mock)
 	if err := cmd.parseArgs([]string{"switch"}); err != nil {
 		t.Fatalf("parseArgs failed: %v", err)
@@ -139,7 +139,7 @@ func TestBranchSwitchMissingArg(t *testing.T) {
 }
 
 func TestBranchUnknownSubcommand(t *testing.T) {
-	mock := &mockOstree{}
+	mock := &cds.MockOstree{}
 	cmd := newTestBranchCommand(mock)
 	if err := cmd.parseArgs([]string{"foo"}); err != nil {
 		t.Fatalf("parseArgs failed: %v", err)
@@ -152,7 +152,7 @@ func TestBranchUnknownSubcommand(t *testing.T) {
 }
 
 func TestBranchNoSubcommand(t *testing.T) {
-	mock := &mockOstree{}
+	mock := &cds.MockOstree{}
 	cmd := newTestBranchCommand(mock)
 	err := cmd.parseArgs([]string{})
 	if err == nil {
