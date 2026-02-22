@@ -25,6 +25,9 @@ var (
 	sysMount                                     = unix.Mount
 	sysUnmount                                   = unix.Unmount
 	sysIoctl                                     = unix.Syscall
+	sysLsetxattr                                 = unix.Lsetxattr
+	sysLgetxattr                                 = unix.Lgetxattr
+	sysLlistxattr                                = unix.Llistxattr
 )
 
 // BLKFLSBUF is the ioctl command to flush block device buffers.
@@ -652,7 +655,7 @@ func checkFsCapabilitySupport(testDir string) (bool, error) {
 	tmpBin.Close()
 	defer os.Remove(tmpBin.Name())
 
-	if err := execRun(nil, nil, nil, "setcap", "cap_net_raw+ep", tmpBin.Name()); err != nil {
+	if err := setFileCap(tmpBin.Name(), unix.CAP_NET_RAW); err != nil {
 		log.Println("WARNING: System/FS does not allow setting capabilities.")
 		return false, nil
 	}
@@ -664,18 +667,12 @@ func checkFsCapabilitySupport(testDir string) (bool, error) {
 		return false, err
 	}
 
-	out, err := execOutput("getcap", tmpCopy)
+	hasCap, err := getFileCap(tmpCopy, unix.CAP_NET_RAW)
 	if err != nil {
-		// getcap might fail if no caps? No, it just prints nothing usually.
-		return false, err
+		// xattr not present on copy means FS does not preserve capabilities
+		return false, nil
 	}
-
-	outStr := string(out)
-	// Flexible check for "cap_net_raw+ep" or "cap_net_raw=ep"
-	if strings.Contains(outStr, "cap_net_raw+ep") || strings.Contains(outStr, "cap_net_raw=ep") {
-		return true, nil
-	}
-	return false, nil
+	return hasCap, nil
 }
 
 // copyFilePreserveXattrs copies a file from src to dst, preserving permissions
@@ -703,12 +700,12 @@ func copyFilePreserveXattrs(src, dst string) error {
 	}
 
 	// Copy extended attributes (includes security.capability)
-	attrs, err := unix.Llistxattr(src, nil)
+	attrs, err := sysLlistxattr(src, nil)
 	if err != nil || attrs == 0 {
 		return nil // no xattrs or not supported
 	}
 	buf := make([]byte, attrs)
-	attrs, err = unix.Llistxattr(src, buf)
+	attrs, err = sysLlistxattr(src, buf)
 	if err != nil {
 		return nil
 	}
@@ -718,16 +715,16 @@ func copyFilePreserveXattrs(src, dst string) error {
 		if name == "" {
 			continue
 		}
-		sz, err := unix.Lgetxattr(src, name, nil)
+		sz, err := sysLgetxattr(src, name, nil)
 		if err != nil {
 			continue
 		}
 		val := make([]byte, sz)
-		_, err = unix.Lgetxattr(src, name, val)
+		_, err = sysLgetxattr(src, name, val)
 		if err != nil {
 			continue
 		}
-		unix.Lsetxattr(dst, name, val, 0)
+		sysLsetxattr(dst, name, val, 0)
 	}
 	return nil
 }
