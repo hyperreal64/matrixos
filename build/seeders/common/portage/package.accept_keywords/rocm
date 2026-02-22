@@ -1,0 +1,2 @@
+dev-libs/rocm-core ~amd64
+dev-util/rocm-smi ~amd64
