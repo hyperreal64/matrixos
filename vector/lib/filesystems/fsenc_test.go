@@ -2,6 +2,7 @@ package filesystems
 
 import (
 	"errors"
+	"fmt"
 	"matrixos/vector/lib/config"
 	"matrixos/vector/lib/runner"
 	"os"
@@ -175,18 +176,44 @@ func TestFsencOsName(t *testing.T) {
 // --- MountImageAsLoopDevice Tests ---
 
 func TestMountImageAsLoopDevice(t *testing.T) {
-	setupMockExec(t)
-
 	t.Run("Success", func(t *testing.T) {
-		t.Setenv("MOCK_LOSETUP_OUTPUT", "/dev/loop7\n")
+		setupMockLoop(t)
+
+		ctlFile, _ := os.CreateTemp("", "ctl")
+		imgFile, _ := os.CreateTemp("", "img")
+		loopFile, _ := os.CreateTemp("", "loop")
+		t.Cleanup(func() {
+			os.Remove(ctlFile.Name())
+			os.Remove(imgFile.Name())
+			os.Remove(loopFile.Name())
+		})
+
+		callN := 0
+		openFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+			callN++
+			switch callN {
+			case 1:
+				return ctlFile, nil
+			case 2:
+				return imgFile, nil
+			case 3:
+				return loopFile, nil
+			}
+			return nil, fmt.Errorf("unexpected open")
+		}
+		ioctlRetInt = func(fd int, req uint) (int, error) { return 7, nil }
+
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
-		dev, err := f.MountImageAsLoopDevice("/tmp/disk.img")
+		l, err := f.MountImageAsLoopDevice("/tmp/disk.img")
 		if err != nil {
 			t.Fatalf("MountImageAsLoopDevice() error: %v", err)
 		}
-		if dev != "/dev/loop7" {
-			t.Errorf("Expected /dev/loop7, got %q", dev)
+		if l.Device != "/dev/loop7" {
+			t.Errorf("Expected /dev/loop7, got %q", l.Device)
+		}
+		if l.Path != "/tmp/disk.img" {
+			t.Errorf("Expected /tmp/disk.img, got %q", l.Path)
 		}
 	})
 
@@ -199,23 +226,17 @@ func TestMountImageAsLoopDevice(t *testing.T) {
 		}
 	})
 
-	t.Run("CommandFail", func(t *testing.T) {
-		t.Setenv("MOCK_LOSETUP_FAIL", "1")
-		cfg := baseFsencConfig()
-		f, _ := NewFsenc(cfg)
-		_, err := f.MountImageAsLoopDevice("/tmp/disk.img")
-		if err == nil {
-			t.Error("Expected error from losetup failure")
+	t.Run("AttachFail", func(t *testing.T) {
+		setupMockLoop(t)
+		openFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+			return nil, fmt.Errorf("no loop-control")
 		}
-	})
 
-	t.Run("EmptyOutput", func(t *testing.T) {
-		t.Setenv("MOCK_LOSETUP_OUTPUT", "")
 		cfg := baseFsencConfig()
 		f, _ := NewFsenc(cfg)
 		_, err := f.MountImageAsLoopDevice("/tmp/disk.img")
 		if err == nil {
-			t.Error("Expected error for empty losetup output")
+			t.Error("Expected error from Attach failure")
 		}
 	})
 }
