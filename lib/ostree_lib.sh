@@ -486,6 +486,69 @@ ostree_lib.list_remotes() {
     ostree_lib.run_strict --repo="${repodir}" remote list
 }
 
+ostree_lib.get_gpg_keys() {
+    local signing_pubkey=
+    signing_pubkey=$(ostree_lib.get_gpg_pubkey_path)
+
+    local keys=(
+        "${MATRIXOS_OSTREE_GPG_KEY_PATH}"
+        "${signing_pubkey}"
+        "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
+    )
+    echo "${keys[@]}"
+}
+
+ostree_lib.initialize_signing_gpg() {
+    local gpg_enabled="${1}"
+    if [ -z "${gpg_enabled}" ]; then
+        echo "Signing GPG signing not enabled."
+        return 0
+    fi
+
+    echo "Signing GPG signing enabled."
+    read -ra keys <<< "$(ostree_lib.get_gpg_keys)"
+    local key=
+    for key in "${keys[@]}"; do
+        if [ ! -f "${key}" ]; then
+            echo "WARNING: Signing GPG key ${key} not present, skipping import ..." >&2
+            continue
+        fi
+        ostree_lib.import_gpg_key "${key}"
+    done
+}
+
+ostree_lig.initialize_remote_signing_gpg() {
+    local gpg_enabled="${1}"
+    if [ -z "${gpg_enabled}" ]; then
+        echo "Remote signing GPG signing not enabled."
+        return 0
+    fi
+
+    local remote="${2}"
+    if [ -z "${remote}" ]; then
+        echo "initialize_remote_signing_gpg: missing ostree remote parameter" >&2
+        return 1
+    fi
+
+    local repodir="${3}"
+    if [ -z "${repodir}" ]; then
+        echo "initialize_remote_signing_gpg: missing ostree repodir parameter" >&2
+        return 1
+    fi
+
+    echo "Remote signing GPG signing enabled."
+    read -ra keys <<< "$(ostree_lib.get_gpg_keys)"
+    local key=
+    for key in "${keys[@]}"; do
+        if [ ! -f "${key}" ]; then
+            echo "WARNING: Remote signing GPG key ${key} not present, skipping import ..." >&2
+            continue
+        fi
+        ostree_lib.run --repo="${repodir}" remote gpg-import "${remote}" \
+            -k "${key}"
+    done
+}
+
 ostree_lib.maybe_initialize_gpg() {
     local gpg_enabled="${1}"
     if [ -z "${gpg_enabled}" ]; then
@@ -504,24 +567,8 @@ ostree_lib.maybe_initialize_gpg() {
         return 1
     fi
 
-    local signing_pubkey=
-    signing_pubkey=$(ostree_lib.get_gpg_pubkey_path)
-
-    local keys=(
-        "${MATRIXOS_OSTREE_GPG_KEY_PATH}"
-        "${signing_pubkey}"
-        "${MATRIXOS_OSTREE_OFFICIAL_GPG_PUB_PATH}"
-    )
-    local key=
-    for key in "${keys[@]}"; do
-        if [ ! -f "${key}" ]; then
-            echo "WARNING: ${key} not present, skipping import ..." >&2
-            continue
-        fi
-        ostree_lib.import_gpg_key "${key}"
-        ostree_lib.run --repo="${repodir}" remote gpg-import "${remote}" \
-            -k "${key}"
-    done
+    ostree_lib.initialize_signing_gpg "${gpg_enabled}"
+    ostree_lib.initialize_remote_signing_gpg "${gpg_enabled}" "${remote}" "${repodir}"
 }
 
 ostree_lib.maybe_initialize_remote() {

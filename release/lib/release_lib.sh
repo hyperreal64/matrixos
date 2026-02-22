@@ -499,20 +499,6 @@ release_lib.post_clean_shrink() {
     echo "Shrink completed."
 }
 
-release_lib.initialize_gpg() {
-    local gpg_enabled="${1}"
-    if [ -z "${gpg_enabled}" ]; then
-        echo "GPG signing not enabled."
-        return 0
-    fi
-
-    echo "GPG signing enabled."
-    ostree_lib.patch_ostree_gpg_homedir
-    gpg --homedir="$(ostree_lib.get_ostree_gpg_homedir)" \
-        --batch --yes \
-        --import "${MATRIXOS_OSTREE_GPG_KEY_PATH}"
-}
-
 release_lib.add_extra_dotdot_to_usr_etc_portage() {
     local imagedir="${1}"
     _check_imagedir "${imagedir}"

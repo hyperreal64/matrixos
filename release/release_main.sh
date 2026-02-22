@@ -152,7 +152,7 @@ main() {
     release_lib.setup_services "${ARG_IMAGE_DIR}" "MOUNTS" "${branch}"
     release_lib.setup_hostname "${ARG_IMAGE_DIR}"
     release_lib.post_clean_qa_checks "${ARG_IMAGE_DIR}"
-    release_lib.initialize_gpg "${gpg_enabled}"
+    ostree_lib.initialize_signing_gpg "${gpg_enabled}"
 
     release_lib.release_hook "${ARG_IMAGE_DIR}" "${branch}"
     release_lib.ostree_prepare "${ARG_IMAGE_DIR}"

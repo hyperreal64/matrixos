@@ -12,7 +12,6 @@ source "${MATRIXOS_DEV_DIR}"/lib/ostree_lib.sh
 source "${MATRIXOS_DEV_DIR}"/lib/qa_lib.sh
 source "${MATRIXOS_DEV_DIR}"/image/lib/image_lib.sh
 source "${MATRIXOS_DEV_DIR}"/image/lib/fsenc_lib.sh
-source "${MATRIXOS_DEV_DIR}"/release/lib/release_lib.sh
 
 ARG_POSITIONALS=()
 ARG_PRODUCTIONIZE=
@@ -597,7 +596,7 @@ _productionize_image() {
             echo "WARNING: GPG signing of images not enabled in settings." >&2
         elif [ -f "${mos_gpg_key}" ]; then
             echo "${mos_gpg_key} exists, creating GPG signatures ..."
-            release_lib.initialize_gpg "${gpg_enabled}"
+            ostree_lib.initialize_signing_gpg "${gpg_enabled}"
             ostree_lib.gpg_sign_file "${image_path}"
             __generated_artifacts+=( "$(ostree_lib.gpg_signed_file_path "${image_path}")" )
             if [ -n "${create_qcow2}" ]; then
