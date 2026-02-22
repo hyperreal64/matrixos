@@ -524,3 +524,67 @@ func TestLoopIntegration(t *testing.T) {
 		t.Error("double Detach() should return an error")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Mount tests
+// ---------------------------------------------------------------------------
+
+func TestMount(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		setupMockLoop(t)
+
+		ctlFile, _ := os.CreateTemp("", "ctl")
+		imgFile, _ := os.CreateTemp("", "img")
+		loopFile, _ := os.CreateTemp("", "loop")
+		t.Cleanup(func() {
+			os.Remove(ctlFile.Name())
+			os.Remove(imgFile.Name())
+			os.Remove(loopFile.Name())
+		})
+
+		callN := 0
+		openFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+			callN++
+			switch callN {
+			case 1:
+				return ctlFile, nil
+			case 2:
+				return imgFile, nil
+			case 3:
+				return loopFile, nil
+			}
+			return nil, errors.New("unexpected open")
+		}
+		ioctlRetInt = func(fd int, req uint) (int, error) { return 7, nil }
+
+		l, err := Mount("/tmp/disk.img")
+		if err != nil {
+			t.Fatalf("Mount() error: %v", err)
+		}
+		if l.Device != "/dev/loop7" {
+			t.Errorf("Expected /dev/loop7, got %q", l.Device)
+		}
+		if l.Path != "/tmp/disk.img" {
+			t.Errorf("Expected /tmp/disk.img, got %q", l.Path)
+		}
+	})
+
+	t.Run("EmptyImagePath", func(t *testing.T) {
+		_, err := Mount("")
+		if err == nil {
+			t.Error("Expected error for empty imagePath")
+		}
+	})
+
+	t.Run("AttachFail", func(t *testing.T) {
+		setupMockLoop(t)
+		openFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+			return nil, errors.New("no loop-control")
+		}
+
+		_, err := Mount("/tmp/disk.img")
+		if err == nil {
+			t.Error("Expected error from Attach failure")
+		}
+	})
+}
