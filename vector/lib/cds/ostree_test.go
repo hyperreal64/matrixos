@@ -1112,6 +1112,207 @@ func TestMaybeInitializeGpg(t *testing.T) {
 	}
 }
 
+func TestGpgKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	privKey := filepath.Join(tmpDir, "priv.key")
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	offKey := filepath.Join(tmpDir, "off.key")
+
+	for _, f := range []string{privKey, pubKey, offKey} {
+		if err := os.WriteFile(f, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := &config.MockConfig{
+		Items: map[string][]string{
+			"Ostree.GpgPrivateKey":        {privKey},
+			"Ostree.GpgPublicKey":         {pubKey},
+			"Ostree.GpgOfficialPublicKey": {offKey},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	keys, err := o.GpgKeys()
+	if err != nil {
+		t.Fatalf("GpgKeys failed: %v", err)
+	}
+	if len(keys) != 3 {
+		t.Fatalf("Expected 3 keys, got %d: %v", len(keys), keys)
+	}
+	if keys[0] != privKey {
+		t.Errorf("Expected first key to be privKey, got %s", keys[0])
+	}
+	if keys[1] != pubKey {
+		t.Errorf("Expected second key to be pubKey, got %s", keys[1])
+	}
+	if keys[2] != offKey {
+		t.Errorf("Expected third key to be offKey, got %s", keys[2])
+	}
+}
+
+func TestGpgKeysDedup(t *testing.T) {
+	tmpDir := t.TempDir()
+	privKey := filepath.Join(tmpDir, "priv.key")
+	// pubKey and offKey point to the same file to trigger dedup
+	sameKey := filepath.Join(tmpDir, "same.key")
+
+	for _, f := range []string{privKey, sameKey} {
+		if err := os.WriteFile(f, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := &config.MockConfig{
+		Items: map[string][]string{
+			"Ostree.GpgPrivateKey":        {privKey},
+			"Ostree.GpgPublicKey":         {sameKey},
+			"Ostree.GpgOfficialPublicKey": {sameKey},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	keys, err := o.GpgKeys()
+	if err != nil {
+		t.Fatalf("GpgKeys failed: %v", err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("Expected 2 keys (dedup), got %d: %v", len(keys), keys)
+	}
+}
+
+func TestInitializeSigningGpg(t *testing.T) {
+	var cmds [][]string
+	tmpDir := t.TempDir()
+	privKey := filepath.Join(tmpDir, "priv.key")
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	offKey := filepath.Join(tmpDir, "off.key")
+
+	for _, f := range []string{privKey, pubKey, offKey} {
+		if err := os.WriteFile(f, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := &config.MockConfig{
+		Items: map[string][]string{
+			"Ostree.GpgPrivateKey":        {privKey},
+			"Ostree.GpgPublicKey":         {pubKey},
+			"Ostree.GpgOfficialPublicKey": {offKey},
+			"Ostree.DevGpgHomedir":        {filepath.Join(tmpDir, "gpg")},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, args)
+		return nil
+	}
+
+	if err := o.InitializeSigningGpg(false); err != nil {
+		t.Fatalf("InitializeSigningGpg failed: %v", err)
+	}
+
+	gpgImports := 0
+	for _, cmd := range cmds {
+		for _, arg := range cmd {
+			if arg == "--import" {
+				gpgImports++
+				break
+			}
+		}
+	}
+	if gpgImports != 3 {
+		t.Errorf("Expected 3 gpg --import calls, got %d", gpgImports)
+	}
+
+	// Ensure NO ostree remote gpg-import calls were made
+	for _, cmd := range cmds {
+		if len(cmd) > 2 && cmd[1] == "remote" && cmd[2] == "gpg-import" {
+			t.Error("InitializeSigningGpg should not call ostree remote gpg-import")
+		}
+	}
+}
+
+func TestInitializeRemoteSigningGpg(t *testing.T) {
+	var cmds [][]string
+	tmpDir := t.TempDir()
+	privKey := filepath.Join(tmpDir, "priv.key")
+	pubKey := filepath.Join(tmpDir, "pub.key")
+	offKey := filepath.Join(tmpDir, "off.key")
+
+	for _, f := range []string{privKey, pubKey, offKey} {
+		if err := os.WriteFile(f, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := &config.MockConfig{
+		Items: map[string][]string{
+			"Ostree.GpgPrivateKey":        {privKey},
+			"Ostree.GpgPublicKey":         {pubKey},
+			"Ostree.GpgOfficialPublicKey": {offKey},
+		},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+	o.runner = func(_ io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
+		cmds = append(cmds, args)
+		return nil
+	}
+
+	if err := o.InitializeRemoteSigningGpg("origin", "/repo", false); err != nil {
+		t.Fatalf("InitializeRemoteSigningGpg failed: %v", err)
+	}
+
+	ostreeImports := 0
+	for _, cmd := range cmds {
+		if len(cmd) > 2 && cmd[0] == "--repo=/repo" && cmd[1] == "remote" && cmd[2] == "gpg-import" {
+			ostreeImports++
+		}
+	}
+	if ostreeImports != 3 {
+		t.Errorf("Expected 3 ostree remote gpg-import calls, got %d", ostreeImports)
+	}
+
+	// Ensure NO local gpg --import calls were made
+	for _, cmd := range cmds {
+		for _, arg := range cmd {
+			if arg == "--import" {
+				t.Error("InitializeRemoteSigningGpg should not call gpg --import")
+				break
+			}
+		}
+	}
+}
+
+func TestInitializeRemoteSigningGpgMissingParams(t *testing.T) {
+	cfg := &config.MockConfig{
+		Items: map[string][]string{},
+	}
+	o, err := NewOstree(cfg)
+	if err != nil {
+		t.Fatalf("NewOstree failed: %v", err)
+	}
+
+	if err := o.InitializeRemoteSigningGpg("", "/repo", false); err == nil {
+		t.Error("Expected error for empty remote")
+	}
+	if err := o.InitializeRemoteSigningGpg("origin", "", false); err == nil {
+		t.Error("Expected error for empty repoDir")
+	}
+}
+
 func TestPullWithRemoteExplicit(t *testing.T) {
 	var lastArgs []string
 	cfg := &config.MockConfig{
