@@ -80,6 +80,9 @@ func (m *MockOstree) BootCommit(string) (string, error) {
 func (m *MockOstree) ListRemotes(bool) ([]string, error)                           { return nil, nil }
 func (m *MockOstree) ImportGpgKey(string) error                                    { return nil }
 func (m *MockOstree) GpgSignFile(string) error                                     { return nil }
+func (m *MockOstree) GpgKeys() ([]string, error)                                   { return nil, nil }
+func (m *MockOstree) InitializeSigningGpg(bool) error                              { return nil }
+func (m *MockOstree) InitializeRemoteSigningGpg(string, string, bool) error        { return nil }
 func (m *MockOstree) MaybeInitializeGpg(bool) error                                { return nil }
 func (m *MockOstree) MaybeInitializeGpgForRepo(string, string, bool) error         { return nil }
 func (m *MockOstree) MaybeInitializeRemote(bool) error                             { return nil }

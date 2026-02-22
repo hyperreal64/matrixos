@@ -76,6 +76,9 @@ type IOstree interface {
 	LastCommit(ref string, verbose bool) (string, error)
 	ImportGpgKey(keyPath string) error
 	GpgSignFile(file string) error
+	GpgKeys() ([]string, error)
+	InitializeSigningGpg(verbose bool) error
+	InitializeRemoteSigningGpg(remote, repoDir string, verbose bool) error
 	MaybeInitializeGpg(verbose bool) error
 	MaybeInitializeGpgForRepo(remote, repoDir string, verbose bool) error
 	MaybeInitializeRemote(verbose bool) error
@@ -1293,46 +1296,76 @@ func (o *Ostree) GpgSignFile(file string) error {
 	return nil
 }
 
-func (o *Ostree) initializeGpg(remote, repoDir string, verbose bool) error {
-	if remote == "" {
-		return errors.New("missing remote parameter")
-	}
-	if repoDir == "" {
-		return errors.New("missing repoDir parameter")
-	}
-
+// GpgKeys returns the list of GPG key paths used for signing and verification.
+// The list contains the private key, the best available public key, and
+// (if different) the official public key.
+func (o *Ostree) GpgKeys() ([]string, error) {
 	var keys []string
 
 	gpgKeyPath, err := o.GpgPrivateKeyPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	keys = append(keys, gpgKeyPath)
 
 	signingPubKey, err := o.GpgBestPubKeyPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	keys = append(keys, signingPubKey)
 
 	officialPubKeyPath, err := o.GpgOfficialPubKeyPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// if it's the same as signingPubKey, do not add a dup.
 	if signingPubKey != officialPubKeyPath {
 		keys = append(keys, officialPubKeyPath)
 	}
 
+	return keys, nil
+}
+
+// InitializeSigningGpg imports GPG keys into the local GPG keyring.
+func (o *Ostree) InitializeSigningGpg(verbose bool) error {
+	keys, err := o.GpgKeys()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Signing GPG signing enabled.")
 	for _, key := range keys {
 		if !fileExists(key) {
-			fmt.Fprintf(os.Stderr, "WARNING: %s not present, skipping import ...\n", key)
+			fmt.Fprintf(os.Stderr, "WARNING: Signing GPG key %s not present, skipping import ...\n", key)
 			continue
 		}
 		if err := o.ImportGpgKey(key); err != nil {
 			return fmt.Errorf("failed to import gpg key %s: %w", key, err)
 		}
+	}
+	return nil
+}
 
+// InitializeRemoteSigningGpg imports GPG keys into the remote ostree repository.
+func (o *Ostree) InitializeRemoteSigningGpg(remote, repoDir string, verbose bool) error {
+	if remote == "" {
+		return errors.New("InitializeRemoteSigningGpg: missing remote parameter")
+	}
+	if repoDir == "" {
+		return errors.New("InitializeRemoteSigningGpg: missing repoDir parameter")
+	}
+
+	keys, err := o.GpgKeys()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Remote signing GPG signing enabled.")
+	for _, key := range keys {
+		if !fileExists(key) {
+			fmt.Fprintf(os.Stderr, "WARNING: Remote signing GPG key %s not present, skipping import ...\n", key)
+			continue
+		}
 		err := o.ostreeRun(verbose, "--repo="+repoDir, "remote", "gpg-import", remote, "-k", key)
 		if err != nil {
 			return fmt.Errorf("failed to import gpg key %s to remote %s: %w", key, remote, err)
@@ -1355,7 +1388,7 @@ func (o *Ostree) MaybeInitializeGpg(verbose bool) error {
 	return o.MaybeInitializeGpgForRepo(remote, repoDir, verbose)
 }
 
-// MaybeInitializeGpg initializes GPG keys for an ostree repository.
+// MaybeInitializeGpgForRepo initializes GPG keys for an ostree repository.
 func (o *Ostree) MaybeInitializeGpgForRepo(remote, repoDir string, verbose bool) error {
 	gpgEnabled, err := o.GpgEnabled()
 	if err != nil {
@@ -1366,7 +1399,10 @@ func (o *Ostree) MaybeInitializeGpgForRepo(remote, repoDir string, verbose bool)
 		return nil
 	}
 
-	return o.initializeGpg(remote, repoDir, verbose)
+	if err := o.InitializeSigningGpg(verbose); err != nil {
+		return err
+	}
+	return o.InitializeRemoteSigningGpg(remote, repoDir, verbose)
 }
 
 // MaybeInitializeRemote initializes an ostree remote.
