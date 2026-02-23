@@ -4,6 +4,7 @@ set -e
 
 source "${MATRIXOS_DEV_DIR:-/matrixos}/headers/env.include.sh"
 source "${MATRIXOS_DEV_DIR}"/image/headers/imagerenv.include.sh
+source "${MATRIXOS_DEV_DIR}"/build/seeders/headers/preppersenv.include.sh
 
 source "${MATRIXOS_DEV_DIR}"/lib/fs_lib.sh
 source "${MATRIXOS_DEV_DIR}"/lib/ostree_lib.sh
