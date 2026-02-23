@@ -517,7 +517,7 @@ ostree_lib.initialize_signing_gpg() {
     done
 }
 
-ostree_lig.initialize_remote_signing_gpg() {
+ostree_lib.initialize_remote_signing_gpg() {
     local gpg_enabled="${1}"
     if [ -z "${gpg_enabled}" ]; then
         echo "Remote signing GPG signing not enabled."
