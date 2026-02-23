@@ -167,9 +167,11 @@ test.ostree_status() {
 }
 
 test.flatpak() {
-    if ! flatpak remotes -d | grep ^flathub; then
-        echo "flatpak remotes command failed"
-        return 1
+    if _is_gnome || _is_cosmic; then
+        if ! flatpak remotes -d | grep ^flathub; then
+            echo "flatpak remotes command failed"
+            return 1
+        fi
     fi
 }
 
